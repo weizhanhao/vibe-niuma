@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 venv/
 demo/backend/.env
+orchestrator/.env
 
 # Node
 node_modules/
