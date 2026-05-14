@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+venv/
+demo/backend/.env
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 环境
+.DS_Store
