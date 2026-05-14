@@ -1,0 +1,40 @@
+:root {
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-border: #e3e5e9;
+  --color-text: #1f2329;
+  --color-text-muted: #646a73;
+  --color-accent: #3370ff;
+  --color-accent-text: #ffffff;
+
+  --status-paid: #1f9d55;
+  --status-pending: #d9920a;
+  --status-shipped: #3370ff;
+  --status-cancelled: #8a9099;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+
+  --radius: 8px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 18px;
+  --text-xl: 28px;
+
+  --font-sans: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--color-text);
+  background: var(--color-bg);
+}
