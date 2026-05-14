@@ -35,9 +35,9 @@ export function OrderDetail() {
         }}
       >
         <p style={{ marginBottom: 'var(--space-2)' }}>客户：<span>{order.customer_name}</span></p>
-        <p style={{ marginBottom: 'var(--space-2)' }}>状态：<span>{order.status}</span></p>
+        <p style={{ marginBottom: 'var(--space-2)' }}>状态：{order.status}</p>
         <p style={{ marginBottom: 'var(--space-3)' }}>
-          总金额：<span>¥{order.total_amount.toFixed(2)}</span>
+          总金额：¥{order.total_amount.toFixed(2)}
         </p>
         <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-2)' }}>
           商品明细
