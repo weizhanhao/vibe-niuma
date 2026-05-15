@@ -43,7 +43,12 @@ rsync -az --delete \
   --exclude '__pycache__' --exclude '*.pyc' --exclude 'dist' \
   -e "$RSYNC_E" \
   "$REPO_ROOT/orchestrator/" "$ECS_USER@$ECS_HOST:$DEPLOY_ROOT/orchestrator/"
-rsync -az --delete \
+# ⚠ demo 不能 --delete + 不排 .git：会把 cr/* 分支和合并到 main 的 commit 全擦掉。
+# .git 是 ECS 上 orchestrator pipeline 写的真相，源端没有；--update 也是为了避免
+# 本机老源码盖掉 dev runner 刚改过的工作树（合并后 main 上的内容仍由源端覆盖回去
+# 就丢工作了）。AGENTS.md 由 orchestrator 自己生成，也排掉。
+rsync -az --update \
+  --exclude '.git' --exclude 'AGENTS.md' \
   --exclude 'node_modules' --exclude 'dist' --exclude '__pycache__' \
   -e "$RSYNC_E" \
   "$REPO_ROOT/demo/" "$ECS_USER@$ECS_HOST:$DEPLOY_ROOT/demo/"
