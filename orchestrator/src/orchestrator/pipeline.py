@@ -127,17 +127,29 @@ class Pipeline:
         Phase F：在每个 phase 注入 log 闭包给 adapter，粗粒度 marker 在每步
         开头/结束发；细粒度行由 adapter 内 stream subprocess 时实时回灌。
         """
+        import time
         bus = self.event_bus
+        run_started = time.monotonic()
+        phase_started: dict[str, float] = {}
 
         async def _phase_log(phase: str, line: str) -> None:
             await bus.publish_log(request_id, phase, line)
+
+        async def _phase_start(phase: str, line: str) -> None:
+            phase_started[phase] = time.monotonic()
+            await _phase_log(phase, line)
+
+        async def _phase_done(phase: str, line: str) -> None:
+            t0 = phase_started.get(phase)
+            elapsed = f" (耗时 {time.monotonic() - t0:.1f}s)" if t0 is not None else ""
+            await _phase_log(phase, f"{line}{elapsed}")
 
         await self.quota.acquire(request_id)
         try:
             # created → clarifying
             await self._set_state(request_id, State.CLARIFYING)
-            await _phase_log("clarifying", "▸ 读 AGENTS.md / 等 /init 就绪...")
-            channel = SSEInteractionChannel(request_id, self.event_bus)
+            await _phase_start("clarifying", "▸ 读 AGENTS.md / 等 /init 就绪...")
+            channel = SSEInteractionChannel(request_id, self.event_bus, phase="clarifying")
             self._channels[request_id] = channel
             cr = self.repository.get(request_id)
             raw = RawRequest(
@@ -147,16 +159,16 @@ class Pipeline:
                 viewport=cr.viewport,
                 request_text=cr.request_text,
             )
-            await _phase_log("clarifying", "▸ 问视觉模型判断业务意图（LLM HTTP，首次可能 10-30s）...")
+            await _phase_log("clarifying", "▸ 问视觉模型判断业务意图（流式输出 ↓）...")
             clarify_log = _make_log_sink(bus, request_id, "clarifying")
             brief = await _with_heartbeat(
                 self.interaction_skill.clarify(raw, channel),
                 log=clarify_log, label="视觉模型回答中",
             )
-            await _phase_log("clarifying", "✓ 澄清完成")
+            await _phase_done("clarifying", "✓ 澄清完成")
 
             # clarifying → located
-            await _phase_log("locating", "▸ 解析路由配置...")
+            await _phase_start("locating", "▸ 解析路由配置...")
             locate_log = _make_log_sink(bus, request_id, "locating")
             locate_result = await _with_heartbeat(
                 self.stack_adapter.locate(raw.url),
@@ -166,7 +178,7 @@ class Pipeline:
                 raise _PhaseError(
                     "located", "no-route-match", f"URL 未匹配任何路由: {raw.url}"
                 )
-            await _phase_log(
+            await _phase_done(
                 "locating",
                 f"✓ 定位到入口：{', '.join(locate_result.entry_files[:3])}",
             )
@@ -174,7 +186,7 @@ class Pipeline:
 
             # located → coding
             branch = f"cr/{request_id}"
-            await _phase_log("coding", f"▸ 切分支 {branch}...")
+            await _phase_start("coding", f"▸ 切分支 {branch}...")
             try:
                 await asyncio.to_thread(self.git_manager.create_branch, branch)
             except Exception as exc:  # noqa: BLE001
@@ -198,7 +210,7 @@ class Pipeline:
                 ) from exc
             # 把 phase=coding 的 log 闭包塞进 DevContext，runner 子进程行级回灌
             ctx.log = _make_log_sink(bus, request_id, "coding")
-            await _phase_log("coding", "▸ 起 dev runner（首次启动可能静默 30~60s）...")
+            await _phase_log("coding", "▸ 起 dev runner（首次启动可能静默 30~60s，下方滚动是其 stdout）...")
             try:
                 run_result = await self.dev_runner.run(self.repo_path, branch, ctx)
             except Exception as exc:  # noqa: BLE001
@@ -207,11 +219,11 @@ class Pipeline:
                 ) from exc
             if not run_result.changed:
                 raise _PhaseError("coding", "no-changes", run_result.log)
-            await _phase_log("coding", f"✓ 编码完成 commit={run_result.commit_sha}")
+            await _phase_done("coding", f"✓ 编码完成 commit={run_result.commit_sha}")
 
             # coding → building
             await self._set_state(request_id, State.BUILDING)
-            await _phase_log("building", "▸ npm run build...")
+            await _phase_start("building", "▸ npm run build...")
             build_log = _make_log_sink(bus, request_id, "building")
             build_result = await self.stack_adapter.build(
                 self.repo_path, branch, log=build_log,
@@ -232,8 +244,10 @@ class Pipeline:
             self.repository.set_preview(
                 request_id, url=instance.url, handle=instance.handle
             )
-            await _phase_log("building", f"✓ 预览容器就绪 {instance.url}")
+            await _phase_done("building", f"✓ 预览容器就绪 {instance.url}")
             await self._set_state(request_id, State.PREVIEW_READY)
+            total = time.monotonic() - run_started
+            await _phase_log("building", f"🏁 全流程完成 总耗时 {total:.1f}s")
             # 注意：到此 pipeline 结束，槽位仍占用，由 merge/discard/expire 释放
         except _PhaseError as pe:
             self.repository.mark_failed(

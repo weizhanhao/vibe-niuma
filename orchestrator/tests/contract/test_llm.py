@@ -69,3 +69,47 @@ async def test_complete_raises_on_malformed_response(_patch_async_client):
     client = LLMClient(base_url="http://proxy:8787", api_key="k")
     with pytest.raises(RuntimeError, match="响应格式异常"):
         await client.complete("hi")
+
+
+def _sse_transport(captured: dict, chunks: list[str], *, status: int = 200):
+    """造一个 OpenAI 兼容 SSE 流。每个 chunk 是 delta.content 文本。"""
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content.decode())
+        lines: list[str] = []
+        for c in chunks:
+            payload = json.dumps({"choices": [{"delta": {"content": c}}]})
+            lines.append(f"data: {payload}\n\n")
+        lines.append("data: [DONE]\n\n")
+        body = "".join(lines).encode()
+        return httpx.Response(
+            status, content=body,
+            headers={"content-type": "text/event-stream"},
+        )
+    return httpx.MockTransport(_handler)
+
+
+async def test_complete_vision_stream_emits_each_chunk(_patch_async_client):
+    captured: dict = {}
+    _patch_async_client["transport"] = _sse_transport(captured, ["he", "llo", " world"])
+    client = LLMClient(base_url="http://proxy:8787", api_key="k")
+    received: list[str] = []
+
+    async def _on_tok(tok: str) -> None:
+        received.append(tok)
+
+    text = await client.complete_vision_stream("prompt", "aGk=", on_token=_on_tok)
+    assert text == "hello world"
+    assert received == ["he", "llo", " world"]
+    assert captured["body"]["stream"] is True
+
+
+async def test_complete_vision_stream_raises_on_http_error(_patch_async_client):
+    _patch_async_client["transport"] = _sse_transport({}, [], status=500)
+    client = LLMClient(base_url="http://proxy:8787", api_key="k")
+
+    async def _on_tok(_: str) -> None:
+        return None
+
+    with pytest.raises(RuntimeError, match="流式上游 HTTP 500"):
+        await client.complete_vision_stream("p", "aGk=", on_token=_on_tok)

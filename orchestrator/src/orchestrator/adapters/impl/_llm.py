@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Awaitable, Callable
 
 import httpx
 
 from orchestrator.config import settings
+
+OnTokenCallback = Callable[[str], Awaitable[None]]
 
 
 def _detect_image_mime(b64: str) -> str:
@@ -59,8 +62,27 @@ class LLMClient:
     ) -> str:
         # mime 不指定时按 base64 头部魔数自动判：JPEG 以 /9j/ 起，PNG 以 iVBOR 起。
         # 扩展为减小上传体积已把截图换 JPEG，这里要识别正确否则 qwen-vl-plus 不认。
+        body = self._vision_body(prompt, image_b64, model=model, mime=mime, stream=False)
+        return await self._post_chat(body)
+
+    async def complete_vision_stream(
+        self, prompt: str, image_b64: str, on_token: OnTokenCallback,
+        *, model: str | None = None, mime: str | None = None,
+    ) -> str:
+        """流式视觉补全：每个 token chunk 回调 on_token；返回累计全文。
+
+        失败/服务器不支持 stream 时 on_token 不会被回调，但会抛 RuntimeError，
+        调用方应捕获并降级到 complete_vision（非流式）。
+        """
+        body = self._vision_body(prompt, image_b64, model=model, mime=mime, stream=True)
+        return await self._stream_chat(body, on_token)
+
+    def _vision_body(
+        self, prompt: str, image_b64: str, *, model: str | None,
+        mime: str | None, stream: bool,
+    ) -> dict:
         resolved_mime = mime or _detect_image_mime(image_b64)
-        body = {
+        body: dict = {
             "model": model or settings.vision_model,
             "messages": [{
                 "role": "user",
@@ -73,7 +95,9 @@ class LLMClient:
                 ],
             }],
         }
-        return await self._post_chat(body)
+        if stream:
+            body["stream"] = True
+        return body
 
     async def _post_chat(self, body: dict) -> str:
         url = f"{self.base_url}/v1/chat/completions"
@@ -91,3 +115,53 @@ class LLMClient:
             return data["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"LLM 响应格式异常: {data}") from exc
+
+    async def _stream_chat(self, body: dict, on_token: OnTokenCallback) -> str:
+        """OpenAI 兼容 SSE 流：解析 `data: {...}\\n\\n` chunk，取 delta.content。
+
+        累计返回完整文本；on_token 回调每个 delta（已 strip 空白）。
+        服务器返回 `data: [DONE]` 时正常结束。HTTP >=400 → RuntimeError。
+        """
+        url = f"{self.base_url}/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        full: list[str] = []
+        async with httpx.AsyncClient(timeout=self.timeout) as cli:
+            async with cli.stream(
+                "POST", url, headers=headers, content=json.dumps(body),
+            ) as resp:
+                if resp.status_code >= 400:
+                    err = (await resp.aread()).decode("utf-8", errors="replace")
+                    raise RuntimeError(
+                        f"LLM 流式上游 HTTP {resp.status_code}: {err[:500]}"
+                    )
+                async for raw_line in resp.aiter_lines():
+                    if not raw_line or not raw_line.startswith("data:"):
+                        continue
+                    payload = raw_line[5:].strip()
+                    if not payload or payload == "[DONE]":
+                        if payload == "[DONE]":
+                            break
+                        continue
+                    try:
+                        chunk = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        delta = chunk["choices"][0].get("delta", {}) or {}
+                        text = delta.get("content") or ""
+                    except (KeyError, IndexError, TypeError):
+                        text = ""
+                    if not text:
+                        continue
+                    full.append(text)
+                    try:
+                        await on_token(text)
+                    except Exception:
+                        pass
+        return "".join(full)

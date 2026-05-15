@@ -62,7 +62,7 @@ class BrainstormingSkill:
         # 等 /init 就绪。失败/超时不阻塞 —— 进入降级模式（无 repo doc）。
         repo_doc = await self._load_repo_doc()
 
-        plan = await self._plan(raw, repo_doc)
+        plan = await self._plan(raw, repo_doc, channel=channel)
         clarifications: list[dict] = []
         selected_mockup: HtmlMockup | None = None
 
@@ -104,8 +104,44 @@ class BrainstormingSkill:
             return ""  # 超时降级
         return self._repo_initializer.doc_content()[:_REPO_DOC_MAX_CHARS]
 
-    async def _plan(self, raw: RawRequest, repo_doc: str) -> dict:
+    async def _plan(
+        self, raw: RawRequest, repo_doc: str, *,
+        channel: InteractionChannel | None = None,
+    ) -> dict:
         prompt = self._build_plan_prompt(raw, repo_doc)
+        log = getattr(channel, "log", None) if channel is not None else None
+        # 优先流式（cursor-like 体验）：每个 token chunk 经 channel.log 回灌 SSE。
+        # 上游不支持 stream 或网络出错时降级到非流式 complete_vision，最终再失败才退降级 plan。
+        if callable(log):
+            try:
+                buf: list[str] = []
+
+                async def _on_token(tok: str) -> None:
+                    # 累一行再 publish：避免 single-char publish 把扩展端冲爆，
+                    # 但太长就 flush，保持 cursor-like 感觉。
+                    buf.append(tok)
+                    joined = "".join(buf)
+                    if "\n" in tok or len(joined) >= 32:
+                        await log(joined.replace("\n", " ").strip())
+                        buf.clear()
+
+                text = await self._llm.complete_vision_stream(
+                    prompt, raw.screenshot_b64, on_token=_on_token,
+                )
+                # flush 残余
+                tail = "".join(buf).strip()
+                if tail:
+                    try:
+                        await log(tail)
+                    except Exception:
+                        pass
+                return _safe_parse_json(text)
+            except Exception:
+                try:
+                    await log("⚠ 流式调用失败，回退非流式...")
+                except Exception:
+                    pass
+
         try:
             text = await self._llm.complete_vision(prompt, raw.screenshot_b64)
         except Exception:

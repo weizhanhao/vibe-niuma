@@ -11,10 +11,15 @@ from orchestrator.events import Event, EventBus
 
 
 class SSEInteractionChannel:
-    def __init__(self, request_id: str, event_bus: EventBus):
+    def __init__(self, request_id: str, event_bus: EventBus, phase: str = "clarifying"):
         self._request_id = request_id
         self._bus = event_bus
+        self._phase = phase
         self._pending: dict[str, asyncio.Future] = {}
+
+    async def log(self, line: str) -> None:
+        """让 InteractionSkill 把粒度更细的进度信息（如 LLM token 流）回灌到 SSE。"""
+        await self._bus.publish_log(self._request_id, self._phase, line)
 
     async def ask(self, question: str, options: list[str] | None) -> str:
         question_id = uuid.uuid4().hex
