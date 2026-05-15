@@ -6,8 +6,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/opt/doskill/.env
+Environment=STORE_MODEL_IN_DB=False
 WorkingDirectory=/opt/doskill/llm-proxy
-ExecStart=/opt/doskill/llm-proxy/venv/bin/litellm \
+# env -u 显式剔除 DATABASE_URL（orchestrator 用的，被 EnvironmentFile 串进来了，
+# LiteLLM 看到就以为要起 prisma DB）
+ExecStart=/usr/bin/env -u DATABASE_URL /opt/doskill/llm-proxy/venv/bin/litellm \
   --config /opt/doskill/llm-proxy/config.yml \
   --port ${LLM_PROXY_PORT}
 Restart=on-failure

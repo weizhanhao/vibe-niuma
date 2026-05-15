@@ -16,7 +16,10 @@ SSH=(ssh -i "$SSH_KEY_EXPANDED" -o StrictHostKeyChecking=accept-new "$ECS_USER@$
 PASS=0; FAIL=0
 check() {
   local name="$1" cmd="$2"
-  if "${SSH[@]}" bash -c "$cmd" >/dev/null 2>&1; then
+  # 注意：不用 `bash -c "$cmd"`，SSH 会把后续 argv 用空格拼起来再
+  # 交给远端 shell，丢掉外层引号 → 管道被本地化（远端的 `bash -c ss`
+  # 只会跑没参数的 ss，抓不到 listening）。直接把整条命令作为单参 SSH。
+  if "${SSH[@]}" "$cmd" >/dev/null 2>&1; then
     printf '  \033[32m✓\033[0m %s\n' "$name"; PASS=$((PASS+1))
   else
     printf '  \033[31m✗\033[0m %s\n' "$name"; FAIL=$((FAIL+1))

@@ -65,12 +65,16 @@ class OpenCodeDevRunner:
 
     def _build_argv(self, prompt: str) -> tuple[list[str], dict]:
         argv = [self._cli, "run", prompt, "--model", self._model]
+        # opencode 直连 provider（不经 LiteLLM），需要真实 provider key。
+        # 优先用 os.environ 已有值（systemd EnvironmentFile 注入），没有再
+        # 回退 self._api_key（fake 测试 / 单 provider 场景）。
+        def _pick(name: str) -> str:
+            return os.environ.get(name) or self._api_key
         env = {
             **os.environ,
-            # 多 provider 都接受这套 env；用户按实际模型挑一个填
-            "OPENAI_API_KEY": self._api_key,
-            "DEEPSEEK_API_KEY": self._api_key,
-            "ANTHROPIC_API_KEY": self._api_key,
-            "DASHSCOPE_API_KEY": self._api_key,  # 通义
+            "OPENAI_API_KEY": _pick("OPENAI_API_KEY"),
+            "DEEPSEEK_API_KEY": _pick("DEEPSEEK_API_KEY"),
+            "ANTHROPIC_API_KEY": _pick("ANTHROPIC_API_KEY"),
+            "DASHSCOPE_API_KEY": _pick("DASHSCOPE_API_KEY"),
         }
         return argv, env

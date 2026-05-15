@@ -76,12 +76,27 @@ if ! python3 -c 'import venv' 2>/dev/null; then
 fi
 log "python：$(python3 --version)"
 
-# ── node / npm（用 NodeSource 装新版）──────────────────────────────
+# ── node / npm ─────────────────────────────────────────────────────
+# 优先用发行版自带（alinux 4 有 nodejs 22；ubuntu 22.04 有 nodejs 18+）。
+# 装不上再 fallback 到 NodeSource 20.x。
 if ! command -v node >/dev/null 2>&1; then
-  log "装 node（NodeSource 20.x）"
-  curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo -E bash - >/dev/null 2>&1 || \
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >/dev/null 2>&1
-  if [ "$PKG" = "apt" ]; then sudo apt-get install -y -qq nodejs; else sudo yum install -y -q nodejs; fi
+  log "装 node（先试发行版自带）"
+  INSTALL_OK=0
+  if [ "$PKG" = "apt" ]; then
+    sudo apt-get update -qq && sudo apt-get install -y -qq nodejs npm && INSTALL_OK=1
+  else
+    sudo dnf install -y -q nodejs npm && INSTALL_OK=1 || sudo yum install -y -q nodejs npm && INSTALL_OK=1
+  fi
+  if [ "$INSTALL_OK" != "1" ] || ! command -v node >/dev/null 2>&1; then
+    log "发行版自带不可用，回退 NodeSource 20.x"
+    if [ "$PKG" = "apt" ]; then
+      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+      sudo apt-get install -y -qq nodejs
+    else
+      curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo -E bash -
+      sudo yum install -y -q nodejs
+    fi
+  fi
 fi
 log "node：$(node --version) · npm：$(npm --version)"
 
