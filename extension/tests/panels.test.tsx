@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+// Plan 6 Task 10：老 SettingsPanel 从 panels.tsx 里移除，新版在 panels/SettingsPanel.tsx
+// （单测在 tests/settings-panel.test.tsx）；这里只覆盖剩下的展示型 panel。
 import {
   CapturePanel, ClarifyPanel, FailedPanel, LogFeed, PreviewPanel, ProgressTrail,
-  SettingsPanel, StatusPanel, VariantsPanel,
+  StatusPanel, VariantsPanel,
 } from '../src/ui/panels';
 import type { LogEntry, RequestStateMirror } from '../src/lib/types';
 
@@ -142,18 +144,7 @@ describe('FailedPanel', () => {
   });
 });
 
-describe('SettingsPanel', () => {
-  it('saves base URL to storage', async () => {
-    const onClose = vi.fn();
-    render(<SettingsPanel onClose={onClose} />);
-    const input = await screen.findByLabelText('Orchestrator Base URL');
-    fireEvent.change(input, { target: { value: 'http://ecs.example:9000' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(chrome.storage.local.set).toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalled();
-  });
-});
+// Plan 6 Task 10：老 SettingsPanel 测试已删除，新版在 tests/settings-panel.test.tsx
 
 // ── Phase F：LogFeed ────────────────────────────────────────────────
 describe('LogFeed', () => {
