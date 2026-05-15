@@ -17,6 +17,21 @@ import httpx
 from orchestrator.config import settings
 
 
+def _detect_image_mime(b64: str) -> str:
+    """按 base64 头几个字节的魔数判 PNG/JPEG。识别不出退 PNG（最常见）。"""
+    if not b64:
+        return "image/png"
+    if b64.startswith("/9j/"):       # JPEG: 二进制 \xff\xd8
+        return "image/jpeg"
+    if b64.startswith("iVBOR"):      # PNG: 二进制 \x89PNG
+        return "image/png"
+    if b64.startswith("R0lGOD"):     # GIF
+        return "image/gif"
+    if b64.startswith("UklGR"):      # WebP
+        return "image/webp"
+    return "image/png"
+
+
 @dataclass
 class LLMClient:
     """实例化时锁定 base URL / api key / 默认模型。"""
@@ -40,8 +55,11 @@ class LLMClient:
 
     async def complete_vision(
         self, prompt: str, image_b64: str, *, model: str | None = None,
-        mime: str = "image/png",
+        mime: str | None = None,
     ) -> str:
+        # mime 不指定时按 base64 头部魔数自动判：JPEG 以 /9j/ 起，PNG 以 iVBOR 起。
+        # 扩展为减小上传体积已把截图换 JPEG，这里要识别正确否则 qwen-vl-plus 不认。
+        resolved_mime = mime or _detect_image_mime(image_b64)
         body = {
             "model": model or settings.vision_model,
             "messages": [{
@@ -50,7 +68,7 @@ class LLMClient:
                     {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{image_b64}"},
+                        "image_url": {"url": f"data:{resolved_mime};base64,{image_b64}"},
                     },
                 ],
             }],

@@ -98,9 +98,10 @@ export interface ConversationsSnapshot {
 }
 
 // Phase G：业务员框选完，先暂存 review 用的数据；点「确认提交」才 POST 给 orchestrator。
-// 截图是 PNG base64（不含 data: 前缀），跟 RawRequestPayload.screenshot_b64 同源。
+// 截图被 SW 压缩成 JPEG（小～300 KB）；mime 跟着传给后端识别。
 export interface PendingCapture {
   screenshotB64: string;
+  screenshotMime: string;  // "image/jpeg" 或 "image/png"
   url: string;
   boxCoords: BoxCoords;
   viewport: Viewport;

@@ -102,6 +102,34 @@ async function persist() {
   await saveMirrors(session.mirrors, session.activeId);
 }
 
+// captureVisibleTab 出来的 PNG 在 Retina 屏上能到 5-10 MB，base64 再 ×4/3 → 十几 MB；
+// 从国内家庭网络上传到 ECS 慢得离谱（35s+ 都没回）。这里 SW 在 OffscreenCanvas 里
+// downscale + JPEG@0.75，典型能压到 < 300 KB，业务员一秒内就 POST 完。
+// 截图给视觉模型看 + Review 缩略图，质量都够。
+async function compressScreenshot(dataUrl: string, maxWidth = 1280, quality = 0.75): Promise<{ b64: string; mime: string }> {
+  if (!dataUrl) return { b64: '', mime: 'image/png' };
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, maxWidth / bitmap.width);
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const out = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+    const buf = await out.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return { b64: btoa(binary), mime: 'image/jpeg' };
+  } catch (err) {
+    console.warn('[doskill sw] compressScreenshot failed, fallback raw PNG', err);
+    return { b64: dataUrl.replace(/^data:image\/png;base64,/, ''), mime: 'image/png' };
+  }
+}
+
 // 写回一条 mirror 并广播。
 async function setMirror(next: RequestStateMirror) {
   session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
@@ -178,7 +206,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       return { ok: true };
     }
     case MSG.CAPTURE_RESULT: {
-      // Phase G：不再立刻 POST。截屏 + 暂存为 pendingCapture，UI 渲染 ReviewCapturePanel
+      // Phase G：不再立刻 POST。截屏 + 压缩 + 暂存为 pendingCapture，UI 渲染 ReviewCapturePanel
       // 让业务员看截图 + 蓝框确认；CONFIRM_CAPTURE 时才真正调 orchestrator。
       console.log('[doskill sw] CAPTURE_RESULT received', msg);
       const text = session.pendingRequestText ?? '';
@@ -187,10 +215,11 @@ async function handleMessage(msg: Message): Promise<unknown> {
       const dataUrl = tab?.windowId !== undefined
         ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         : '';
-      console.log('[doskill sw] screenshot bytes', dataUrl.length);
-      const screenshotB64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      const { b64: screenshotB64, mime } = await compressScreenshot(dataUrl);
+      console.log('[doskill sw] screenshot raw vs compressed:', dataUrl.length, '→', screenshotB64.length, mime);
       session.pendingCapture = {
         screenshotB64,
+        screenshotMime: mime,
         url: msg.url,
         boxCoords: msg.boxCoords,
         viewport: msg.viewport,
@@ -247,22 +276,21 @@ async function handleMessage(msg: Message): Promise<unknown> {
       return { ok: true };
     }
     case MSG.SUBMIT_TEXT_ONLY: {
-      // 直接提交（不框选）：SW 截当前页 + 空 box，走 Review 流程。
-      // box 全 0 表示「不指定区域」；orchestrator 端按 URL-only 定位即可。
+      // 直接提交（不框选）：SW 截当前页 + 压缩 + 空 box，走 Review 流程。
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       const dataUrl = tab?.windowId !== undefined
         ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         : '';
-      const screenshotB64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      const { b64: screenshotB64, mime } = await compressScreenshot(dataUrl);
       session.pendingCapture = {
         screenshotB64,
+        screenshotMime: mime,
         url: tab?.url ?? '',
         boxCoords: { x: 0, y: 0, width: 0, height: 0 },
-        // viewport 在 SW 拿不到真值；用 0/0 标记「无意义」，UI 端别拿去算缩放
         viewport: { width: 0, height: 0 },
         requestText: msg.requestText,
       };
-      console.log('[doskill sw] SUBMIT_TEXT_ONLY pendingCapture stashed');
+      console.log('[doskill sw] SUBMIT_TEXT_ONLY pendingCapture stashed (compressed:', screenshotB64.length, ')');
       await broadcastPendingCapture();
       return { ok: true };
     }
