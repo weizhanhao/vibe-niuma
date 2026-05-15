@@ -38,6 +38,10 @@ class EventBus:
         ch.buffer.append(event)
         await ch.queue.put(event)
 
+    def history(self, request_id: str) -> list[Event]:
+        """已发布事件的历史快照 —— 即 subscribe 回放给晚到客户端的那批。"""
+        return list(self._channel(request_id).buffer)
+
     def close(self, request_id: str) -> None:
         ch = self._channel(request_id)
         ch.closed = True
