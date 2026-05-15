@@ -1,7 +1,18 @@
 """GitManager —— 对目标仓库做真实 git 操作。所有方法同步（subprocess）；
 Pipeline 在 async 上下文里用 asyncio.to_thread 调用它们。
+
+Plan 8：repo_path 既可指单仓 root，也可指「多仓项目根」（顶层 N 个含 .git 的子目录）。
+单仓时所有方法用本地实现；多仓时遍历子仓 / 委托给 multi_repo.merge_to_main_atomic。
 """
+import asyncio
 import subprocess
+from pathlib import Path
+
+from orchestrator.multi_repo import (
+    GitConflictError as MultiRepoConflictError,
+    discover_sub_repos,
+    merge_to_main_atomic,
+)
 
 
 class GitConflictError(Exception):
@@ -11,6 +22,8 @@ class GitConflictError(Exception):
 class GitManager:
     def __init__(self, repo_path: str):
         self._repo = repo_path
+        # Plan 8：若顶层含子仓，sub_repos 非空 → 走多仓路径
+        self._sub_repos: list[Path] = discover_sub_repos(Path(repo_path))
 
     def _git(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -43,11 +56,16 @@ class GitManager:
         """先把 branch rebase 到最新 main，再 fast-forward 合并进 main。
         rebase 或 merge 冲突 → 回滚到干净状态并抛 GitConflictError。
 
-        合并前 stash -u 工作树：build 阶段（commit_all 之后）产生的 dist /
-        tsbuildinfo 等 build artifact 会污染工作树，rebase 会拒绝。stash 完拿
-        干净的树去 merge，merge 完直接 drop stash —— build artifact 是临时
-        产物，丢掉无妨。
+        Plan 8：多仓项目（self._sub_repos 非空）→ 委托给 merge_to_main_atomic，
+        全 N 仓「要么都成功要么都回滚」。单仓沿用本地两阶段实现。
         """
+        if self._sub_repos:
+            try:
+                asyncio.run(merge_to_main_atomic(self._sub_repos, branch))
+            except MultiRepoConflictError as exc:
+                raise GitConflictError(str(exc)) from exc
+            return
+
         status = self._git("status", "--porcelain").stdout
         stashed = False
         if status.strip():
