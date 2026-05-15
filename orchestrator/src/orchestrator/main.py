@@ -75,6 +75,7 @@ class AppState:
                 port_max=settings.preview_port_max,
                 preview_host=settings.preview_host,
                 docker_network=settings.docker_network,
+                backend_url=settings.preview_backend_url,
             ),
         )
 
@@ -119,6 +120,7 @@ async def lifespan(app: FastAPI):
         port_max=settings.preview_port_max,
         preview_host=settings.preview_host,
         docker_network=settings.docker_network,
+        backend_url=settings.preview_backend_url,
     )
     reaper_task = asyncio.create_task(
         run_reaper_loop(

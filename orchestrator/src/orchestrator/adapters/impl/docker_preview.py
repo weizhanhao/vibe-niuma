@@ -42,12 +42,16 @@ class DockerPreviewAdapter:
         preview_host: str = "localhost",
         docker_network: str = "bridge",
         internal_port: int = 5173,
+        backend_url: str = "",
     ):
         self._port_min = port_min
         self._port_max = port_max
         self._preview_host = preview_host
         self._docker_network = docker_network
         self._internal_port = internal_port
+        # 注入到容器作 VITE_API_URL；前端 vite proxy /api → 这个地址。
+        # 空串则不注入（用 vite.config 默认 localhost:8000），通常意味预览没数据。
+        self._backend_url = backend_url
         self._used_ports: dict[str, int] = {}  # handle → port
 
     # ── serve ───────────────────────────────────────────────────────
@@ -76,8 +80,12 @@ class DockerPreviewAdapter:
             "--name", name,
             "--network", self._docker_network,
             "-p", f"{port}:{self._internal_port}",
-            image,
         ]
+        # 注入 VITE_API_URL，让 vite dev server 把 /api 反代到 main-demo 后端。
+        # 这样预览容器复用真实样板数据，业务员能看到「带数据的页面 + 新 UI」。
+        if self._backend_url:
+            run_cmd.extend(["-e", f"VITE_API_URL={self._backend_url}"])
+        run_cmd.append(image)
         if log is not None:
             await log("▸ docker run...")
         run_rc, run_log = await self._run_streaming(

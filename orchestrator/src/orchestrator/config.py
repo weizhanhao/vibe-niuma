@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     docker_network: str = "bridge"
     dev_runner_timeout_seconds: int = 900
     preview_host: str = "localhost"             # 拼预览 URL 用：ECS 上换公网地址
+    # 预览容器只起前端，API 通过 vite proxy → backend；空串则不注入 VITE_API_URL，
+    # 业务员看到的页面会是空数据。指向 main-demo 后端就能复用真实样板数据。
+    preview_backend_url: str = ""
 
     # —— repo /init ——
     repo_init_timeout_seconds: int = 600        # 扫仓库 → 生成 CLAUDE.md
