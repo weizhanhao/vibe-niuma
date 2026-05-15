@@ -1,4 +1,4 @@
-# Plan 7 — 多仓真原子合并 + compose 预览
+# Plan 8 — 多仓真原子合并 + compose 预览
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -26,7 +26,7 @@
 - `docker-compose.preview.yml` 是**项目作者**的责任（demo 仓库提供一个范例）：必须有一个名为 `frontend` 的 service，host 端口由 doskill 注入 `${DOSKILL_FRONTEND_PORT}`。
 - **原子保证只在「本地 main」**：合并不 push remote。push remote 是另一回事（最终一致 + 补偿事务），明确不在本 plan。
 - 业务员在 sidebar 看到的「分支」是逻辑分支 `cr/<id>`，物理上在 N 个子仓各有一份。
-- 在新分支 `plan7-multi-repo-atomic` 上做。
+- 在新分支 `plan8-multi-repo-atomic` 上做。
 
 ## File Structure
 
@@ -405,7 +405,7 @@ server: z.object({
 
 **Files:**
 - Create: `orchestrator/tests/test_e2e_multi_repo.py`
-- Modify: `docs/RUNBOOK.md`（新章节 Plan 7 验证）
+- Modify: `docs/RUNBOOK.md`（新章节 Plan 8 验证）
 
 - [ ] **Step 1: 端到端 fixture** —
   - tmp_path 起项目根，内含 `frontend/` `backend/` 各 git init + 初始 commit
@@ -417,11 +417,11 @@ server: z.object({
   - 同上 fixture，但让 backend cr 分支与 backend main 冲突
   - merge 时应抛 conflict、CR 进 fail_phase=merging、两仓的 main + cr 都回到 pre-merge SHA
 - [ ] **Step 3: 真机验证（可选）** —— 在 ECS 上准备多仓 demo，走一遍真实流程
-- [ ] **Step 4: 提交** — `test(orchestrator): Plan 7 多仓 E2E`
+- [ ] **Step 4: 提交** — `test(orchestrator): Plan 8 多仓 E2E`
 
 ---
 
-## 验收标准（Plan 7 完成定义）
+## 验收标准（Plan 8 完成定义）
 
 - [ ] `discover_sub_repos` 准确发现项目下所有含 `.git/` 的子目录
 - [ ] `create_branch` / `delete_branch` 在所有子仓同步创建/删除 `cr/<id>`
@@ -451,9 +451,9 @@ server: z.object({
 
 ---
 
-## 需要用户提供（运行 Plan 7 前的一次性清单）
+## 需要用户提供（运行 Plan 8 前的一次性清单）
 
 1. 决定：`projects_root` 路径默认 `/opt/doskill/projects/`，可改。
 2. demo 仓库结构调整：现在是单仓 `demo/`，要重新组织成 `demo/{frontend, backend}/` 各自 git init。需要确认是否在 plan 期间一次性迁移好（推荐）。
-3. `docker-compose.preview.yml` 的范例由 Plan 7 提供，但每个新项目接入时**项目作者需要自己写一份**。Plan 6 的帮助内容里要加一篇 `compose-file.md` 教怎么写。
-4. 远端 git 仓库托管：本 plan 不 push remote，但 SettingsPanel 字段里要不要预留「git URL」？plan 默认预留（schema 已有 `gitUrl` 字段）但 Plan 7 范围内不消费。
+3. `docker-compose.preview.yml` 的范例由 Plan 8 提供，但每个新项目接入时**项目作者需要自己写一份**。Plan 6 的帮助内容里要加一篇 `compose-file.md` 教怎么写。
+4. 远端 git 仓库托管：本 plan 不 push remote，但 SettingsPanel 字段里要不要预留「git URL」？plan 默认预留（schema 已有 `gitUrl` 字段）但 Plan 8 范围内不消费。
