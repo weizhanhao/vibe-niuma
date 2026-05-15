@@ -20,11 +20,41 @@ const session: SessionState = {
   unsubscribe: null,
 };
 
+// MV3 service worker 30s 闲置即被 Chrome kill。多轮澄清等用户答题时 SW 必死。
+// 用 chrome.alarms 周期性触发：alarm 投递的副作用就是唤醒 SW；唤醒时全局
+// 作用域重跑、loadFromStorage 重新挂 SSE，所以业务员下一题来得及推过来。
+const KEEPALIVE_ALARM = 'doskill-sse-keepalive';
+const TERMINAL = new Set(['merged', 'failed', 'expired', 'discarded']);
+
+function isInFlight(mirror: RequestStateMirror | null): boolean {
+  return !!mirror?.id && !TERMINAL.has(mirror.state);
+}
+
+function maintainKeepalive(mirror: RequestStateMirror | null): void {
+  if (!chrome.alarms) return; // jsdom 测试环境没 alarms
+  if (isInFlight(mirror)) {
+    chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
+  } else {
+    chrome.alarms.clear(KEEPALIVE_ALARM);
+  }
+}
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name !== KEEPALIVE_ALARM) return;
+  // 兜底：闹钟本身已经把 SW 唤醒；如果 SSE 在唤醒前因死亡断开，这里重连。
+  if (isInFlight(session.mirror)) {
+    attachSubscription(session.mirror!.id);
+  } else {
+    chrome.alarms.clear(KEEPALIVE_ALARM);
+  }
+});
+
 loadFromStorage().then((m) => {
   if (m) {
     session.mirror = m;
-    if (m.id && !['merged', 'failed', 'expired', 'discarded'].includes(m.state)) {
+    if (isInFlight(m)) {
       attachSubscription(m.id);
+      maintainKeepalive(m);
     }
   }
 });
@@ -37,6 +67,7 @@ async function broadcastState() {
 async function setMirror(next: RequestStateMirror | null) {
   session.mirror = next;
   await saveToStorage(next);
+  maintainKeepalive(next);
   await broadcastState();
 }
 

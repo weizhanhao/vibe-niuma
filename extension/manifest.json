@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "AI 原生低代码扩展：框选页面区域、用自然语言提需求、看预览、确认合并。",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel", "alarms"],
   "host_permissions": ["<all_urls>"],
   "action": { "default_title": "doskill" },
   "side_panel": { "default_path": "src/ui/index.html" },
