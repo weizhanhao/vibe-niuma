@@ -38,5 +38,11 @@ check "main demo 容器 doskill-demo-backend up"        "docker inspect -f '{{.S
 check "main demo 容器 doskill-demo-frontend up"       "docker inspect -f '{{.State.Running}}' doskill-demo-frontend | grep -q true"
 check "main demo 端口 ${MAIN_DEMO_FRONTEND_PORT:-5199} 可连" "ss -ltn | grep -q ':${MAIN_DEMO_FRONTEND_PORT:-5199} '"
 
+# 11. admin API 鉴权通（Plan 6）：用 ECS 上的 admin.token 调 /admin/config，期望 200。
+#     远端跑：避开本机必须能直连 9000 的限制；token 通过命令替换内联进 curl 头部。
+ADMIN_TOKEN_PATH="${DEPLOY_ROOT:-/opt/doskill}/admin.token"
+check "admin /admin/config 鉴权 200" \
+  "test -s $ADMIN_TOKEN_PATH && curl -fsS -o /dev/null -H \"X-Admin-Token: \$(cat $ADMIN_TOKEN_PATH)\" http://127.0.0.1:${ORCHESTRATOR_PORT:-9000}/admin/config"
+
 printf '\n  通过 %d · 失败 %d\n' "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]

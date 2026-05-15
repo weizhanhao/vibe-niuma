@@ -51,7 +51,11 @@ AI 原生低代码平台 MVP。业务员在 web 产品页面上**框选一块区
 
 ## 快速开始
 
-### 1. 准备依赖
+整个上手分两段：① **一次性部署 ECS**（运维做一次，命令行）；② **用扩展自助配模型 / API key**（业务员侧，引导向导走完即可）。Plan 6 之后，日常改模型 / 换 key 都在扩展里点点鼠标完成，不用再 ssh。
+
+### 一次性部署 ECS
+
+#### 1. 准备依赖
 
 **本地**（部署机）：
 - Python 3.11+，Node 22+，Docker
@@ -62,27 +66,41 @@ AI 原生低代码平台 MVP。业务员在 web 产品页面上**框选一块区
 - 安全组开放：22 / 8000 / 8787 / 9000 / 5100-5199（预览端口段）
 - 装好 git、bash、python3-venv
 
-### 2. API key
-
-- **DeepSeek**：[platform.deepseek.com](https://platform.deepseek.com)（dev runner + 澄清模型，`deepseek-v4-flash` 够用）
-- **DashScope / 通义**：[bailian.console.aliyun.com](https://bailian.console.aliyun.com)（视觉模型 `qwen-vl-plus`）
-
-### 3. 配置
+#### 2. 写 deploy/.env
 
 ```bash
 cp deploy/env.example deploy/.env
-# 编辑 deploy/.env：
-#   ECS_HOST, ECS_SSH_KEY, PREVIEW_HOST 改成你的 ECS 公网 IP / 私钥路径
-#   DEEPSEEK_API_KEY, DASHSCOPE_API_KEY 填真 key
-#   ⚠️ 注释只能独占一行，不能写在 KEY=value 同一行（看「踩过的坑」#1）
 ```
 
-### 4. 部署
+只必填两个**部署级**字段（API key / 模型 / 项目路径都在扩展里改，不用动这里）：
+
+```bash
+ECS_HOST=<你的 ECS 公网 IP>
+ECS_SSH_KEY=~/.ssh/id_ed25519        # 能登 ECS 的私钥
+PREVIEW_HOST=<同上 ECS 公网 IP>      # 拼预览 URL 用
+```
+
+其它字段保持 `env.example` 默认即可 —— 扩展走 `system_config` 表（Plan 6）会覆盖运行时配置。
+
+> ⚠️ 注释只能独占一行，不能写在 `KEY=value` 同一行（看「踩过的坑」#1）
+
+#### 3. 部署 + 体检
 
 ```bash
 bash deploy/deploy.sh        # rsync 代码 + 装依赖 + 起容器 + systemd 重启
-bash deploy/healthcheck.sh   # 期望「通过 10 · 失败 0」
+bash deploy/healthcheck.sh   # 期望「通过 11 · 失败 0」
 ```
+
+`deploy.sh` 末尾会打印 admin token 的拿法，长这样：
+
+```
+[deploy] ✓ 完成
+[deploy] 第一次部署？跑这条拿 Admin Token：
+[deploy]   ssh root@<ECS> 'cat /opt/doskill/admin.token'
+[deploy] 把它粘到扩展的引导向导 Step 2
+```
+
+把 token 复制出来备用。
 
 第一次跑会触发 `/init`（让 opencode 扫 demo 仓库写 `AGENTS.md`，约 60-120s）：
 
@@ -91,15 +109,45 @@ curl http://ECS:9000/repo/status
 # 期望最终 {"status":"ready","doc_exists":true,...}
 ```
 
-### 5. 加载 Chrome 扩展
+### 用扩展配置（自助）
+
+#### 4. 加载 Chrome 扩展
 
 ```bash
 cd extension && npm install && npm run build
 ```
 
-然后 `chrome://extensions/` → 打开「开发者模式」 → 「加载已解压的扩展程序」 → 选 `extension/dist/`。
+`chrome://extensions/` → 打开「开发者模式」 → 「加载已解压的扩展程序」 → 选 `extension/dist/`。
 
-扩展图标点开右键 → 「打开侧边栏」。
+扩展图标右键 → 「打开侧边栏」。
+
+#### 5. 走 4 步引导向导
+
+第一次打开侧边栏会看到 **SetupWizardPanel**，4 步走完：
+
+| 步骤 | 填什么 | 怎么验证 |
+|---|---|---|
+| **Step 1** Orchestrator URL | `http://<ECS>:9000` | 点「测试连接」，期望「连接成功」（命中 `/health`） |
+| **Step 2** Admin Token | 上一段 `deploy.sh` 打印的 token | 点「验证」，期望「令牌有效」（命中 `/admin/config` 200） |
+| **Step 3** API Key | DeepSeek + DashScope，从下面两个控制台拿 | 点「保存并下一步」，PUT 200 + LiteLLM 自动重启 |
+| **Step 4** 完成 | 点「开始使用 doskill」 | 路由进 CapturePanel，可以开始框选了 |
+
+API key 在哪拿：
+
+- **DeepSeek**：[platform.deepseek.com](https://platform.deepseek.com)（dev runner + 澄清模型，`deepseek-v4-flash` 够用）
+- **DashScope / 通义**：[bailian.console.aliyun.com](https://bailian.console.aliyun.com)（视觉模型 `qwen-vl-plus`）
+
+#### 6. 之后改配置
+
+侧边栏右上角齿轮 → **SettingsPanel** 四个折叠分组：
+- 服务器连接（URL + admin token，本地）
+- AI 模型（dev_runner / dev_model / vision_model）
+- API key（改了会自动重启 LiteLLM）
+- 项目路径（demo_repo_path / preview_backend_url）
+
+每个字段右边的 **❓** 都是 HelpBubble，点开有详细说明 + 排障指引。
+
+不用再 ssh ECS / 改 `.env` / 重启服务。
 
 ---
 
