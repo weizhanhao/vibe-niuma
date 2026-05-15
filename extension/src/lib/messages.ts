@@ -1,5 +1,5 @@
 // content ↔ background ↔ ui 的消息协议。所有消息都带 type 字段做 narrow。
-import type { BoxCoords, RequestStateMirror, Viewport } from './types';
+import type { BoxCoords, PendingCapture, RequestStateMirror, Viewport } from './types';
 
 // content → background
 export interface CaptureResultMsg {
@@ -58,11 +58,29 @@ export interface MirrorsChangedMsg {
 
 export interface RequestStateQueryMsg { type: 'GET_REQUEST_STATE'; }
 
+// Phase G：框选完 review 流。
+// 业务员在 demo 页面框完一个区域后，扩展先把截图 + box 暂存为 pendingCapture，
+// 弹 ReviewCapturePanel 让业务员看截图 + 蓝框确认；点「确认提交」才 POST 给 orchestrator。
+// 避免业务员框错了直接误提交。
+export interface ConfirmCaptureMsg {
+  type: 'CONFIRM_CAPTURE';
+  // 业务员在 review 阶段可能改了需求文本，所以一并回传，service-worker 用它而不是 pendingRequestText。
+  requestText: string;
+}
+export interface RetakeCaptureMsg { type: 'RETAKE_CAPTURE'; }
+export interface GetPendingCaptureMsg { type: 'GET_PENDING_CAPTURE'; }
+export interface PendingCaptureChangedMsg {
+  type: 'PENDING_CAPTURE_CHANGED';
+  pending: PendingCapture | null;
+}
+
 export type Message =
   | CaptureResultMsg | CaptureCancelMsg | StartCaptureMsg
   | UiStartCaptureMsg | SubmitAnswerMsg | MergeMsg | DiscardMsg | RetryMsg
   | SetActiveMsg | DeleteConversationMsg | NewConversationMsg | GetMirrorsMsg
-  | RequestStateChangedMsg | MirrorsChangedMsg | RequestStateQueryMsg;
+  | RequestStateChangedMsg | MirrorsChangedMsg | RequestStateQueryMsg
+  | ConfirmCaptureMsg | RetakeCaptureMsg | GetPendingCaptureMsg
+  | PendingCaptureChangedMsg;
 
 export const MSG = {
   START_CAPTURE: 'START_CAPTURE' as const,
@@ -80,4 +98,9 @@ export const MSG = {
   REQUEST_STATE_CHANGED: 'REQUEST_STATE_CHANGED' as const,
   MIRRORS_CHANGED: 'MIRRORS_CHANGED' as const,
   GET_REQUEST_STATE: 'GET_REQUEST_STATE' as const,
+  // Phase G
+  CONFIRM_CAPTURE: 'CONFIRM_CAPTURE' as const,
+  RETAKE_CAPTURE: 'RETAKE_CAPTURE' as const,
+  GET_PENDING_CAPTURE: 'GET_PENDING_CAPTURE' as const,
+  PENDING_CAPTURE_CHANGED: 'PENDING_CAPTURE_CHANGED' as const,
 };

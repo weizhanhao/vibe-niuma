@@ -3,7 +3,7 @@
 // Phase E：从「单 mirror」升级为「多 mirror map + activeId」。
 // 只对 active 的那一条订阅 SSE，节省连接数 & 配额。
 import { MSG, type Message } from '../lib/messages';
-import type { ChangeRequestOut, RequestStateMirror, SSEEvent } from '../lib/types';
+import type { ChangeRequestOut, PendingCapture, RequestStateMirror, SSEEvent } from '../lib/types';
 import { orchestratorClient } from './orchestrator-client';
 import {
   applyEvent, applySnapshot, clearPending, evictWithLRU, initialState, isTerminal,
@@ -12,6 +12,9 @@ import {
 
 interface SessionState {
   pendingRequestText: string | null;
+  // Phase G：业务员框完一个区域，先暂存这里弹 review 页；点「确认提交」才 POST。
+  // 内存态——SW 死掉就丢，重新让业务员框一次；不持久化到 chrome.storage（截图 PNG base64 体积大）。
+  pendingCapture: PendingCapture | null;
   mirrors: Record<string, RequestStateMirror>;
   activeId: string | null;
   unsubscribe: (() => void) | null;
@@ -21,6 +24,7 @@ interface SessionState {
 
 const session: SessionState = {
   pendingRequestText: null,
+  pendingCapture: null,
   mirrors: {},
   activeId: null,
   unsubscribe: null,
@@ -81,6 +85,15 @@ async function broadcastList() {
     type: MSG.MIRRORS_CHANGED,
     mirrors: session.mirrors,
     activeId: session.activeId,
+  };
+  try { await chrome.runtime.sendMessage(msg); } catch { /* no listener */ }
+}
+
+// Phase G：广播 pendingCapture 变化给 UI；UI 用它在 CapturePanel / ReviewCapturePanel 间切换。
+async function broadcastPendingCapture() {
+  const msg: Message = {
+    type: MSG.PENDING_CAPTURE_CHANGED,
+    pending: session.pendingCapture,
   };
   try { await chrome.runtime.sendMessage(msg); } catch { /* no listener */ }
 }
@@ -158,26 +171,51 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.UI_START_CAPTURE: {
       session.pendingRequestText = msg.requestText;
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      console.log('[doskill sw] UI_START_CAPTURE → tab', tab?.id, tab?.url);
       if (tab?.id !== undefined) {
         await chrome.tabs.sendMessage(tab.id, { type: MSG.START_CAPTURE });
       }
       return { ok: true };
     }
     case MSG.CAPTURE_RESULT: {
+      // Phase G：不再立刻 POST。截屏 + 暂存为 pendingCapture，UI 渲染 ReviewCapturePanel
+      // 让业务员看截图 + 蓝框确认；CONFIRM_CAPTURE 时才真正调 orchestrator。
+      console.log('[doskill sw] CAPTURE_RESULT received', msg);
       const text = session.pendingRequestText ?? '';
       session.pendingRequestText = null;
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       const dataUrl = tab?.windowId !== undefined
         ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         : '';
+      console.log('[doskill sw] screenshot bytes', dataUrl.length);
       const screenshotB64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-      const cr = await orchestratorClient.createChangeRequest({
+      session.pendingCapture = {
+        screenshotB64,
         url: msg.url,
-        screenshot_b64: screenshotB64,
-        box_coords: msg.boxCoords,
+        boxCoords: msg.boxCoords,
         viewport: msg.viewport,
-        request_text: text,
+        requestText: text,
+      };
+      console.log('[doskill sw] pendingCapture stashed; awaiting CONFIRM_CAPTURE');
+      await broadcastPendingCapture();
+      return { ok: true };
+    }
+    case MSG.CONFIRM_CAPTURE: {
+      // Phase G：业务员在 review 页点了「确认提交」。这时才 POST。
+      // requestText 取自 UI（业务员可能在 review 时改过文本）。
+      const pc = session.pendingCapture;
+      if (!pc) return { ok: false, error: 'no pending capture' };
+      session.pendingCapture = null;
+      const finalText = msg.requestText ?? pc.requestText;
+      console.log('[doskill sw] CONFIRM_CAPTURE → POST orchestrator');
+      const cr = await orchestratorClient.createChangeRequest({
+        url: pc.url,
+        screenshot_b64: pc.screenshotB64,
+        box_coords: pc.boxCoords,
+        viewport: pc.viewport,
+        request_text: finalText,
       });
+      console.log('[doskill sw] CR created', cr.id);
       const next = initialState(cr);
       session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
       session.activeId = next.id;
@@ -187,7 +225,19 @@ async function handleMessage(msg: Message): Promise<unknown> {
       await persist();
       await broadcastActive();
       await broadcastList();
+      await broadcastPendingCapture();
       return { ok: true, id: cr.id };
+    }
+    case MSG.RETAKE_CAPTURE: {
+      // Phase G：业务员点「重新框选」。丢掉 pendingCapture + pendingRequestText，回 CapturePanel。
+      session.pendingCapture = null;
+      session.pendingRequestText = null;
+      await broadcastPendingCapture();
+      return { ok: true };
+    }
+    case MSG.GET_PENDING_CAPTURE: {
+      // Phase G：UI 启动时拉一次（SW 死了又活的场景，UI 不知道有没有未决 review）。
+      return session.pendingCapture;
     }
     case MSG.CAPTURE_CANCEL: {
       session.pendingRequestText = null;

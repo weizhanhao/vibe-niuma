@@ -5,11 +5,16 @@ import { MSG, type Message } from '../lib/messages';
 
 let overlay: CaptureOverlay | null = null;
 
+console.log('[doskill content] loaded on', window.location.href);
+
 chrome.runtime.onMessage.addListener((msg: Message, _sender, _sendResponse) => {
+  console.log('[doskill content] msg received', msg);
   if (msg.type === MSG.START_CAPTURE) {
     if (overlay) overlay.dispose();
     overlay = new CaptureOverlay();
+    console.log('[doskill content] overlay.start()');
     overlay.start().then((result) => {
+      console.log('[doskill content] overlay resolved', result);
       overlay = null;
       if (result === null) {
         chrome.runtime.sendMessage({ type: MSG.CAPTURE_CANCEL });
@@ -20,6 +25,8 @@ chrome.runtime.onMessage.addListener((msg: Message, _sender, _sendResponse) => {
         url: window.location.href,
         boxCoords: result.boxCoords,
         viewport: result.viewport,
+      }, (reply) => {
+        console.log('[doskill content] CAPTURE_RESULT reply', reply, chrome.runtime.lastError);
       });
     });
   }

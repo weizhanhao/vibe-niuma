@@ -48,6 +48,7 @@ export class CaptureOverlay {
       this.box.style.display = 'block';
       this.setBox(e.clientX, e.clientY, 0, 0);
     }
+    console.log('[doskill overlay] mousedown', e.clientX, e.clientY);
   };
 
   private onMouseMove = (e: MouseEvent) => {
@@ -61,6 +62,7 @@ export class CaptureOverlay {
   };
 
   private onMouseUp = (e: MouseEvent) => {
+    console.log('[doskill overlay] mouseup', e.clientX, e.clientY, 'dragStart=', this.dragStart);
     if (!this.dragStart || !this.box) return;
     const end = this.dragEnd ?? { x: e.clientX, y: e.clientY };
     const x = Math.min(this.dragStart.x, end.x);
@@ -69,8 +71,10 @@ export class CaptureOverlay {
     const h = Math.abs(end.y - this.dragStart.y);
     this.dragStart = null;
     this.dragEnd = null;
+    console.log('[doskill overlay] computed wxh=', w, h);
     if (w < 6 || h < 6) {
       this.box.style.display = 'none';
+      console.log('[doskill overlay] BELOW 6px threshold, ignored');
       return;
     }
     this.finish({

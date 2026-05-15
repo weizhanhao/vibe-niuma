@@ -3,7 +3,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MSG, type Message } from '../lib/messages';
 import { getBaseUrl, setBaseUrl } from '../background/orchestrator-client';
-import type { ChangeRequestState, HtmlMockup, LogEntry, RequestStateMirror } from '../lib/types';
+import type {
+  ChangeRequestState, HtmlMockup, LogEntry, PendingCapture, RequestStateMirror,
+} from '../lib/types';
 
 const FSM_ORDER: ChangeRequestState[] = [
   'created', 'clarifying', 'located', 'coding', 'building', 'preview-ready',
@@ -75,6 +77,96 @@ export function CapturePanel() {
       <div className="btn-row">
         <button className="btn btn-primary" onClick={start} disabled={!text.trim()}>
           开始框选区域
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ── ReviewCapturePanel ──────────────────────────────────────────────
+// Phase G：业务员框选后先弹这个 review 页。
+// 截图原图 + 蓝框可视化叠加 + 业务需求可编辑 textarea +「重新框选 / 确认提交」两按钮。
+// 蓝框定位：img 实际渲染宽度 / viewport.width 作为缩放因子；box 全部坐标乘缩放因子。
+// 业务员看到自己框对了再点确认；点重新框则丢弃 pendingCapture 回 CapturePanel。
+export function ReviewCapturePanel({ pendingCapture }: { pendingCapture: PendingCapture }) {
+  const [text, setText] = useState<string>(pendingCapture.requestText);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  // 已渲染 img 的 px 宽度——拿来按 viewport 比例缩放蓝框。img onLoad 后才有效。
+  const [renderedWidth, setRenderedWidth] = useState<number>(0);
+
+  useEffect(() => {
+    // 切换 pendingCapture（重新框选后又来一次）时复位输入框默认值。
+    setText(pendingCapture.requestText);
+  }, [pendingCapture]);
+
+  const onImgLoad = () => {
+    if (imgRef.current) {
+      setRenderedWidth(imgRef.current.getBoundingClientRect().width);
+    }
+  };
+
+  const scale = renderedWidth > 0 && pendingCapture.viewport.width > 0
+    ? renderedWidth / pendingCapture.viewport.width
+    : 0;
+
+  const box = pendingCapture.boxCoords;
+  const boxStyle: React.CSSProperties = scale > 0 ? {
+    position: 'absolute',
+    left: box.x * scale,
+    top: box.y * scale,
+    width: box.width * scale,
+    height: box.height * scale,
+    border: '2px solid var(--accent)',
+    boxShadow: '0 0 0 9999px oklch(20% 0.02 250 / 0.18)',
+    borderRadius: 2,
+    pointerEvents: 'none',
+    boxSizing: 'border-box',
+  } : { display: 'none' };
+
+  const retake = () => send({ type: MSG.RETAKE_CAPTURE });
+  const confirm = () => send({ type: MSG.CONFIRM_CAPTURE, requestText: text });
+
+  return (
+    <section>
+      <div className="eyebrow">第 2 步 · 确认要改的区域</div>
+      <h3 className="title">框对了吗？</h3>
+      <p className="help">看一眼框选的位置；不对就重新框，对了就提交给 AI。</p>
+
+      <div
+        className="review-shot"
+        style={{ position: 'relative', display: 'block', width: '100%', borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--line)' }}
+        aria-label="框选区域预览"
+      >
+        <img
+          ref={imgRef}
+          onLoad={onImgLoad}
+          alt="页面截图"
+          src={`data:image/png;base64,${pendingCapture.screenshotB64}`}
+          style={{ display: 'block', width: '100%', height: 'auto' }}
+        />
+        <div data-testid="review-box" style={boxStyle} aria-hidden="true" />
+      </div>
+
+      <div className="card" style={{ display: 'grid', gap: '0.25rem', fontSize: '0.78rem', color: 'var(--ink-soft)' }}>
+        <div style={{ wordBreak: 'break-all' }}>URL: <code>{pendingCapture.url}</code></div>
+        <div>视口: {pendingCapture.viewport.width}×{pendingCapture.viewport.height}</div>
+        <div>框选: {Math.round(box.width)}×{Math.round(box.height)} px</div>
+      </div>
+
+      <label className="field">
+        <span className="field-label">业务需求（可编辑）</span>
+        <textarea
+          aria-label="业务需求"
+          rows={3}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </label>
+
+      <div className="btn-row">
+        <button className="btn btn-secondary" onClick={retake}>← 重新框选</button>
+        <button className="btn btn-accent" onClick={confirm} disabled={!text.trim()}>
+          ✓ 确认提交 →
         </button>
       </div>
     </section>
