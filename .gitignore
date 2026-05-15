@@ -16,3 +16,6 @@ dist/
 
 # 环境
 .DS_Store
+
+# Claude Code 会话锁（每次启动重写）
+.claude/scheduled_tasks.lock
