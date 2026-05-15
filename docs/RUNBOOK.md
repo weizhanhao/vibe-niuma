@@ -59,8 +59,12 @@ docker image ls --filter reference='doskill-preview-*' -q | xargs -r docker rmi 
 
 ## 风险假设的真实验证（设计文档 §9）
 
-跑过一次真实 E2E 后回填：
+2026-05-15 首次真实 E2E 闭环跑通（114.55.171.64 / Alibaba Cloud Linux 4 / opencode + deepseek/deepseek-v4-flash），结论：
 
-- [ ] URL→路由源文件映射的可靠性 —— 4 条路由在动态 `/orders/:id` 上是否正确命中
-- [ ] dev runner 凭 brief + 截图能否产出可用改动
-- [ ] Docker 预览启动延迟是否可忍
+- [x] **URL→路由源文件映射** —— `/settings` 命中 `frontend/src/pages/Settings.tsx`，正则 + import 解析 OK。`/orders/:id` 动态段还没真正打过（建议下一轮补一次）。
+- [x] **dev runner 凭 brief 产出可用改动** —— "把保存按钮改成立即保存" 一次 commit、零返工。改动落在 `cr/<id>` 分支后被自动合并到 main。
+- [x] **Docker 预览启动延迟** —— 全闭环（clarifying → coding → building → preview-ready → merged）耗时 **2 分 43 秒**，预览容器 build + healthy 约 60–80s，业务员等到的「按钮变了」典型 < 3 分钟。可忍。
+
+补充教训（不在设计预期内但跑下来发现的）：
+- 用 claude-code CLI 时跟 **DeepSeek hybrid thinking mode** 协议不兼容（要求把 `reasoning_content` 回传，claude-code 不带）。默认改用 **opencode**；想用 claude-code 就走真 Claude key + Claude 模型，别走 DeepSeek。
+- 国内 ECS 上 GitHub git smart-http 经常卡死（HTTPS 能 200 但 clone 走不完）；`DEMO_GIT_REMOTE` 留空、走 rsync + 本地 git init 更稳。
