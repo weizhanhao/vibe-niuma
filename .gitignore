@@ -6,6 +6,8 @@ __pycache__/
 venv/
 demo/backend/.env
 orchestrator/.env
+deploy/.env
+deploy/llm-proxy/config.yml
 
 # Node
 node_modules/

@@ -52,6 +52,22 @@ fi
 sudo systemctl is-active docker >/dev/null || sudo systemctl start docker
 log "docker 就绪：$(docker --version)"
 
+# ── docker registry 镜像加速（国内 ECS 拉不到 Docker Hub）────────
+USE_DOCKER_MIRROR="${USE_DOCKER_MIRROR:-1}"
+if [ "$USE_DOCKER_MIRROR" = "1" ]; then
+  DAEMON=/etc/docker/daemon.json
+  WANT='{"registry-mirrors":["https://docker.m.daocloud.io","https://docker.1ms.run","https://hub-mirror.c.163.com"]}'
+  if [ ! -f "$DAEMON" ] || ! sudo grep -q 'registry-mirrors' "$DAEMON"; then
+    log "配置 docker registry 镜像加速 → $DAEMON"
+    sudo mkdir -p /etc/docker
+    echo "$WANT" | sudo tee "$DAEMON" >/dev/null
+    sudo systemctl restart docker
+    sleep 2
+  else
+    log "docker registry 镜像已配置，跳过"
+  fi
+fi
+
 # ── python / venv / pip ────────────────────────────────────────────
 ensure_pkg python3 python3
 ensure_pkg pip3 python3-pip
