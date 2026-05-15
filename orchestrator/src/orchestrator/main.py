@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
+from orchestrator.admin import router as admin_router
 from orchestrator.adapters.fakes import FakePreviewAdapter  # 仅 reaper 用（fallback）
 from orchestrator.adapters.interfaces import PreviewAdapter
 from orchestrator.adapters.impl.brainstorming_skill import BrainstormingSkill
@@ -147,6 +148,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI 原生低代码平台 — Orchestrator", lifespan=lifespan)
+# Plan 6 Task 3：/admin/config GET/PUT —— 扩展端配置面板的 REST 通道
+app.include_router(admin_router)
 
 
 def _spawn(coro) -> None:
