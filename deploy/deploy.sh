@@ -108,11 +108,11 @@ venv/bin/pip install -q "litellm[proxy]" prisma
 # litellm 启动时会 load_dotenv() 从 CWD 向上爬 → 会捞到 /opt/doskill/.env 里
 # 给 orchestrator 用的 DATABASE_URL，触发 prisma DB 初始化 crash。
 # 在 llm-proxy CWD 放一份只含 provider key 的 .env，load_dotenv 找到这个就停。
-cat > .env <<EOF
+cat > .env <<INNER_ENV
 DEEPSEEK_API_KEY=\$DEEPSEEK_API_KEY
 DASHSCOPE_API_KEY=\$DASHSCOPE_API_KEY
 STORE_MODEL_IN_DB=False
-EOF
+INNER_ENV
 chmod 600 .env
 cd ..
 
