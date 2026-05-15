@@ -26,7 +26,7 @@ class QuotaManager:
         if len(self._held) < self._capacity:
             self._held.add(request_id)
             return
-        fut: asyncio.Future = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._waiters.append((request_id, fut))
         await fut  # release() 已在唤醒前把本 id 加入 _held
 

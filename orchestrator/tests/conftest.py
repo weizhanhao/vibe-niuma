@@ -68,7 +68,7 @@ def client(test_engine, db_session, orchestrator_repo, monkeypatch):
     # 每个测试用全新的事件总线 + 配额，避免跨测试串味
     app_state.event_bus = EventBus()
     app_state.quota = QuotaManager(capacity=5)
-    app_state.pipeline = None
+    app_state.pipelines = {}
     app_state.session_factory = lambda: db_session
 
     def override_get_db():

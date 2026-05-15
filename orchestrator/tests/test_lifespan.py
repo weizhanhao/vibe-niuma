@@ -30,7 +30,7 @@ def test_restart_recovery_marks_non_terminal_as_interrupted(
     monkeypatch.setattr(main_mod.settings, "demo_repo_path", str(orchestrator_repo))
     app_state.event_bus = EventBus()
     app_state.quota = QuotaManager(capacity=5)
-    app_state.pipeline = None
+    app_state.pipelines = {}
     app_state.session_factory = lambda: db_session
 
     def override_get_db():

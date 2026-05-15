@@ -18,7 +18,7 @@ class SSEInteractionChannel:
 
     async def ask(self, question: str, options: list[str] | None) -> str:
         question_id = uuid.uuid4().hex
-        fut: asyncio.Future = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[question_id] = fut
         await self._bus.publish(
             self._request_id,
@@ -37,7 +37,7 @@ class SSEInteractionChannel:
         self, variants: list[HtmlMockup]
     ) -> VariantSelection:
         question_id = uuid.uuid4().hex
-        fut: asyncio.Future = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[question_id] = fut
         await self._bus.publish(
             self._request_id,

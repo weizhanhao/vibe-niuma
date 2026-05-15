@@ -35,7 +35,8 @@ class AppState:
     def __init__(self) -> None:
         self.event_bus = EventBus()
         self.quota = QuotaManager(capacity=settings.quota_size)
-        self.pipeline: Pipeline | None = None
+        # 每个变更请求一条 Pipeline —— 单槽会让并发请求互相覆盖、串掉 /answer 路由
+        self.pipelines: dict[str, Pipeline] = {}
         self.tasks: set[asyncio.Task] = set()
         self.session_factory = None
 
@@ -121,7 +122,7 @@ async def create_change_request(
     )
     cr = repo.create(raw)
     pipeline = app_state.build_pipeline(db)
-    app_state.pipeline = pipeline
+    app_state.pipelines[cr.id] = pipeline
     _spawn(pipeline.run(cr.id))
     return ChangeRequestOut.from_model(cr)
 
@@ -138,10 +139,11 @@ def get_change_request(
 
 @app.post("/change-requests/{request_id}/answer")
 def submit_answer(request_id: str, payload: AnswerIn) -> dict[str, str]:
-    if app_state.pipeline is None:
+    pipeline = app_state.pipelines.get(request_id)
+    if pipeline is None:
         raise HTTPException(status_code=409, detail="无活跃流水线")
     try:
-        channel = app_state.pipeline.channel_for(request_id)
+        channel = pipeline.channel_for(request_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="该请求当前不在澄清阶段")
     channel.submit_answer(payload.question_id, payload.answer)
@@ -208,7 +210,7 @@ async def retry_change_request(
     )
     new_cr = repo.create(raw, retry_of=cr.id)
     pipeline = app_state.build_pipeline(db)
-    app_state.pipeline = pipeline
+    app_state.pipelines[new_cr.id] = pipeline
     _spawn(pipeline.run(new_cr.id))
     return ChangeRequestOut.from_model(new_cr)
 
