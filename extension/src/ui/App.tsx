@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { ConversationList } from './components/ConversationList';
+import { useMirrors } from './hooks/useMirrors';
 import { useRequestState } from './hooks/useRequestState';
 import {
   CapturePanel, ClarifyPanel, FailedPanel, PreviewPanel,
@@ -6,13 +8,16 @@ import {
 } from './panels';
 
 export function App() {
+  // Phase E：state 仍跟当前 active 一一对应；额外 useMirrors 取列表。
   const state = useRequestState();
+  const { mirrors, activeId } = useMirrors();
   const [showSettings, setShowSettings] = useState(false);
 
   let body: React.ReactNode;
   if (showSettings) {
     body = <SettingsPanel onClose={() => setShowSettings(false)} />;
   } else if (!state) {
+    // active=null → 新对话起点
     body = <CapturePanel />;
   } else if (state.pendingVariants) {
     body = <VariantsPanel state={state} />;
@@ -41,6 +46,7 @@ export function App() {
           onClick={() => setShowSettings((s) => !s)}
         >⚙</button>
       </header>
+      {!showSettings && <ConversationList mirrors={mirrors} activeId={activeId} />}
       <div className="app-body">{body}</div>
     </div>
   );

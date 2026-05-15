@@ -7,10 +7,11 @@ import {
 } from '../src/ui/panels';
 import type { LogEntry, RequestStateMirror } from '../src/lib/types';
 
+// Phase E：新增 requestText / lastActivity 字段（test fixture 跟着 types 升级，仅类型补齐，无测试逻辑改动）
 const base: RequestStateMirror = {
-  id: 'r1', state: 'clarifying', url: 'http://x', branch: null, previewUrl: null,
+  id: 'r1', state: 'clarifying', url: 'http://x', requestText: 't', branch: null, previewUrl: null,
   failPhase: null, failReason: null, pendingQuestion: null, pendingVariants: null,
-  logs: [],
+  logs: [], lastActivity: '2026-05-15T17:00:00.000Z',
 };
 
 describe('CapturePanel', () => {
