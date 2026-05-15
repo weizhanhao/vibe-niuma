@@ -60,6 +60,7 @@ app_state = AppState()
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
     from orchestrator.db import SessionLocal
+    from orchestrator.reaper import run_reaper_loop
 
     session_factory = app_state.session_factory or SessionLocal
 
@@ -73,7 +74,23 @@ async def lifespan(app: FastAPI):
             )
     finally:
         db.close()
+
+    # 启动闲置回收后台循环
+    reaper_task = asyncio.create_task(
+        run_reaper_loop(
+            session_factory=session_factory,
+            quota=app_state.quota,
+            preview_adapter=FakePreviewAdapter(),
+            ttl_seconds=settings.idle_ttl_seconds,
+            interval_seconds=settings.reaper_interval_seconds,
+        )
+    )
     yield
+    reaper_task.cancel()
+    try:
+        await reaper_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="AI 原生低代码平台 — Orchestrator", lifespan=lifespan)
