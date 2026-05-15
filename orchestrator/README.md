@@ -36,10 +36,35 @@ venv/bin/uvicorn orchestrator.main:app --port 9000
 
 ## 测试
 
+Plan 3 后测试分了若干层，按 marker 选：
+
 ```bash
 cd orchestrator
-venv/bin/pytest          # 79 passed
+venv/bin/pytest                              # 全跑（含 docker / slow），无 docker 自动 skip
+venv/bin/pytest -m "not docker and not slow" # 最小快测（默认 CI）
+venv/bin/pytest -m docker                    # 真起容器（需要 Docker daemon）
+venv/bin/pytest -m slow                      # 慢测：npm build 等
+DOSKILL_E2E=1 venv/bin/pytest -m e2e         # 真实端到端冒烟（需 LLM key）
 ```
+
+## Adapter 装配（Plan 3）
+
+`AppState.build_pipeline` 默认装配真实 adapter：
+
+| 角色 | 实现 | 关键配置 |
+|---|---|---|
+| InteractionSkill | `BrainstormingSkill` | `LLM_API_KEY`, `VISION_MODEL`, `ANTHROPIC_BASE_URL` |
+| StackAdapter | `ReactViteStackAdapter` | `DEMO_REPO_PATH` |
+| DevRunnerAdapter | `ClaudeCodeDevRunner` 或 `OpenCodeDevRunner` | `DEV_RUNNER`, `DEV_MODEL`, `LLM_API_KEY`, `ANTHROPIC_BASE_URL` |
+| PreviewAdapter | `DockerPreviewAdapter` | `PREVIEW_PORT_MIN/MAX`, `PREVIEW_HOST`, `DOCKER_NETWORK` |
+
+`pipeline_factory` 可以被注入（测试用 fake；ECS 上用真实），是 Plan 3 的接线点。
+
+## 真实 E2E 冒烟
+
+`DOSKILL_E2E=1` 才跑。前提：MySQL 可连、Docker 可用、`claude` 或 `opencode` CLI 已装、
+`LLM_API_KEY` + `ANTHROPIC_BASE_URL` 配好（见 `.env.example`），demo 仓库已 clone 到
+`DEMO_REPO_PATH` 且有 `main` 分支。
 
 ## 架构
 
