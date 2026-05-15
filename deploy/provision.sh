@@ -106,6 +106,23 @@ if ! command -v mysql >/dev/null 2>&1; then
   if [ "$PKG" = "apt" ]; then sudo apt-get install -y -qq mysql-client; else sudo yum install -y -q mysql; fi
 fi
 
+# ── dev runner CLIs（按 .env 里 DEV_RUNNER 装对应那个；都装也行，省事）
+DEV_RUNNER_CLI="${DEV_RUNNER:-opencode}"
+if [ "$DEV_RUNNER_CLI" = "opencode" ] || [ "$DEV_RUNNER_CLI" = "both" ]; then
+  if ! command -v opencode >/dev/null 2>&1; then
+    log "装 opencode CLI（npm i -g opencode-ai）"
+    sudo npm install -g opencode-ai >/dev/null
+  fi
+  log "opencode：$(opencode --version 2>&1 | head -1)"
+fi
+if [ "$DEV_RUNNER_CLI" = "claude-code" ] || [ "$DEV_RUNNER_CLI" = "both" ]; then
+  if ! command -v claude >/dev/null 2>&1; then
+    log "装 claude CLI（npm i -g @anthropic-ai/claude-code）"
+    sudo npm install -g @anthropic-ai/claude-code >/dev/null
+  fi
+  log "claude：$(claude --version 2>&1 | head -1)"
+fi
+
 # ── 国内镜像（按 .env 里的 USE_*_MIRROR 决定）─────────────────────
 USE_NPM_MIRROR="${USE_NPM_MIRROR:-1}"
 USE_PIP_MIRROR="${USE_PIP_MIRROR:-1}"
