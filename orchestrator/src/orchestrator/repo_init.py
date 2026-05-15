@@ -129,7 +129,12 @@ class RepoInitializer:
         return self._status == RepoInitStatus.READY
 
     async def wait_ready(self, timeout: float | None = None) -> bool:
-        """阻塞直到 init 完成或超时；超时返回 False。"""
+        """阻塞直到 init 完成或超时；超时返回 False。
+
+        FAILED 直接早退 False —— 不要让 caller 干等 timeout 整圈。
+        """
+        if self._status == RepoInitStatus.FAILED:
+            return False
         try:
             await asyncio.wait_for(self._ready.wait(), timeout=timeout)
             return True

@@ -36,7 +36,9 @@ TECH_CONSTRAINT = (
 )
 
 # 等 /init 完成的最长时间。超时则降级为纯凭截图 + 需求文本判断。
-_INIT_WAIT_SECONDS = 120.0
+# 120s 太长 —— 业务员会以为卡死。30s 内不就绪就走降级路径（无 AGENTS.md），
+# init 失败时 wait_ready 立即 False 也不会等满。
+_INIT_WAIT_SECONDS = 30.0
 
 # AGENTS.md 截断长度（喂 prompt 的 token 预算约束）
 _REPO_DOC_MAX_CHARS = 6000
@@ -59,9 +61,19 @@ class BrainstormingSkill:
     async def clarify(
         self, raw: RawRequest, channel: InteractionChannel
     ) -> RequestBrief:
+        log = getattr(channel, "log", None)
         # 等 /init 就绪。失败/超时不阻塞 —— 进入降级模式（无 repo doc）。
+        if callable(log):
+            await log("▸ 加载 AGENTS.md（项目知识）...")
         repo_doc = await self._load_repo_doc()
+        if callable(log):
+            if repo_doc:
+                await log(f"✓ AGENTS.md 已加载 {len(repo_doc)} 字符")
+            else:
+                await log("⚠ AGENTS.md 不可用，降级为纯截图判断")
 
+        if callable(log):
+            await log("▸ 调用视觉模型（streaming 输出 ↓）...")
         plan = await self._plan(raw, repo_doc, channel=channel)
         clarifications: list[dict] = []
         selected_mockup: HtmlMockup | None = None
