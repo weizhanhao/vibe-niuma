@@ -1,17 +1,19 @@
 // Phase E：service-worker 多对话编排——SET_ACTIVE、DELETE_CONVERSATION、NEW_CONVERSATION。
-// 通过 fireMessage 桥触发 onMessage 回调，断言 session 内部状态 + orchestratorClient 订阅切换。
+// 通过 fireMessage 桥触发 onMessage 回调，断言 session 内部状态 + orchestrator client 订阅切换。
+// Plan 6 Task 10：service-worker 现在通过 getOrchestratorClient() 异步取 client（读 chrome.storage）。
+// 本测试在 beforeEach 里 seed config 到 storage，并 mock createOrchestratorClient 返回 spy。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../src/lib/messages';
 import type { RequestStateMirror } from '../src/lib/types';
 import { saveMirrors } from '../src/background/request-store';
 
-// 用模块级 mock 替换 orchestrator-client：service-worker 顶层 import 拿到的是 mock 实例，
-// 配合 vi.resetModules() + dynamic import 在每个测试里重新挂回调。
 const subscribeCalls: string[] = [];
 let unsubCalls = 0;
 
+// Mock 工厂：service-worker 内部 createOrchestratorClient 走这里。
 vi.mock('../src/background/orchestrator-client', () => ({
-  orchestratorClient: {
+  createOrchestratorClient: vi.fn(() => ({
+    baseUrl: 'http://test',
     subscribeEvents: vi.fn((id: string) => {
       subscribeCalls.push(id);
       return () => { unsubCalls += 1; };
@@ -22,11 +24,27 @@ vi.mock('../src/background/orchestrator-client', () => ({
     merge: vi.fn(),
     discard: vi.fn(),
     retry: vi.fn(),
-  },
-  getBaseUrl: vi.fn(() => Promise.resolve('http://test')),
-  setBaseUrl: vi.fn(() => Promise.resolve()),
+  })),
   HttpError: class HttpError extends Error {},
 }));
+
+// 一份能过 zod schema 的最小 config（orchestratorUrl URL + adminToken >= 20）
+const VALID_CONFIG = {
+  orchestratorUrl: 'http://test',
+  adminToken: 'admin-token-1234567890abcdef',
+  configVersion: 0,
+  server: {
+    devRunner: 'opencode',
+    devModel: 'deepseek/deepseek-v4-flash',
+    visionModel: 'qwen-vl-plus',
+    demoRepoPath: '/opt/doskill/demo',
+    previewBackendUrl: 'http://doskill-demo-backend:8000',
+  },
+};
+
+async function seedConfig() {
+  await chrome.storage.local.set({ doskill_config_v2: VALID_CONFIG });
+}
 
 // ── 工具 ────────────────────────────────────────────────────────────
 
@@ -63,21 +81,24 @@ async function send(msg: Message): Promise<unknown> {
   });
 }
 
-// service-worker 模块每次 dynamic import 触发 top-level loadAll() —— 需要等 microtask 推进
+// service-worker 模块每次 dynamic import 触发 top-level loadAll() —— 需要等 microtask 推进。
+// Plan 6 Task 10：attachSubscription 现在 async（await getOrchestratorClient → loadConfig），
+// 额外多 2 个 await，需要多 flush 几轮。
 async function importServiceWorker() {
   getBridge().resetMessageListeners();
   vi.resetModules();
   await import('../src/background/service-worker');
-  // 让 loadAll().then(...) 内部的两 await 跑完
-  await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
 }
 
 // ── 测试 ────────────────────────────────────────────────────────────
 
-beforeEach(() => {
+beforeEach(async () => {
   subscribeCalls.length = 0;
   unsubCalls = 0;
+  await seedConfig();
 });
 
 afterEach(() => {

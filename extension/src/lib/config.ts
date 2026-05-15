@@ -99,6 +99,15 @@ export async function saveConfig(patch: ConfigPatch): Promise<Config> {
 /** 用于 SetupWizard 判断是否要弹首次引导。最低条件：URL + token 都存在且能过 schema。 */
 export async function isConfigured(): Promise<boolean> {
   const cfg = await loadConfig();
-  if (!cfg) return false;
-  return cfg.orchestratorUrl.length > 0 && cfg.adminToken.length >= 20;
+  return isConfigSufficient(cfg);
+}
+
+/**
+ * 同步版本：在已经 loadConfig 一次后，对 Config 对象做 sufficient 判断。
+ * 给 App.tsx 路由用——避免每次 render 都再 await loadConfig。
+ * 「足够」= URL 非空 + token >= 20 字符（zod schema 已保证这俩字段类型对，这里只检查长度）。
+ */
+export function isConfigSufficient(config: Config | null): boolean {
+  if (!config) return false;
+  return config.orchestratorUrl.length > 0 && config.adminToken.length >= 20;
 }

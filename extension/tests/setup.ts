@@ -3,6 +3,10 @@ import { afterEach, beforeEach, vi } from 'vitest';
 
 // 全局 chrome.* mock —— 各测试可以 vi.mocked(chrome.xxx).mockReturnValue(...) 覆盖
 type Listener = (...args: unknown[]) => unknown;
+type StorageChangedListener = (
+  changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+  areaName: string,
+) => unknown;
 
 interface FakeStorage {
   area: Record<string, unknown>;
@@ -11,10 +15,27 @@ interface FakeStorage {
 const _storage: FakeStorage = { area: {} };
 const _msgListeners: Listener[] = [];
 const _runtimeListeners: Listener[] = [];
+const _storageChangeListeners: StorageChangedListener[] = [];
+
+function fireStorageChange(
+  changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+) {
+  for (const l of _storageChangeListeners) {
+    l(changes, 'local');
+  }
+}
 
 const fakeChrome = {
   runtime: {
-    sendMessage: vi.fn((msg: unknown) => Promise.resolve(msg)),
+    // 默认 echo 回 msg，方便单测断言；某些 type（GET_*）返回 null 更安全，
+    // 避免 App.tsx 里 hooks 拿到 echo 的 msg 误判为有 pendingCapture / mirrors。
+    sendMessage: vi.fn((msg: unknown) => {
+      const t = (msg as { type?: string } | undefined)?.type;
+      if (t === 'GET_PENDING_CAPTURE') return Promise.resolve(null);
+      if (t === 'GET_MIRRORS') return Promise.resolve({ mirrors: {}, activeId: null });
+      if (t === 'GET_REQUEST_STATE') return Promise.resolve(null);
+      return Promise.resolve(msg);
+    }),
     onMessage: {
       addListener: vi.fn((cb: Listener) => _msgListeners.push(cb)),
       removeListener: vi.fn(),
@@ -47,16 +68,33 @@ const fakeChrome = {
         return Promise.resolve(out);
       }),
       set: vi.fn((vals: Record<string, unknown>) => {
+        // 真实 chrome.storage.set 会触发 onChanged；Plan 6 Task 10 测试依赖这一点
+        // 来验证 App.tsx 在 saveConfig 后立即重新路由。
+        const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
+        for (const k of Object.keys(vals)) {
+          changes[k] = { oldValue: _storage.area[k], newValue: vals[k] };
+        }
         Object.assign(_storage.area, vals);
+        fireStorageChange(changes);
         return Promise.resolve();
       }),
       remove: vi.fn((k: string) => {
+        const oldValue = _storage.area[k];
         delete _storage.area[k];
+        fireStorageChange({ [k]: { oldValue, newValue: undefined } });
         return Promise.resolve();
       }),
       clear: vi.fn(() => {
         _storage.area = {};
         return Promise.resolve();
+      }),
+    },
+    // Plan 6 Task 10：chrome.storage.onChanged 监听器注册 + 触发桥
+    onChanged: {
+      addListener: vi.fn((cb: StorageChangedListener) => _storageChangeListeners.push(cb)),
+      removeListener: vi.fn((cb: StorageChangedListener) => {
+        const idx = _storageChangeListeners.indexOf(cb);
+        if (idx >= 0) _storageChangeListeners.splice(idx, 1);
       }),
     },
   },
@@ -71,15 +109,19 @@ const fakeChrome = {
       l(msg, sender, sendResponse);
     }
   },
+  // Plan 6 Task 10：测试可显式触发 storage.onChanged（mock 没经过 set 的路径时用）
+  fireStorageChange,
   storage: _storage,
   resetMessageListeners: () => {
     _msgListeners.length = 0;
+    _storageChangeListeners.length = 0;
   },
 };
 
 beforeEach(() => {
   _storage.area = {};
   _msgListeners.length = 0;
+  _storageChangeListeners.length = 0;
 });
 
 afterEach(() => {

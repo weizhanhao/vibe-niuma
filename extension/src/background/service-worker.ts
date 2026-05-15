@@ -2,13 +2,50 @@
 // content ↔ background ↔ ui ↔ Orchestrator REST/SSE 全在这里串起来。
 // Phase E：从「单 mirror」升级为「多 mirror map + activeId」。
 // 只对 active 的那一条订阅 SSE，节省连接数 & 配额。
+// Plan 6 Task 10：orchestrator client 不再 module-level hardcode；按 chrome.storage 里的
+// 配置 lazy 构造 + 缓存，监听 chrome.storage.onChanged 在配置改了时 invalidate 重建。
+import { loadConfig } from '../lib/config';
 import { MSG, type Message } from '../lib/messages';
 import type { ChangeRequestOut, PendingCapture, RequestStateMirror, SSEEvent } from '../lib/types';
-import { orchestratorClient } from './orchestrator-client';
+import { createOrchestratorClient, type OrchestratorClient } from './orchestrator-client';
 import {
   applyEvent, applySnapshot, clearPending, evictWithLRU, initialState, isTerminal,
   loadAll, removeMirror, saveMirrors, sortByActivity, upsertMirror,
 } from './request-store';
+
+// ── orchestrator client lazy cache ─────────────────────────────────
+// 第一次调时读 chrome.storage 拿 baseUrl + token，构造 client 并缓存。
+// chrome.storage.onChanged 监听到 `doskill_config_v2` 变了就清缓存，下次重新构造。
+// 缺配置时返回 null：调用点必须 `if (!client) return ...` 才能 noop。
+const CONFIG_STORAGE_KEY = 'doskill_config_v2';
+let cachedClient: OrchestratorClient | null = null;
+let pendingClientLoad: Promise<OrchestratorClient | null> | null = null;
+
+function invalidateClientCache(): void {
+  cachedClient = null;
+  pendingClientLoad = null;
+}
+
+/**
+ * 异步取当前 orchestrator client。缺 URL/token 返回 null（调用点必须 noop + warn）。
+ * 暴露给测试：tests/onboarding-routing.test.tsx 直接 import 这个函数断言缓存行为。
+ */
+export async function getOrchestratorClient(): Promise<OrchestratorClient | null> {
+  if (cachedClient) return cachedClient;
+  if (pendingClientLoad) return pendingClientLoad;
+  pendingClientLoad = (async () => {
+    const cfg = await loadConfig();
+    if (!cfg || cfg.orchestratorUrl.length === 0 || cfg.adminToken.length === 0) {
+      // 不缓存 null —— 下次再尝试（用户可能刚配完）
+      pendingClientLoad = null;
+      return null;
+    }
+    cachedClient = createOrchestratorClient(cfg.orchestratorUrl, cfg.adminToken);
+    pendingClientLoad = null;
+    return cachedClient;
+  })();
+  return pendingClientLoad;
+}
 
 interface SessionState {
   pendingRequestText: string | null;
@@ -55,7 +92,7 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   // 兜底：闹钟把 SW 唤醒；如果 SSE 在唤醒前因死亡断开，这里重连。
   const active = session.activeId ? session.mirrors[session.activeId] : null;
   if (active && !isTerminal(active)) {
-    attachSubscription(active.id);
+    void attachSubscription(active.id);
   } else if (!anyInFlight(session.mirrors)) {
     chrome.alarms.clear(KEEPALIVE_ALARM);
   }
@@ -66,7 +103,7 @@ loadAll().then(({ mirrors, activeId }) => {
   session.mirrors = mirrors;
   session.activeId = activeId;
   const active = activeId ? mirrors[activeId] : null;
-  if (active && !isTerminal(active)) attachSubscription(active.id);
+  if (active && !isTerminal(active)) void attachSubscription(active.id);
   maintainKeepalive(mirrors);
 });
 
@@ -147,11 +184,33 @@ function detach() {
   session.subscribedId = null;
 }
 
-function attachSubscription(requestId: string) {
+// 配置变化时 invalidate client 缓存 + 断开当前 SSE，下次 attach 用新 URL/token。
+// jsdom 测试环境里 chrome.storage.onChanged 不存在 → optional chain 自动 noop。
+chrome.storage?.onChanged?.addListener?.((changes, area) => {
+  if (area !== 'local') return;
+  if (CONFIG_STORAGE_KEY in changes) {
+    console.log('[doskill sw] config changed, invalidating orchestrator client');
+    invalidateClientCache();
+    // 当前若有正订阅，断开让它在下次 attach 时用新 client
+    detach();
+    // 如果还有 active 且非终态，立即重连。
+    const active = session.activeId ? session.mirrors[session.activeId] : null;
+    if (active && !isTerminal(active)) {
+      void attachSubscription(active.id);
+    }
+  }
+});
+
+async function attachSubscription(requestId: string) {
   if (session.subscribedId === requestId && session.unsubscribe) return;
   detach();
+  const client = await getOrchestratorClient();
+  if (!client) {
+    console.warn('[doskill sw] cannot attach SSE: orchestrator not configured');
+    return;
+  }
   session.subscribedId = requestId;
-  session.unsubscribe = orchestratorClient.subscribeEvents(
+  session.unsubscribe = client.subscribeEvents(
     requestId,
     async (evt: SSEEvent) => {
       const target = session.mirrors[requestId];
@@ -170,7 +229,7 @@ async function setActive(id: string | null) {
   session.activeId = id;
   detach();
   if (id && session.mirrors[id] && !isTerminal(session.mirrors[id])) {
-    attachSubscription(id);
+    await attachSubscription(id);
   }
   await persist();
   await broadcastActive();
@@ -186,7 +245,7 @@ async function deleteConversation(id: string) {
     const nextInFlight = sorted.find((m) => !isTerminal(m));
     const next = nextInFlight ?? sorted[0] ?? null;
     session.activeId = next?.id ?? null;
-    if (next && !isTerminal(next)) attachSubscription(next.id);
+    if (next && !isTerminal(next)) await attachSubscription(next.id);
   }
   maintainKeepalive(session.mirrors);
   await persist();
@@ -263,9 +322,16 @@ async function handleMessage(msg: Message): Promise<unknown> {
       if (!pc) return { ok: false, error: 'no pending capture' };
       const finalText = msg.requestText ?? pc.requestText;
       console.log('[doskill sw] CONFIRM_CAPTURE → POST orchestrator');
+      const client = await getOrchestratorClient();
+      if (!client) {
+        console.warn('[doskill sw] CONFIRM_CAPTURE noop: orchestrator not configured');
+        session.pendingCapture = { ...pc, requestText: finalText };
+        await broadcastPendingCapture();
+        return { ok: false, error: '请先在设置里配置 orchestrator URL' };
+      }
       let cr: ChangeRequestOut;
       try {
-        cr = await orchestratorClient.createChangeRequest({
+        cr = await client.createChangeRequest({
           url: pc.url,
           screenshot_b64: pc.screenshotB64,
           box_coords: pc.boxCoords,
@@ -287,7 +353,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
       session.activeId = next.id;
       detach();
-      attachSubscription(next.id);
+      await attachSubscription(next.id);
       maintainKeepalive(session.mirrors);
       await persist();
       await broadcastActive();
@@ -330,30 +396,50 @@ async function handleMessage(msg: Message): Promise<unknown> {
       return { ok: true };
     }
     case MSG.SUBMIT_ANSWER: {
-      await orchestratorClient.submitAnswer(msg.requestId, msg.questionId, msg.answer);
+      const client = await getOrchestratorClient();
+      if (!client) {
+        console.warn('[doskill sw] SUBMIT_ANSWER noop: orchestrator not configured');
+        return { ok: false, error: '请先在设置里配置 orchestrator URL' };
+      }
+      await client.submitAnswer(msg.requestId, msg.questionId, msg.answer);
       const target = session.mirrors[msg.requestId];
       if (target) await setMirror(clearPending(target));
       return { ok: true };
     }
     case MSG.MERGE: {
-      const cr = await orchestratorClient.merge(msg.requestId);
+      const client = await getOrchestratorClient();
+      if (!client) {
+        console.warn('[doskill sw] MERGE noop: orchestrator not configured');
+        return { ok: false, error: '请先在设置里配置 orchestrator URL' };
+      }
+      const cr = await client.merge(msg.requestId);
       const target = session.mirrors[msg.requestId];
       if (target) await setMirror(applySnapshot(target, cr));
       return { ok: true };
     }
     case MSG.DISCARD: {
-      const cr = await orchestratorClient.discard(msg.requestId);
+      const client = await getOrchestratorClient();
+      if (!client) {
+        console.warn('[doskill sw] DISCARD noop: orchestrator not configured');
+        return { ok: false, error: '请先在设置里配置 orchestrator URL' };
+      }
+      const cr = await client.discard(msg.requestId);
       const target = session.mirrors[msg.requestId];
       if (target) await setMirror(applySnapshot(target, cr));
       return { ok: true };
     }
     case MSG.RETRY: {
-      const cr = await orchestratorClient.retry(msg.requestId);
+      const client = await getOrchestratorClient();
+      if (!client) {
+        console.warn('[doskill sw] RETRY noop: orchestrator not configured');
+        return { ok: false, error: '请先在设置里配置 orchestrator URL' };
+      }
+      const cr = await client.retry(msg.requestId);
       const next = initialState(cr);
       session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
       session.activeId = next.id;
       detach();
-      attachSubscription(next.id);
+      await attachSubscription(next.id);
       maintainKeepalive(session.mirrors);
       await persist();
       await broadcastActive();
