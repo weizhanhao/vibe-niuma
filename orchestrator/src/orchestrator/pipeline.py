@@ -10,8 +10,14 @@ clarify → locate → run → build/serve，每步写状态 + 推 SSE。
 Phase F：每个 phase 注入一个绑定 (request_id, phase) 的 log 闭包，dev runner /
 StackAdapter.build / PreviewAdapter.serve 把子进程每行输出实时通过 EventBus
 publish_log，扩展端 StatusPanel 实时显示。Pipeline 自己也在关键节点发粗粒度 marker。
+
+Phase D：到达 preview-ready 时把 spec/plan/result.md 沉淀到
+<repo>/.doskill/history/cr-<id>/，供后续 LLM 会话回看「doskill 做过什么」。
+写入失败不阻塞 pipeline。
 """
 import asyncio
+import logging
+import subprocess
 import traceback
 
 from orchestrator.adapters.interfaces import (
@@ -23,10 +29,33 @@ from orchestrator.adapters.interfaces import (
 from orchestrator.adapters.types import RawRequest
 from orchestrator.events import Event, EventBus
 from orchestrator.git_manager import GitManager
+from orchestrator.history_writer import write_history
 from orchestrator.interaction_channel import SSEInteractionChannel
 from orchestrator.quota import QuotaManager
 from orchestrator.repository import ChangeRequestRepository
 from orchestrator.states import State
+
+logger = logging.getLogger(__name__)
+
+
+def _git_diff_files(repo_path: str, branch: str) -> list[str] | None:
+    """best-effort：git diff --name-only main..branch；任何异常返回 None。
+
+    用于 Phase D 体量分级第 5 项：「dev runner 实际改了几个文件」。
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"main..{branch}"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        return [line for line in result.stdout.splitlines() if line.strip()]
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _make_log_sink(event_bus: EventBus, request_id: str, phase: str):
@@ -252,6 +281,38 @@ class Pipeline:
             self.repository.set_preview(
                 request_id, url=instance.url, handle=instance.handle
             )
+
+            # Phase D：preview 容器就绪后，落地 spec/plan/result.md 历史快照。
+            # 任何异常吞掉 + 记 warning —— 历史写盘失败绝不阻塞流水线。
+            try:
+                now = time.monotonic()
+                phase_timings = {
+                    phase: now - t0 for phase, t0 in phase_started.items()
+                }
+                total_so_far = now - run_started
+                files_changed = await asyncio.to_thread(
+                    _git_diff_files, self.repo_path, branch,
+                )
+                await asyncio.to_thread(
+                    write_history,
+                    repo_path=self.repo_path,
+                    request_id=request_id,
+                    raw_request=raw,
+                    brief=brief,
+                    locate_result=locate_result,
+                    branch=branch,
+                    preview_url=instance.url,
+                    phase_timings=phase_timings,
+                    total_elapsed=total_so_far,
+                    dev_runner_files_changed=files_changed,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "history_writer.write_history 失败 cr=%s（不影响 pipeline）",
+                    request_id,
+                    exc_info=True,
+                )
+
             await _phase_done("building", f"✓ 预览容器就绪 {instance.url}")
             # 注意：_set_state 默认只发 {state}；这里 preview_url 是新写入 DB 的，
             # 不夹带在事件里扩展端的 mirror 永远停在 previewUrl=null。所以这里
