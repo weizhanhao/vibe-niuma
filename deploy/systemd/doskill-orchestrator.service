@@ -7,6 +7,9 @@ Wants=network-online.target doskill-llm-proxy.service
 Type=simple
 EnvironmentFile=/opt/doskill/.env
 WorkingDirectory=/opt/doskill/orchestrator
+# HOME 必须显式给 —— systemd 不会自动设，opencode CLI 读 ~/.config/opencode/
+# 没 HOME 就 rc=1 + 空 stderr，repo_init / dev runner 都会神秘失败。
+Environment=HOME=/root
 ExecStart=/opt/doskill/orchestrator/venv/bin/uvicorn \
   orchestrator.main:app \
   --host 0.0.0.0 \

@@ -193,8 +193,15 @@ class RepoInitializer:
             )
 
         if proc.returncode != 0:
-            tail = stderr_b.decode("utf-8", errors="replace")[-1500:]
-            raise RuntimeError(f"/init CLI 非 0 退出 (rc={proc.returncode})\n{tail}")
+            # 之前只 dump stderr —— opencode rc=1 时 stderr 经常是空的，错误信息
+            # 全在 stdout。两路一起 dump 才看得见真错。
+            stdout_tail = stdout_b.decode("utf-8", errors="replace")[-1000:]
+            stderr_tail = stderr_b.decode("utf-8", errors="replace")[-1000:]
+            raise RuntimeError(
+                f"/init CLI 非 0 退出 (rc={proc.returncode})\n"
+                f"--- stdout ---\n{stdout_tail}\n"
+                f"--- stderr ---\n{stderr_tail}"
+            )
 
         if not self.doc_path.exists():
             raise RuntimeError(
