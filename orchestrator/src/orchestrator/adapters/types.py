@@ -48,12 +48,17 @@ class LocateResult:
 
 @dataclass
 class DevContext:
-    """组装给 dev runner 的上下文包。"""
+    """组装给 dev runner 的上下文包。
+
+    `entry_file_contents` 在 Plan 3 加入：StackAdapter.context_pack 把入口源文件
+    （及一层本地 import）的内容读出来塞进去，省得 DevRunner 再去读盘 / 猜路径。
+    """
 
     brief: RequestBrief
     locate_result: LocateResult
     screenshot_b64: str
     box_coords: dict
+    entry_file_contents: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

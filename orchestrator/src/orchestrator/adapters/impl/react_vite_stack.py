@@ -13,7 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from orchestrator.adapters.types import LocateResult
+from orchestrator.adapters.types import (
+    BuildResult,
+    DevContext,
+    LocateResult,
+    RawRequest,
+    RequestBrief,
+)
 
 
 # 路由文件的候选位置（按优先级）
@@ -89,6 +95,110 @@ class ReactViteStackAdapter:
             entry_files=[self._rel(component_file)],
             route_path=match.path,
         )
+
+    # ── context_pack ────────────────────────────────────────────────
+    async def context_pack(
+        self, locate_result: LocateResult, raw: RawRequest, brief: RequestBrief
+    ) -> DevContext:
+        """读 entry_files 内容 + 一层本地 import 展开（只跟相对路径）。"""
+        contents: dict[str, str] = {}
+        for rel in locate_result.entry_files:
+            p = self._repo / rel
+            if not p.is_file():
+                continue
+            text = p.read_text(encoding="utf-8")
+            contents[rel] = text
+            for nested in self._expand_local_imports(p, text):
+                if nested is None:
+                    continue
+                rel_nested = self._rel(nested)
+                if rel_nested in contents:
+                    continue
+                try:
+                    contents[rel_nested] = nested.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+        return DevContext(
+            brief=brief,
+            locate_result=locate_result,
+            screenshot_b64=raw.screenshot_b64,
+            box_coords=raw.box_coords,
+            entry_file_contents=contents,
+        )
+
+    def _expand_local_imports(self, src: Path, text: str):
+        """提取 src 文件里的相对 import，返回解析后的真实文件路径。"""
+        seen_specs = set()
+        for m in _IMPORT_NAMED.finditer(text):
+            seen_specs.add(m.group(2))
+        for m in _IMPORT_DEFAULT.finditer(text):
+            seen_specs.add(m.group(2))
+        for spec in seen_specs:
+            if not spec.startswith((".", "/")):
+                continue
+            base = (src.parent / spec).resolve()
+            yield self._resolve_module_file(base)
+
+    @staticmethod
+    def _resolve_module_file(base: Path) -> Path | None:
+        if base.is_file():
+            return base
+        for ext in (".tsx", ".ts", ".jsx", ".js"):
+            p = base.parent / (base.name + ext)
+            if p.is_file():
+                return p
+        for ext in (".tsx", ".ts", ".jsx", ".js"):
+            p = base / f"index{ext}"
+            if p.is_file():
+                return p
+        return None
+
+    # ── build ───────────────────────────────────────────────────────
+    async def build(self, repo_path: str, branch: str) -> BuildResult:
+        """前端 npm ci + npm run build；后端 python -m compileall。"""
+        import asyncio
+        import os
+
+        repo = Path(repo_path)
+        log_parts: list[str] = []
+        ok = True
+
+        async def _run(cmd: list[str], cwd: Path, label: str) -> tuple[int, str]:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, cwd=str(cwd),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env={**os.environ, "CI": "1"},
+                )
+                stdout, _ = await proc.communicate()
+                return proc.returncode, f"--- {label} ---\n{stdout.decode(errors='replace')}\n"
+            except FileNotFoundError as exc:
+                return 127, f"--- {label} ---\n{exc}\n"
+
+        frontend = repo / "frontend"
+        if frontend.is_dir():
+            if not (frontend / "node_modules").is_dir():
+                rc, log = await _run(["npm", "ci"], frontend, "npm ci")
+                log_parts.append(log)
+                if rc != 0:
+                    ok = False
+            if ok:
+                rc, log = await _run(["npm", "run", "build"], frontend, "npm run build")
+                log_parts.append(log)
+                if rc != 0:
+                    ok = False
+
+        backend = repo / "backend"
+        if ok and backend.is_dir():
+            rc, log = await _run(
+                ["python3", "-m", "compileall", "-q", "."], backend, "compileall backend"
+            )
+            log_parts.append(log)
+            if rc != 0:
+                ok = False
+
+        return BuildResult(ok=ok, log="".join(log_parts) or "no build steps ran")
 
     # ── helpers ─────────────────────────────────────────────────────
     def _find_router_file(self) -> Path | None:
