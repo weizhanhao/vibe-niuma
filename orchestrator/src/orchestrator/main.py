@@ -11,12 +11,13 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from orchestrator.adapters.fakes import (
-    FakeDevRunner,
-    FakeInteractionSkill,
-    FakePreviewAdapter,
-    FakeStackAdapter,
-)
+from orchestrator.adapters.fakes import FakePreviewAdapter  # 仅 reaper 用（fallback）
+from orchestrator.adapters.impl.brainstorming_skill import BrainstormingSkill
+from orchestrator.adapters.impl.claude_code_runner import ClaudeCodeDevRunner
+from orchestrator.adapters.impl.docker_preview import DockerPreviewAdapter
+from orchestrator.adapters.impl._llm import LLMClient
+from orchestrator.adapters.impl.opencode_runner import OpenCodeDevRunner
+from orchestrator.adapters.impl.react_vite_stack import ReactViteStackAdapter
 from orchestrator.adapters.types import RawRequest
 from orchestrator.config import settings
 from orchestrator.db import Base, engine, get_db
@@ -39,18 +40,33 @@ class AppState:
         self.pipelines: dict[str, Pipeline] = {}
         self.tasks: set[asyncio.Task] = set()
         self.session_factory = None
+        # pipeline_factory 默认是 _build_real_pipeline；测试可注入 fake 实现
+        self.pipeline_factory = self._build_real_pipeline
 
     def build_pipeline(self, db: Session) -> Pipeline:
+        return self.pipeline_factory(db)
+
+    def _build_real_pipeline(self, db: Session) -> Pipeline:
+        """Plan 3：装配真实 adapter；Plan 5 在 ECS 上跑的就是这套。"""
+        if settings.dev_runner == "opencode":
+            dev_runner = OpenCodeDevRunner()
+        else:
+            dev_runner = ClaudeCodeDevRunner()
         return Pipeline(
             repo_path=settings.demo_repo_path,
             repository=ChangeRequestRepository(db),
             git_manager=GitManager(settings.demo_repo_path),
             event_bus=self.event_bus,
             quota=self.quota,
-            interaction_skill=FakeInteractionSkill(question_count=0),
-            stack_adapter=FakeStackAdapter(),
-            dev_runner=FakeDevRunner(),
-            preview_adapter=FakePreviewAdapter(),
+            interaction_skill=BrainstormingSkill(LLMClient()),
+            stack_adapter=ReactViteStackAdapter(repo_path=settings.demo_repo_path),
+            dev_runner=dev_runner,
+            preview_adapter=DockerPreviewAdapter(
+                port_min=settings.preview_port_min,
+                port_max=settings.preview_port_max,
+                preview_host=settings.preview_host,
+                docker_network=settings.docker_network,
+            ),
         )
 
 
@@ -76,12 +92,18 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # 启动闲置回收后台循环
+    # 启动闲置回收后台循环；reaper 用真实 DockerPreviewAdapter 拆容器
+    reaper_preview = DockerPreviewAdapter(
+        port_min=settings.preview_port_min,
+        port_max=settings.preview_port_max,
+        preview_host=settings.preview_host,
+        docker_network=settings.docker_network,
+    )
     reaper_task = asyncio.create_task(
         run_reaper_loop(
             session_factory=session_factory,
             quota=app_state.quota,
-            preview_adapter=FakePreviewAdapter(),
+            preview_adapter=reaper_preview,
             ttl_seconds=settings.idle_ttl_seconds,
             interval_seconds=settings.reaper_interval_seconds,
         )
