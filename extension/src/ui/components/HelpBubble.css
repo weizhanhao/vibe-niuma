@@ -36,10 +36,11 @@
   z-index: 9999;
   max-width: 320px;
   padding: 12px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: 0 16px 48px -16px oklch(0% 0 0 / 0.6);
   font-size: 0.82rem;
   line-height: 1.55;
 }
@@ -68,10 +69,12 @@
 }
 
 .help-bubble-popover code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   font-size: 0.78rem;
   padding: 1px 4px;
-  background: oklch(95% 0.005 250);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  border: 1px solid var(--line-soft);
   border-radius: 3px;
 }
 

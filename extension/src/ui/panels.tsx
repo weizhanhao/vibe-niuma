@@ -59,7 +59,7 @@ export function ProgressTrail({ state }: { state: ChangeRequestState }) {
 
 // ── CapturePanel ────────────────────────────────────────────────────
 // 第 1 步：业务员输需求。两条路：
-//   1) 「📍 框选」—— 想精确定位某区域时用（触发 overlay）
+//   1) 「框选区域」—— 想精确定位某区域时用（触发 overlay）
 //   2) 「→ 直接提交」—— 不关心区域时（如「做个新功能」），SW 截当前页面 + 空 box
 // 两条都进 ReviewCapturePanel，业务员确认后才 POST。
 export function CapturePanel() {
@@ -69,11 +69,18 @@ export function CapturePanel() {
   const disabled = !text.trim();
   return (
     <section>
-      <div className="eyebrow">第 1 步</div>
+      <div className="eyebrow">
+        <span className="ix">STEP 01</span>
+        <span>capture</span>
+        <span className="rule" />
+      </div>
       <h3 className="title">想改这个页面的哪里？</h3>
-      <p className="help">用自己的话写下你想看到的变化。我们不在意「怎么实现」。</p>
+      <p className="help">用自己的话写下你想看到的变化。我们不在意「怎么实现」——那是系统的事。</p>
       <label className="field">
-        <span className="field-label">业务需求</span>
+        <span className="label">
+          <span>业务需求 · INTENT</span>
+          <span className="count">{text.length} / 500</span>
+        </span>
         <textarea
           aria-label="业务需求"
           rows={4}
@@ -83,18 +90,19 @@ export function CapturePanel() {
       </label>
       <div className="btn-row">
         <button
-          className="btn btn-icon"
+          className="btn btn-secondary"
           onClick={startFrame}
           disabled={disabled}
           title="精确定位：在页面上框出要改的区域"
           aria-label="框选区域"
-        >📍 框选</button>
+        ><span className="ico">▢</span> 框选区域</button>
         <button
           className="btn btn-primary"
           onClick={submitTextOnly}
           disabled={disabled}
         >→ 直接提交</button>
       </div>
+      <p className="hint">点「框选」会画半透明遮罩，鼠标拖一个框就行；不框就直接提交，AI 按 URL 自己定位。</p>
     </section>
   );
 }
@@ -144,39 +152,52 @@ export function ReviewCapturePanel({ pendingCapture }: { pendingCapture: Pending
 
   return (
     <section>
-      <div className="eyebrow">第 2 步 · 确认要改的区域</div>
+      <div className="eyebrow">
+        <span className="ix">STEP 02</span>
+        <span>review · confirm region</span>
+        <span className="rule" />
+      </div>
       <h3 className="title">框对了吗？</h3>
       <p className="help">看一眼框选的位置；不对就重新框，对了就提交给 AI。</p>
 
-      <div
-        className="review-shot"
-        style={{ position: 'relative', display: 'block', width: '100%', borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--line)' }}
-        aria-label="框选区域预览"
-      >
-        <img
-          ref={imgRef}
-          onLoad={onImgLoad}
-          alt="页面截图"
-          src={`data:image/png;base64,${pendingCapture.screenshotB64}`}
-          style={{ display: 'block', width: '100%', height: 'auto' }}
-        />
-        <div data-testid="review-box" style={boxStyle} aria-hidden="true" />
-      </div>
-
-      <div className="card" style={{ display: 'grid', gap: '0.25rem', fontSize: '0.78rem', color: 'var(--ink-soft)' }}>
-        <div style={{ wordBreak: 'break-all' }}>URL: <code>{pendingCapture.url}</code></div>
-        {pendingCapture.viewport.width > 0 && (
-          <div>视口: {pendingCapture.viewport.width}×{pendingCapture.viewport.height}</div>
-        )}
-        {box.width > 0 && box.height > 0 ? (
-          <div>框选: {Math.round(box.width)}×{Math.round(box.height)} px</div>
-        ) : (
-          <div style={{ color: 'var(--accent)' }}>无框选定位 · AI 按 URL 找改动位置</div>
-        )}
-      </div>
+      <section className="cap">
+        <div
+          className="review-shot"
+          aria-label="框选区域预览"
+        >
+          <img
+            ref={imgRef}
+            onLoad={onImgLoad}
+            alt="页面截图"
+            src={`data:image/png;base64,${pendingCapture.screenshotB64}`}
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+          />
+          <div data-testid="review-box" style={boxStyle} aria-hidden="true" />
+        </div>
+        <div className="cap-meta">
+          <div className="r"><span className="k">URL</span><span className="v path">{pendingCapture.url}</span></div>
+          {pendingCapture.viewport.width > 0 && (
+            <div className="r"><span className="k">VIEWPORT</span><span className="v">{pendingCapture.viewport.width}×{pendingCapture.viewport.height}</span></div>
+          )}
+          <div className="r">
+            <span className="k">REGION</span>
+            {box.width > 0 && box.height > 0 ? (
+              <span className="v">{Math.round(box.width)}×{Math.round(box.height)} px</span>
+            ) : (
+              <span className="v" style={{ color: 'var(--accent)' }}>无框选 · AI 按 URL 定位</span>
+            )}
+          </div>
+        </div>
+        <div className="cap-foot">
+          <b>URL</b> 定位仓库里的源文件；<b>截图</b> 给 AI 看你框的区域。两者一并发给 orchestrator。
+        </div>
+      </section>
 
       <label className="field">
-        <span className="field-label">业务需求（可编辑）</span>
+        <span className="label">
+          <span>业务需求 · 可编辑</span>
+          <span className="count">{text.length} / 500</span>
+        </span>
         <textarea
           aria-label="业务需求"
           rows={3}
@@ -187,8 +208,8 @@ export function ReviewCapturePanel({ pendingCapture }: { pendingCapture: Pending
 
       <div className="btn-row">
         <button className="btn btn-secondary" onClick={retake}>← 重新框选</button>
-        <button className="btn btn-accent" onClick={confirm} disabled={!text.trim()}>
-          ✓ 确认提交 →
+        <button className="btn btn-primary" onClick={confirm} disabled={!text.trim()}>
+          确认提交 →
         </button>
       </div>
     </section>
@@ -208,9 +229,15 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
   const reply = (answer: string) => send({
     type: MSG.SUBMIT_ANSWER, requestId: state.id, questionId: q.questionId, answer,
   });
+  const totalOptions = q.options?.length ?? 0;
   return (
     <section>
-      <div className="eyebrow">第 3 步 · 澄清</div>
+      <div className="eyebrow">
+        <span className="ix">STEP 03</span>
+        <span>clarify</span>
+        <span className="rule" />
+        {totalOptions > 0 && <span className="right">{totalOptions} OPTIONS</span>}
+      </div>
       <h3 className="title">{q.question}</h3>
       <p className="help">这是业务问题，不涉及技术细节。</p>
       {q.options && q.options.length > 0 && (
@@ -221,13 +248,13 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
         </div>
       )}
       <label className="field">
-        <span className="field-label">或直接回答</span>
+        <span className="label"><span>或直接回答</span></span>
         <input value={free} onChange={(e) => setFree(e.target.value)} />
       </label>
       <div className="btn-row">
-        <button className="btn btn-secondary" onClick={() => reply('')}>跳过</button>
+        <button className="btn btn-ghost" onClick={() => reply('')}>跳过</button>
         <button className="btn btn-primary" onClick={() => reply(free)} disabled={!free.trim()}>
-          回答
+          回答 →
         </button>
       </div>
       <LogFeed logs={state.logs} compact maxRows={20} />
@@ -245,37 +272,45 @@ export function VariantsPanel({ state }: { state: RequestStateMirror }) {
   });
   return (
     <section>
-      <div className="eyebrow">第 3 步 · 选方向</div>
+      <div className="eyebrow">
+        <span className="ix">STEP 03</span>
+        <span>pick a direction</span>
+        <span className="rule" />
+        <span className="right">{v.variants.length} OPTIONS</span>
+      </div>
       <h3 className="title">你想要哪种感觉？</h3>
-      <p className="help">挑一个意图锚点，AI 会按这种感觉在真实代码里实现。</p>
-      <div style={{ display: 'grid', gap: '0.6rem' }}>
-        {v.variants.map((m: HtmlMockup) => (
-          <article
-            key={m.id}
-            className="card"
-            style={{
-              cursor: 'pointer',
-              borderColor: picked === m.id ? 'var(--accent)' : undefined,
-              boxShadow: picked === m.id ? '0 0 0 3px var(--accent-soft)' : undefined,
-            }}
-            onClick={() => setPicked(m.id)}
-            role="button"
-            aria-pressed={picked === m.id}
-          >
-            <div style={{ fontWeight: 500, marginBottom: '0.4rem' }}>{m.title}</div>
-            <iframe
-              title={m.title}
-              srcDoc={m.html}
-              sandbox=""
-              style={{ width: '100%', height: '120px', border: '1px solid var(--line-soft)', borderRadius: 6 }}
-            />
-          </article>
-        ))}
+      <p className="help">这几套不是最终成品，只是「方向锚点」——挑一个，AI 会按这种感觉在真实代码里实现。</p>
+      <div className="variants">
+        {v.variants.map((m: HtmlMockup) => {
+          const selected = picked === m.id;
+          return (
+            <article
+              key={m.id}
+              className={`variant ${selected ? 'is-selected' : ''}`}
+              onClick={() => setPicked(m.id)}
+              role="button"
+              aria-pressed={selected}
+              aria-label={m.title}
+            >
+              <div className="variant-preview">
+                <iframe
+                  title={m.title}
+                  srcDoc={m.html}
+                  sandbox=""
+                />
+              </div>
+              <div className="variant-meta" aria-hidden="true">
+                <span className="t">{m.title}</span>
+                <span className="tag">{selected ? 'SELECTED' : 'OPTION'}</span>
+              </div>
+            </article>
+          );
+        })}
       </div>
       <div className="btn-row">
-        <button className="btn btn-secondary" onClick={() => submit(null)}>都不像</button>
+        <button className="btn btn-ghost" onClick={() => submit(null)}>都不像</button>
         <button className="btn btn-primary" disabled={!picked} onClick={() => picked && submit(picked)}>
-          用选中的方向继续
+          用选中的方向继续 →
         </button>
       </div>
     </section>
@@ -344,11 +379,18 @@ function PhaseChip({ phase }: { phase: string }) {
 export function StatusPanel({ state }: { state: RequestStateMirror }) {
   return (
     <section>
-      <div className="eyebrow">进行中</div>
+      <div className="eyebrow">
+        <span className="ix">STEP 04</span>
+        <span>AI is working</span>
+        <span className="rule" />
+      </div>
       <h3 className="title">{STATE_LABELS[state.state]}</h3>
+      <p className="help">你不用守在这儿——好了会通知你。下面是实时进度。</p>
       <ProgressTrail state={state.state} />
       {state.branch && (
-        <p className="help">分支 <code>{state.branch}</code></p>
+        <p className="hint">
+          分支 <span className="branch-chip">{state.branch}</span>
+        </p>
       )}
       <LogFeed logs={state.logs} />
     </section>
@@ -362,11 +404,16 @@ export function PreviewPanel({ state }: { state: RequestStateMirror }) {
   if (merged) {
     return (
       <section>
+        <div className="eyebrow">
+          <span className="ix">STEP 06</span>
+          <span>complete</span>
+          <span className="rule" />
+        </div>
         <div className="success-card">
           <span className="tick">✓</span>
           <div>
-            <strong style={{ display: 'block' }}>合并成功</strong>
-            刷新原页面就能看到效果了。
+            <div className="t">合并成功<span aria-hidden="true"> · MERGED → main</span></div>
+            <div className="d">刷新原页面就能看到效果了。</div>
           </div>
         </div>
       </section>
@@ -375,7 +422,15 @@ export function PreviewPanel({ state }: { state: RequestStateMirror }) {
   if (discarded) {
     return (
       <section>
-        <div className="card"><strong>已丢弃</strong></div>
+        <div className="eyebrow">
+          <span className="ix">STATE</span>
+          <span>discarded</span>
+          <span className="rule" />
+        </div>
+        <div className="card" style={{ padding: '14px' }}>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--ink-mute)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>已丢弃</div>
+          <div style={{ marginTop: 6, color: 'var(--ink-soft)' }}>分支已保留，方便事后查看。</div>
+        </div>
       </section>
     );
   }
@@ -388,18 +443,31 @@ export function PreviewPanel({ state }: { state: RequestStateMirror }) {
   };
   return (
     <section>
-      <div className="eyebrow">第 5 步 · 看效果</div>
-      <h3 className="title">预览就绪</h3>
-      <div className="card">
-        <div style={{ fontSize: '0.78rem', color: 'var(--ink-mute)' }}>预览地址</div>
-        <div style={{ wordBreak: 'break-all' }}><code>{state.previewUrl}</code></div>
+      <div className="eyebrow">
+        <span className="ix">STEP 05</span>
+        <span>preview ready</span>
+        <span className="rule" />
       </div>
+      <h3 className="title">预览就绪了——你看下满不满意</h3>
+      <section className="preview">
+        <div className="preview-strip">change request</div>
+        <div className="preview-meta">
+          {state.branch && <div className="branch-chip">{state.branch}</div>}
+          <div className="preview-url">
+            <span className="k">PREVIEW</span><br />
+            <span className="v">{state.previewUrl}</span>
+          </div>
+        </div>
+      </section>
       <div className="btn-row">
-        <button className="btn btn-secondary" onClick={open}>新标签打开</button>
+        <button className="btn btn-secondary" onClick={open}>
+          <span className="ico">↗</span> 新标签页打开
+        </button>
       </div>
+      <p className="help mute" style={{ fontSize: '11.5px' }}>看完觉得 OK 就点「确认合并」，变更进入主分支、上线给所有人；觉得不行就丢弃，分支会留着方便事后翻看。</p>
       <div className="btn-row">
         <button className="btn btn-danger" onClick={discard}>丢弃</button>
-        <button className="btn btn-accent" onClick={merge}>确认合并 →</button>
+        <button className="btn btn-primary" onClick={merge}>确认合并 →</button>
       </div>
     </section>
   );
@@ -409,9 +477,14 @@ export function PreviewPanel({ state }: { state: RequestStateMirror }) {
 export function FailedPanel({ state }: { state: RequestStateMirror }) {
   return (
     <section>
-      <div className="eyebrow">失败</div>
+      <div className="eyebrow">
+        <span className="ix">FAIL</span>
+        <span>halted</span>
+        <span className="rule" />
+      </div>
       <div className="fail-card">
-        <div className="phase">阶段：{state.failPhase ?? '?'} · 原因：{state.failReason ?? '?'}</div>
+        <div className="phase">PHASE · {state.failPhase ?? '?'}</div>
+        <div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>原因：{state.failReason ?? '?'}</div>
       </div>
       <div className="btn-row">
         <button className="btn btn-primary" onClick={() => send({ type: MSG.RETRY, requestId: state.id })}>

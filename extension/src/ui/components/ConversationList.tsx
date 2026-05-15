@@ -42,6 +42,12 @@ function summarize(text: string, max = 30): string {
   return `${trimmed.slice(0, max)}…`;
 }
 
+function hashChunk(id: string): string {
+  const cleaned = id.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+  if (!cleaned) return '0x000000';
+  return `0x${cleaned.slice(0, 6).padStart(6, '0')}`;
+}
+
 interface ConversationListProps {
   mirrors: RequestStateMirror[]; // 已按 lastActivity 降序
   activeId: string | null;
@@ -94,6 +100,7 @@ export function ConversationList({ mirrors, activeId }: ConversationListProps) {
                 }}
               >
                 <span className={`conv-dot ${tone}`} aria-hidden="true" />
+                <span className="conv-id" aria-hidden="true">{hashChunk(m.id)}</span>
                 <span className="conv-summary">{summarize(m.requestText)}</span>
                 <span className={`conv-chip ${tone}`}>{STATE_CHIP_LABEL[m.state]}</span>
                 <button
