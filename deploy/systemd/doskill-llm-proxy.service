@@ -1,0 +1,18 @@
+[Unit]
+Description=doskill LiteLLM proxy (Anthropic / OpenAI compatible)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/doskill/.env
+WorkingDirectory=/opt/doskill/llm-proxy
+ExecStart=/opt/doskill/llm-proxy/venv/bin/litellm \
+  --config /opt/doskill/llm-proxy/config.yml \
+  --port ${LLM_PROXY_PORT}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

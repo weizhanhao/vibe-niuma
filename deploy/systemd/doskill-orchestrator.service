@@ -1,0 +1,19 @@
+[Unit]
+Description=doskill Orchestrator (FastAPI)
+After=network-online.target docker.service doskill-llm-proxy.service
+Wants=network-online.target doskill-llm-proxy.service
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/doskill/.env
+WorkingDirectory=/opt/doskill/orchestrator
+ExecStart=/opt/doskill/orchestrator/venv/bin/uvicorn \
+  orchestrator.main:app \
+  --host 0.0.0.0 \
+  --port ${ORCHESTRATOR_PORT}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

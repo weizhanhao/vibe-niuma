@@ -1,0 +1,33 @@
+# LiteLLM proxy 配置样板。复制成 config.yml 填好真实 key。
+# 用法：litellm --config config.yml --port ${LLM_PROXY_PORT}
+#
+# 它对外说 OpenAI-compatible 协议（也支持 Anthropic-compatible 路径），
+# 把请求路由到下面任意一个真实 provider。BrainstormingSkill 默认走 OpenAI 协议。
+
+model_list:
+  # —— DeepSeek —————————————————————————————————————————————————
+  - model_name: deepseek-chat
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # —— 通义千问 ————————————————————————————————————————————————
+  - model_name: qwen-max
+    litellm_params:
+      model: dashscope/qwen-max
+      api_key: os.environ/DASHSCOPE_API_KEY
+
+  - model_name: qwen-vl-plus              # 视觉模型，给 BrainstormingSkill 看截图
+    litellm_params:
+      model: dashscope/qwen-vl-plus
+      api_key: os.environ/DASHSCOPE_API_KEY
+
+  # —— Anthropic（如果有可用 key）—————————————————————————————————
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-latest
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  drop_params: true     # 去掉模型不认识的参数，免得 claude-code 传 anthropic 专属参数翻车
+  set_verbose: false

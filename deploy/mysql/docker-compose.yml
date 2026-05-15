@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: doskill-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-demopass}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - doskill-mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-demopass}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  doskill-mysql-data: {}
