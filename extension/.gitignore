@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.crxjs/
+.vite/
+*.log

@@ -1,0 +1,264 @@
+// 所有 panel 组件 + ProgressTrail。Plan 4 原计划一文件一 panel，这里合并以加速；
+// 各 panel 仍是独立 React 组件、可分别 import，未来拆分容易。
+import React, { useEffect, useState } from 'react';
+import { MSG, type Message } from '../lib/messages';
+import { getBaseUrl, setBaseUrl } from '../background/orchestrator-client';
+import type { ChangeRequestState, HtmlMockup, RequestStateMirror } from '../lib/types';
+
+const FSM_ORDER: ChangeRequestState[] = [
+  'created', 'clarifying', 'located', 'coding', 'building', 'preview-ready',
+];
+const STATE_LABELS: Record<ChangeRequestState, string> = {
+  'created': '排队中',
+  'clarifying': '澄清中',
+  'located': '定位完成',
+  'coding': 'AI 改代码中',
+  'building': '构建预览',
+  'preview-ready': '预览就绪',
+  'merged': '已合并',
+  'failed': '失败',
+  'expired': '已过期',
+  'discarded': '已丢弃',
+};
+
+const send = (msg: Message) => chrome.runtime.sendMessage(msg);
+
+// ── ProgressTrail ───────────────────────────────────────────────────
+export function ProgressTrail({ state }: { state: ChangeRequestState }) {
+  const idx = FSM_ORDER.indexOf(state);
+  return (
+    <div className="trail" aria-label="进度">
+      {FSM_ORDER.map((s, i) => {
+        let cls = '';
+        if (idx === -1) cls = '';
+        else if (i < idx) cls = 'done';
+        else if (i === idx) cls = 'active';
+        return (
+          <div key={s} className={`step ${cls}`}>
+            <span className="dot" />
+            <span>{STATE_LABELS[s]}</span>
+            <span className="meta">{i < idx ? '✓' : i === idx ? '…' : ''}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── CapturePanel ────────────────────────────────────────────────────
+export function CapturePanel() {
+  const [text, setText] = useState('');
+  const start = () => send({ type: MSG.UI_START_CAPTURE, requestText: text });
+  return (
+    <section>
+      <div className="eyebrow">第 1 步</div>
+      <h3 className="title">想改这个页面的哪里？</h3>
+      <p className="help">用自己的话写下你想看到的变化。我们不在意「怎么实现」。</p>
+      <label className="field">
+        <span className="field-label">业务需求</span>
+        <textarea
+          aria-label="业务需求"
+          rows={4}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </label>
+      <div className="btn-row">
+        <button className="btn btn-primary" onClick={start} disabled={!text.trim()}>
+          开始框选区域
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ── ClarifyPanel ────────────────────────────────────────────────────
+export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
+  const q = state.pendingQuestion;
+  const [free, setFree] = useState('');
+  if (!q) return <p className="help">等待澄清问题…</p>;
+  const reply = (answer: string) => send({
+    type: MSG.SUBMIT_ANSWER, requestId: state.id, questionId: q.questionId, answer,
+  });
+  return (
+    <section>
+      <div className="eyebrow">第 3 步 · 澄清</div>
+      <h3 className="title">{q.question}</h3>
+      <p className="help">这是业务问题，不涉及技术细节。</p>
+      {q.options && q.options.length > 0 && (
+        <div className="option-row">
+          {q.options.map((opt) => (
+            <button key={opt} className="option" onClick={() => reply(opt)}>{opt}</button>
+          ))}
+        </div>
+      )}
+      <label className="field">
+        <span className="field-label">或直接回答</span>
+        <input value={free} onChange={(e) => setFree(e.target.value)} />
+      </label>
+      <div className="btn-row">
+        <button className="btn btn-secondary" onClick={() => reply('')}>跳过</button>
+        <button className="btn btn-primary" onClick={() => reply(free)} disabled={!free.trim()}>
+          回答
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ── VariantsPanel ───────────────────────────────────────────────────
+export function VariantsPanel({ state }: { state: RequestStateMirror }) {
+  const v = state.pendingVariants;
+  const [picked, setPicked] = useState<string | null>(null);
+  if (!v) return null;
+  const submit = (id: string | null) => send({
+    type: MSG.SUBMIT_ANSWER, requestId: state.id, questionId: v.questionId, answer: id ?? '',
+  });
+  return (
+    <section>
+      <div className="eyebrow">第 3 步 · 选方向</div>
+      <h3 className="title">你想要哪种感觉？</h3>
+      <p className="help">挑一个意图锚点，AI 会按这种感觉在真实代码里实现。</p>
+      <div style={{ display: 'grid', gap: '0.6rem' }}>
+        {v.variants.map((m: HtmlMockup) => (
+          <article
+            key={m.id}
+            className="card"
+            style={{
+              cursor: 'pointer',
+              borderColor: picked === m.id ? 'var(--accent)' : undefined,
+              boxShadow: picked === m.id ? '0 0 0 3px var(--accent-soft)' : undefined,
+            }}
+            onClick={() => setPicked(m.id)}
+            role="button"
+            aria-pressed={picked === m.id}
+          >
+            <div style={{ fontWeight: 500, marginBottom: '0.4rem' }}>{m.title}</div>
+            <iframe
+              title={m.title}
+              srcDoc={m.html}
+              sandbox=""
+              style={{ width: '100%', height: '120px', border: '1px solid var(--line-soft)', borderRadius: 6 }}
+            />
+          </article>
+        ))}
+      </div>
+      <div className="btn-row">
+        <button className="btn btn-secondary" onClick={() => submit(null)}>都不像</button>
+        <button className="btn btn-primary" disabled={!picked} onClick={() => picked && submit(picked)}>
+          用选中的方向继续
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ── StatusPanel ─────────────────────────────────────────────────────
+export function StatusPanel({ state }: { state: RequestStateMirror }) {
+  return (
+    <section>
+      <div className="eyebrow">进行中</div>
+      <h3 className="title">{STATE_LABELS[state.state]}</h3>
+      <ProgressTrail state={state.state} />
+      {state.branch && (
+        <p className="help">分支 <code>{state.branch}</code></p>
+      )}
+    </section>
+  );
+}
+
+// ── PreviewPanel ────────────────────────────────────────────────────
+export function PreviewPanel({ state }: { state: RequestStateMirror }) {
+  const merged = state.state === 'merged';
+  const discarded = state.state === 'discarded';
+  if (merged) {
+    return (
+      <section>
+        <div className="success-card">
+          <span className="tick">✓</span>
+          <div>
+            <strong style={{ display: 'block' }}>合并成功</strong>
+            刷新原页面就能看到效果了。
+          </div>
+        </div>
+      </section>
+    );
+  }
+  if (discarded) {
+    return (
+      <section>
+        <div className="card"><strong>已丢弃</strong></div>
+      </section>
+    );
+  }
+  const open = () => state.previewUrl && chrome.tabs.create({ url: state.previewUrl });
+  const merge = () => send({ type: MSG.MERGE, requestId: state.id });
+  const discard = () => {
+    if (confirm('确定丢弃？分支会保留方便事后查看。')) {
+      send({ type: MSG.DISCARD, requestId: state.id });
+    }
+  };
+  return (
+    <section>
+      <div className="eyebrow">第 5 步 · 看效果</div>
+      <h3 className="title">预览就绪</h3>
+      <div className="card">
+        <div style={{ fontSize: '0.78rem', color: 'var(--ink-mute)' }}>预览地址</div>
+        <div style={{ wordBreak: 'break-all' }}><code>{state.previewUrl}</code></div>
+      </div>
+      <div className="btn-row">
+        <button className="btn btn-secondary" onClick={open}>新标签打开</button>
+      </div>
+      <div className="btn-row">
+        <button className="btn btn-danger" onClick={discard}>丢弃</button>
+        <button className="btn btn-accent" onClick={merge}>确认合并 →</button>
+      </div>
+    </section>
+  );
+}
+
+// ── FailedPanel ─────────────────────────────────────────────────────
+export function FailedPanel({ state }: { state: RequestStateMirror }) {
+  return (
+    <section>
+      <div className="eyebrow">失败</div>
+      <div className="fail-card">
+        <div className="phase">阶段：{state.failPhase ?? '?'} · 原因：{state.failReason ?? '?'}</div>
+      </div>
+      <div className="btn-row">
+        <button className="btn btn-primary" onClick={() => send({ type: MSG.RETRY, requestId: state.id })}>
+          重试
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ── SettingsPanel ───────────────────────────────────────────────────
+export function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => { getBaseUrl().then(setUrl); }, []);
+  const save = async () => {
+    await setBaseUrl(url.trim() || 'http://localhost:9000');
+    onClose();
+  };
+  return (
+    <section>
+      <div className="eyebrow">设置</div>
+      <h3 className="title">Orchestrator 地址</h3>
+      <p className="help">填 ECS 地址或本地 <code>http://localhost:9000</code>。</p>
+      <label className="field">
+        <span className="field-label">Base URL</span>
+        <input
+          aria-label="Orchestrator Base URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </label>
+      <div className="btn-row">
+        <button className="btn btn-secondary" onClick={onClose}>取消</button>
+        <button className="btn btn-primary" onClick={save}>保存</button>
+      </div>
+    </section>
+  );
+}

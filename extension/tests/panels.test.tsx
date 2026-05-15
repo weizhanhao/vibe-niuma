@@ -1,0 +1,140 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import React from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  CapturePanel, ClarifyPanel, FailedPanel, PreviewPanel, ProgressTrail,
+  SettingsPanel, StatusPanel, VariantsPanel,
+} from '../src/ui/panels';
+import type { RequestStateMirror } from '../src/lib/types';
+
+const base: RequestStateMirror = {
+  id: 'r1', state: 'clarifying', url: 'http://x', branch: null, previewUrl: null,
+  failPhase: null, failReason: null, pendingQuestion: null, pendingVariants: null,
+};
+
+describe('CapturePanel', () => {
+  it('button is disabled until text is entered', () => {
+    render(<CapturePanel />);
+    const btn = screen.getByRole('button', { name: /开始框选/ });
+    expect(btn).toBeDisabled();
+    const ta = screen.getByLabelText('业务需求');
+    fireEvent.change(ta, { target: { value: '改个颜色' } });
+    expect(btn).not.toBeDisabled();
+  });
+
+  it('clicking start sends UI_START_CAPTURE with text', () => {
+    const sent: unknown[] = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
+      sent.push(m);
+      return Promise.resolve();
+    });
+    render(<CapturePanel />);
+    fireEvent.change(screen.getByLabelText('业务需求'), { target: { value: '改个颜色' } });
+    fireEvent.click(screen.getByRole('button', { name: /开始框选/ }));
+    expect(sent[0]).toEqual({ type: 'UI_START_CAPTURE', requestText: '改个颜色' });
+  });
+});
+
+describe('ClarifyPanel', () => {
+  it('renders question and option buttons', () => {
+    const state = { ...base, pendingQuestion: { questionId: 'q1', question: '想要哪种？', options: ['A', 'B'] } };
+    render(<ClarifyPanel state={state} />);
+    expect(screen.getByText('想要哪种？')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'A' })).toBeInTheDocument();
+  });
+
+  it('skip sends empty answer', () => {
+    const sent: unknown[] = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
+      sent.push(m);
+      return Promise.resolve();
+    });
+    const state = { ...base, pendingQuestion: { questionId: 'q1', question: '?', options: null } };
+    render(<ClarifyPanel state={state} />);
+    fireEvent.click(screen.getByRole('button', { name: '跳过' }));
+    expect(sent[0]).toMatchObject({ type: 'SUBMIT_ANSWER', questionId: 'q1', answer: '' });
+  });
+});
+
+describe('VariantsPanel', () => {
+  it('disabled until a card is picked, then submits selected id', () => {
+    const sent: unknown[] = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
+      sent.push(m);
+      return Promise.resolve();
+    });
+    const state = {
+      ...base,
+      pendingVariants: { questionId: 'q1', variants: [
+        { id: 'a', title: 'A', html: '<a/>' }, { id: 'b', title: 'B', html: '<b/>' },
+      ] },
+    };
+    render(<VariantsPanel state={state} />);
+    const go = screen.getByRole('button', { name: /用选中的方向/ });
+    expect(go).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'A' }));
+    expect(go).not.toBeDisabled();
+    fireEvent.click(go);
+    expect(sent[0]).toMatchObject({ answer: 'a' });
+  });
+});
+
+describe('ProgressTrail', () => {
+  it('marks current and previous phases', () => {
+    const { container } = render(<ProgressTrail state="coding" />);
+    const dones = container.querySelectorAll('.step.done');
+    const actives = container.querySelectorAll('.step.active');
+    expect(dones.length).toBe(3);
+    expect(actives.length).toBe(1);
+  });
+});
+
+describe('StatusPanel', () => {
+  it('shows phase label as heading and branch', () => {
+    render(<StatusPanel state={{ ...base, state: 'building', branch: 'cr/abc' }} />);
+    expect(screen.getByRole('heading', { name: '构建预览' })).toBeInTheDocument();
+    expect(screen.getByText('cr/abc')).toBeInTheDocument();
+  });
+});
+
+describe('PreviewPanel', () => {
+  it('shows merge + discard buttons in preview-ready state', () => {
+    const state = { ...base, state: 'preview-ready' as const, previewUrl: 'http://x:5101' };
+    render(<PreviewPanel state={state} />);
+    expect(screen.getByRole('button', { name: /确认合并/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /丢弃/ })).toBeInTheDocument();
+  });
+
+  it('shows success card when merged', () => {
+    render(<PreviewPanel state={{ ...base, state: 'merged' }} />);
+    expect(screen.getByText('合并成功')).toBeInTheDocument();
+  });
+});
+
+describe('FailedPanel', () => {
+  it('shows phase + reason and retry button', () => {
+    const sent: unknown[] = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
+      sent.push(m);
+      return Promise.resolve();
+    });
+    const state = { ...base, state: 'failed' as const, failPhase: 'coding', failReason: 'no-changes' };
+    render(<FailedPanel state={state} />);
+    expect(screen.getByText(/coding/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(sent[0]).toMatchObject({ type: 'RETRY' });
+  });
+});
+
+describe('SettingsPanel', () => {
+  it('saves base URL to storage', async () => {
+    const onClose = vi.fn();
+    render(<SettingsPanel onClose={onClose} />);
+    const input = await screen.findByLabelText('Orchestrator Base URL');
+    fireEvent.change(input, { target: { value: 'http://ecs.example:9000' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(chrome.storage.local.set).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+});
