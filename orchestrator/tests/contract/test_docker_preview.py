@@ -58,6 +58,11 @@ def test_release_port_is_idempotent():
 @pytest.mark.docker
 @pytest.mark.skipif(not _docker_available(), reason="需要 Docker daemon")
 async def test_serve_and_teardown_real_container(demo_repo_copy):
+    # Plan 8 Task 8：demo 默认带 compose 文件，但本地 dev 没有 doskill-net 外部网络。
+    # 这个 contract 测试只覆盖单 Dockerfile 老路径 —— 干掉 compose 文件落回老路径。
+    compose = demo_repo_copy / "docker-compose.preview.yml"
+    if compose.exists():
+        compose.unlink()
     a = DockerPreviewAdapter(
         port_min=9401, port_max=9420, preview_host="localhost", internal_port=5173,
     )

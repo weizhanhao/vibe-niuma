@@ -1,0 +1,32 @@
+# Plan 8 Task 8 范例：业务员的预览整组（前端 + 后端 + 加入主网络）
+#
+# Orchestrator 启动时：
+#   docker compose -p doskill-preview-<id> --project-directory . \
+#     -f docker-compose.preview.yml up -d --build
+# 注入 env：DOSKILL_FRONTEND_PORT=<分配的 host 端口>
+#
+# 业务员实际访问：http://<preview_host>:${DOSKILL_FRONTEND_PORT}
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "${DOSKILL_FRONTEND_PORT}:5173"
+    environment:
+      VITE_API_URL: http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - default
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: mysql+pymysql://root:demopass@doskill-mysql:3306/demo
+    networks:
+      - default
+      - doskill-net   # 共享 mysql 容器在这张网络里
+
+networks:
+  default:
+  doskill-net:
+    external: true

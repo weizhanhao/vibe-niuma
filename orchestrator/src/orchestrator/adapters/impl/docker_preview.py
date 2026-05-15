@@ -10,10 +10,12 @@ build / run / health-check 都用 subprocess 调 `docker` CLI，包成 asyncio.t
 from __future__ import annotations
 
 import asyncio
+import os
 import socket
 import subprocess
 import time
 import uuid
+from pathlib import Path
 from urllib.request import Request, urlopen
 
 from orchestrator.adapters.types import LogSink, PreviewInstance
@@ -22,6 +24,10 @@ from orchestrator.adapters.types import LogSink, PreviewInstance
 _DOCKER_BUILD_TIMEOUT = 300
 _DOCKER_RUN_TIMEOUT = 60
 _HEALTH_TIMEOUT = 60
+
+# Plan 8 Task 8: 项目根有 docker-compose.preview.yml 时走 compose 模式
+_COMPOSE_FILE = "docker-compose.preview.yml"
+_COMPOSE_HANDLE_PREFIX = "doskill-preview-"
 
 
 class DockerPreviewAdapter:
@@ -58,7 +64,16 @@ class DockerPreviewAdapter:
     async def serve(
         self, repo_path: str, branch: str, *, log: LogSink | None = None
     ) -> PreviewInstance:
-        """构建 + 起容器；Phase F 把 docker build / run 输出实时推到 log。"""
+        """构建 + 起容器；Phase F 把 docker build / run 输出实时推到 log。
+        Plan 8 Task 8：项目根有 docker-compose.preview.yml → 走 compose 模式；
+        否则走老的「单 Dockerfile」路径，向后兼容。"""
+        if (Path(repo_path) / _COMPOSE_FILE).exists():
+            return await self._serve_compose(repo_path, branch, log=log)
+        return await self._serve_single(repo_path, branch, log=log)
+
+    async def _serve_single(
+        self, repo_path: str, branch: str, *, log: LogSink | None = None
+    ) -> PreviewInstance:
         port = self._allocate_port()
         preview_id = uuid.uuid4().hex[:12]
         image = f"doskill-preview-{preview_id}"
@@ -110,18 +125,67 @@ class DockerPreviewAdapter:
 
         return PreviewInstance(preview_id=preview_id, url=url, handle=container_id)
 
+    # ── compose mode（Plan 8 Task 8）─────────────────────────────────
+    async def _serve_compose(
+        self, repo_path: str, branch: str, *, log: LogSink | None = None
+    ) -> PreviewInstance:
+        """项目根含 docker-compose.preview.yml → 启动整组 service。
+        handle = compose project name = `doskill-preview-<id>`，teardown 用
+        `docker compose -p <name> down -v`。注入 env DOSKILL_FRONTEND_PORT
+        让 compose 文件的 `${DOSKILL_FRONTEND_PORT}` 替换成分配的 host 端口。"""
+        port = self._allocate_port()
+        preview_id = uuid.uuid4().hex[:12]
+        project_name = f"{_COMPOSE_HANDLE_PREFIX}{preview_id}"
+        env = {**os.environ, "DOSKILL_FRONTEND_PORT": str(port)}
+
+        if log is not None:
+            await log("▸ docker compose up...")
+        rc, out = await self._run_streaming(
+            [
+                "docker", "compose",
+                "-p", project_name,
+                "--project-directory", repo_path,
+                "-f", str(Path(repo_path) / _COMPOSE_FILE),
+                "up", "-d", "--build",
+            ],
+            cwd=repo_path,
+            timeout=_DOCKER_BUILD_TIMEOUT,
+            log=log,
+            env=env,
+        )
+        if rc != 0:
+            self._release_port(project_name)
+            raise RuntimeError(f"docker compose up 失败 (rc={rc})\n{out[-2000:]}")
+        self._used_ports[project_name] = port
+
+        url = f"http://{self._preview_host}:{port}"
+        if log is not None:
+            await log(f"▸ health check (up to {_HEALTH_TIMEOUT}s)...")
+        ok = await asyncio.to_thread(self._wait_http, url, _HEALTH_TIMEOUT)
+        if not ok:
+            await self.teardown(PreviewInstance(preview_id=preview_id, url=url, handle=project_name))
+            raise RuntimeError(f"compose 预览在 {_HEALTH_TIMEOUT}s 内未变 healthy: {url}")
+        return PreviewInstance(preview_id=preview_id, url=url, handle=project_name)
+
     # ── teardown ────────────────────────────────────────────────────
     async def teardown(self, instance: PreviewInstance) -> None:
         handle = instance.handle
-        # best-effort：错误吞掉、幂等
-        await asyncio.to_thread(
-            self._run, ["docker", "stop", handle],
-            cwd=None, timeout=30, check=False,
-        )
-        await asyncio.to_thread(
-            self._run, ["docker", "rm", "-f", handle],
-            cwd=None, timeout=30, check=False,
-        )
+        if handle.startswith(_COMPOSE_HANDLE_PREFIX):
+            # compose 路径：down 整组（含网络 + 卷）
+            await self._run_streaming(
+                ["docker", "compose", "-p", handle, "down", "-v"],
+                cwd=None, timeout=60, log=None,
+            )
+        else:
+            # 单 Dockerfile 路径：stop + rm
+            await asyncio.to_thread(
+                self._run, ["docker", "stop", handle],
+                cwd=None, timeout=30, check=False,
+            )
+            await asyncio.to_thread(
+                self._run, ["docker", "rm", "-f", handle],
+                cwd=None, timeout=30, check=False,
+            )
         self._release_port(handle)
 
     # ── helpers ─────────────────────────────────────────────────────
@@ -143,18 +207,21 @@ class DockerPreviewAdapter:
     @staticmethod
     async def _run_streaming(
         cmd: list[str], *, cwd: str | None, timeout: int, log: LogSink | None,
+        env: dict[str, str] | None = None,
     ) -> tuple[int, str]:
         """async subprocess + 按行 stream；返回 (returncode, 合并 stdout+stderr 文本)。
 
         - log 非 None 时每行 await log(line)（已截至 200 字符上限由 publish_log 把关）
         - timeout 是整体上限；超了 kill 后回填 124
         - FileNotFoundError → 127（docker 没装的兜底）
+        - env：compose 模式注入 DOSKILL_FRONTEND_PORT；老路径传 None 沿用父环境
         """
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd, cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                env=env,
             )
         except FileNotFoundError as exc:
             return 127, f"找不到命令: {exc}"
