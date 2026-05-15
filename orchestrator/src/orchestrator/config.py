@@ -22,5 +22,9 @@ class Settings(BaseSettings):
     dev_runner_timeout_seconds: int = 900
     preview_host: str = "localhost"             # 拼预览 URL 用：ECS 上换公网地址
 
+    # —— repo /init ——
+    repo_init_timeout_seconds: int = 600        # 扫仓库 → 生成 CLAUDE.md
+    repo_init_doc_filename: str = "AGENTS.md"   # 仓库根目录的项目知识文件（agents.md 跨厂商约定）
+
 
 settings = Settings()

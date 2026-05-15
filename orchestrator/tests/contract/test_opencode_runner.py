@@ -57,6 +57,12 @@ def _exec(captured, **kw):
 
 async def test_run_invokes_opencode_with_provider_envs(tmp_repo, monkeypatch):
     captured: dict = {}
+    # 真实部署中 opencode_runner 会优先用 os.environ 的真 provider key（systemd
+    # EnvironmentFile 注入），缺时回退 self._api_key。本测试想验「缺时回退」分支，
+    # 所以显式清掉 dev 机器 / CI 上的真 key。
+    for k in ("OPENAI_API_KEY", "DEEPSEEK_API_KEY",
+              "ANTHROPIC_API_KEY", "DASHSCOPE_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr("asyncio.create_subprocess_exec",
                         _exec(captured, returncode=0, stdout=b"ok"))
     await OpenCodeDevRunner(api_key="sk-x", model="deepseek-chat").run(

@@ -25,6 +25,7 @@ from orchestrator.events import EventBus
 from orchestrator.git_manager import GitConflictError, GitManager
 from orchestrator.pipeline import Pipeline
 from orchestrator.quota import QuotaManager
+from orchestrator.repo_init import RepoInitializer, RepoInitStatus
 from orchestrator.repository import ChangeRequestRepository
 from orchestrator.schemas import AnswerIn, ChangeRequestOut, CreateChangeRequestIn
 from orchestrator.states import TERMINAL, State
@@ -42,6 +43,8 @@ class AppState:
         self.session_factory = None
         # pipeline_factory 默认是 _build_real_pipeline；测试可注入 fake 实现
         self.pipeline_factory = self._build_real_pipeline
+        # 项目级 /init —— 由 lifespan 装填；测试场景留 None
+        self.repo_initializer: RepoInitializer | None = None
 
     def build_pipeline(self, db: Session) -> Pipeline:
         return self.pipeline_factory(db)
@@ -58,7 +61,10 @@ class AppState:
             git_manager=GitManager(settings.demo_repo_path),
             event_bus=self.event_bus,
             quota=self.quota,
-            interaction_skill=BrainstormingSkill(LLMClient()),
+            interaction_skill=BrainstormingSkill(
+                LLMClient(),
+                repo_initializer=self.repo_initializer,
+            ),
             stack_adapter=ReactViteStackAdapter(repo_path=settings.demo_repo_path),
             dev_runner=dev_runner,
             preview_adapter=DockerPreviewAdapter(
@@ -91,6 +97,18 @@ async def lifespan(app: FastAPI):
             )
     finally:
         db.close()
+
+    # 项目级 /init：异步触发，缺 AGENTS.md 就跑；存在则立刻 ready
+    app_state.repo_initializer = RepoInitializer(
+        repo_path=settings.demo_repo_path,
+        dev_runner=settings.dev_runner,
+        dev_model=settings.dev_model,
+        timeout_seconds=settings.repo_init_timeout_seconds,
+        doc_filename=settings.repo_init_doc_filename,
+    )
+    init_task = asyncio.create_task(app_state.repo_initializer.ensure(force=False))
+    app_state.tasks.add(init_task)
+    init_task.add_done_callback(app_state.tasks.discard)
 
     # 启动闲置回收后台循环；reaper 用真实 DockerPreviewAdapter 拆容器
     reaper_preview = DockerPreviewAdapter(
@@ -128,6 +146,37 @@ def _spawn(coro) -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/repo/status")
+def repo_status() -> dict:
+    """/init 状态：扩展用来显示「正在理解项目…」横幅。"""
+    init = app_state.repo_initializer
+    if init is None:
+        return {
+            "status": RepoInitStatus.NOT_INITIALIZED,
+            "error": None,
+            "completed_at": None,
+            "doc_path": None,
+            "doc_exists": False,
+        }
+    return {
+        "status": init.status,
+        "error": init.error,
+        "completed_at": init.completed_at.isoformat() if init.completed_at else None,
+        "doc_path": str(init.doc_path),
+        "doc_exists": init.doc_path.exists(),
+    }
+
+
+@app.post("/repo/init")
+async def repo_init_force() -> dict[str, str]:
+    """强制重 init（手编了 AGENTS.md 想让 AI 重写时调）。立返 initializing。"""
+    init = app_state.repo_initializer
+    if init is None:
+        raise HTTPException(status_code=503, detail="repo initializer 未就绪")
+    _spawn(init.ensure(force=True))
+    return {"status": RepoInitStatus.INITIALIZING}
 
 
 @app.post("/change-requests", response_model=ChangeRequestOut)

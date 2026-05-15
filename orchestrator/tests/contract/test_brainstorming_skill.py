@@ -123,7 +123,7 @@ async def test_clarify_heavy_path_reject_all_returns_no_mockup(monkeypatch):
 
 def test_plan_prompt_contains_tech_constraint():
     skill = BrainstormingSkill(LLMClient(base_url="x", api_key="k", default_model="m"))
-    text = skill._build_plan_prompt(_raw())
+    text = skill._build_plan_prompt(_raw(), repo_doc="")
     assert TECH_CONSTRAINT in text
     assert "只能问业务" in text
     assert "禁止涉及任何技术" in text
