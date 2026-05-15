@@ -99,6 +99,8 @@ function setupFetchMock(opts: { getReturnsVersion?: number; putReturnsVersion?: 
 
 beforeEach(async () => {
   await chrome.storage.local.clear();
+  // Plan 7：bypass DeploymentAssistantPanel，让 Plan 6 SetupWizardPanel 在 unconfigured 时仍能命中
+  await chrome.storage.local.set({ doskill_deployment_completed_at: 1 });
 });
 
 afterEach(() => {

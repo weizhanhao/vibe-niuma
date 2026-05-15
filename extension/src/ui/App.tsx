@@ -14,10 +14,13 @@ import {
   CapturePanel, ClarifyPanel, FailedPanel, PreviewPanel, ReviewCapturePanel,
   StatusPanel, VariantsPanel,
 } from './panels';
+import { DeploymentAssistantPanel } from './panels/DeploymentAssistantPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { SetupWizardPanel } from './panels/SetupWizardPanel';
 import type { ChangeRequestState } from '../lib/types';
 import { loadTheme, readThemeSync, saveTheme, type Theme } from '../lib/theme';
+
+const ASSISTANT_COMPLETED_KEY = 'doskill_deployment_completed_at';
 
 // loading sentinel：避免在 cfg 还没拉到时短暂渲染 wizard 闪一下。
 type ConfigState = 'loading' | Config | null;
@@ -93,26 +96,37 @@ function useThemeToggle(): [Theme, () => void] {
 }
 
 export function App() {
-  // 配置状态：首屏 loading，loadConfig 完成后变 Config | null。
-  // chrome.storage.onChanged 监听 doskill_config_v2 → 重新 loadConfig，让 wizard / 主面板切换立即生效。
   const [config, setConfig] = useState<ConfigState>('loading');
+  const [assistantCompleted, setAssistantCompleted] = useState<number | null | 'loading'>('loading');
 
   useEffect(() => {
     let mounted = true;
-    loadConfig().then((cfg) => {
-      if (mounted) setConfig(cfg);
-    });
+    loadConfig().then((cfg) => { if (mounted) setConfig(cfg); });
 
-    // chrome.storage.onChanged 在 jsdom 测试里可能不存在；optional chain 自动 noop
+    // 拉一次 deployment_completed_at —— Plan 7 退场判据
+    if (chrome?.storage?.local?.get) {
+      void (async () => {
+        const out = (await chrome.storage.local.get([ASSISTANT_COMPLETED_KEY])) as Record<string, unknown>;
+        if (!mounted) return;
+        const v = out[ASSISTANT_COMPLETED_KEY];
+        setAssistantCompleted(typeof v === 'number' ? v : null);
+      })();
+    } else {
+      setAssistantCompleted(null);
+    }
+
     const listener = (
       changes: Record<string, chrome.storage.StorageChange>,
       area: string,
     ) => {
       if (area !== 'local') return;
-      if (!(CONFIG_STORAGE_KEY in changes)) return;
-      loadConfig().then((cfg) => {
-        if (mounted) setConfig(cfg);
-      });
+      if (CONFIG_STORAGE_KEY in changes) {
+        loadConfig().then((cfg) => { if (mounted) setConfig(cfg); });
+      }
+      if (ASSISTANT_COMPLETED_KEY in changes) {
+        const v = changes[ASSISTANT_COMPLETED_KEY].newValue;
+        if (mounted) setAssistantCompleted(typeof v === 'number' ? v : null);
+      }
     };
     chrome.storage?.onChanged?.addListener?.(listener);
     return () => {
@@ -121,7 +135,7 @@ export function App() {
     };
   }, []);
 
-  if (config === 'loading') {
+  if (config === 'loading' || assistantCompleted === 'loading') {
     return (
       <div className="app">
         <div className="app-body"><p className="help">加载中…</p></div>
@@ -129,8 +143,16 @@ export function App() {
     );
   }
 
-  // 未配置 → 强制 wizard。即便父组件想 toggle settings 也不允许（设置面板要先有 token 才能拉服务端）。
+  // 未配置 + 助手未跑完 → 走 Plan 7 部署助手；
+  // 未配置 + 助手已跑完（异常状态） → 兜底走 Plan 6 的 SetupWizardPanel
   if (!isConfigSufficient(config)) {
+    if (assistantCompleted === null) {
+      return (
+        <div className="app">
+          <DeploymentAssistantPanel onComplete={() => { void loadConfig().then(setConfig); }} />
+        </div>
+      );
+    }
     return (
       <div className="app">
         <SetupWizardPanel onComplete={() => { void loadConfig().then(setConfig); }} />

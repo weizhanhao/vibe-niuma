@@ -14,6 +14,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/ui/App';
 
 const STORAGE_KEY = 'doskill_config_v2';
+// Plan 7：路由优先级 = DeploymentAssistant > SetupWizard。这些测试用例还在测 Plan 6 的
+// SetupWizardPanel 行为 —— 预置 deployment_completed_at 让 App 跳过 Plan 7 助手走兜底。
+const ASSISTANT_COMPLETED_KEY = 'doskill_deployment_completed_at';
+
+beforeEach(async () => {
+  await chrome.storage.local.set({ [ASSISTANT_COMPLETED_KEY]: 1 });
+});
 const VALID_CONFIG = {
   orchestratorUrl: 'http://example.com:9000',
   adminToken: 'admin-token-1234567890abcdef',
@@ -30,6 +37,8 @@ const VALID_CONFIG = {
 async function seed(cfg: unknown): Promise<void> {
   if (cfg === null || cfg === undefined) {
     await chrome.storage.local.clear();
+    // 重新打 completed 标，保持 Plan 7 助手 bypass
+    await chrome.storage.local.set({ [ASSISTANT_COMPLETED_KEY]: 1 });
     return;
   }
   await chrome.storage.local.set({ [STORAGE_KEY]: cfg });
