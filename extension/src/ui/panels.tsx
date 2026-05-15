@@ -1,8 +1,9 @@
 // 所有 panel 组件 + ProgressTrail。Plan 4 原计划一文件一 panel，这里合并以加速；
 // 各 panel 仍是独立 React 组件、可分别 import，未来拆分容易。
+// Plan 6 Task 10：老的 SettingsPanel（只存 baseUrl 到旧 storage key）已删除，
+// 新版在 panels/SettingsPanel.tsx；这里只保留 capture/clarify/preview/etc.
 import React, { useEffect, useRef, useState } from 'react';
 import { MSG, type Message } from '../lib/messages';
-import { getBaseUrl, setBaseUrl } from '../background/orchestrator-client';
 import type {
   ChangeRequestState, HtmlMockup, LogEntry, PendingCapture, RequestStateMirror,
 } from '../lib/types';
@@ -421,31 +422,4 @@ export function FailedPanel({ state }: { state: RequestStateMirror }) {
   );
 }
 
-// ── SettingsPanel ───────────────────────────────────────────────────
-export function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const [url, setUrl] = useState('');
-  useEffect(() => { getBaseUrl().then(setUrl); }, []);
-  const save = async () => {
-    await setBaseUrl(url.trim() || 'http://localhost:9000');
-    onClose();
-  };
-  return (
-    <section>
-      <div className="eyebrow">设置</div>
-      <h3 className="title">Orchestrator 地址</h3>
-      <p className="help">填 ECS 地址或本地 <code>http://localhost:9000</code>。</p>
-      <label className="field">
-        <span className="field-label">Base URL</span>
-        <input
-          aria-label="Orchestrator Base URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-      </label>
-      <div className="btn-row">
-        <button className="btn btn-secondary" onClick={onClose}>取消</button>
-        <button className="btn btn-primary" onClick={save}>保存</button>
-      </div>
-    </section>
-  );
-}
+// Plan 6 Task 10：老 SettingsPanel 已迁移到 panels/SettingsPanel.tsx，不再在此导出。

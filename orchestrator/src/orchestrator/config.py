@@ -1,3 +1,15 @@
+"""orchestrator 全局配置 —— Plan 6 后 DB 主导，env / .env 作为兜底默认值。
+
+Plan 6 之前：模块级 `settings = Settings()` 单例，启动时读 env 就锁定。
+Plan 6 之后：
+  - `get_settings()` 用 `lru_cache(maxsize=1)` 缓存；
+  - `/admin/config` PUT 后调 `get_settings.cache_clear()` 让下次访问重读；
+  - 兼容老代码 `from orchestrator.config import settings` + `settings.xxx`：
+    用 `_SettingsProxy` 把属性访问透传到 `get_settings()`，
+    `monkeypatch.setattr(main_mod.settings, "demo_repo_path", ...)` 依然有效。
+"""
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,4 +45,29 @@ class Settings(BaseSettings):
     repo_init_doc_filename: str = "AGENTS.md"   # 仓库根目录的项目知识文件（agents.md 跨厂商约定）
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """单例 Settings —— 第一次调时实例化，之后命中缓存。
+
+    `/admin/config` PUT 改了 dev_runner / dev_model 等字段后会调
+    `get_settings.cache_clear()`，下次 callers 再调就拿到新实例。
+    """
+    return Settings()
+
+
+class _SettingsProxy:
+    """老代码 `from orchestrator.config import settings; settings.dev_runner` 兼容层。
+
+    每次属性读都走 `get_settings()` —— 缓存失效后自动拿到新值。
+    `setattr` 打到当前缓存实例上：保持 monkeypatch.setattr(main_mod.settings, ...)
+    在 conftest.py / 现有测试里继续工作。
+    """
+
+    def __getattr__(self, name: str):
+        return getattr(get_settings(), name)
+
+    def __setattr__(self, name: str, value) -> None:
+        setattr(get_settings(), name, value)
+
+
+settings = _SettingsProxy()

@@ -1,0 +1,80 @@
+/* Plan 6 · Task 6: HelpBubble 视觉。
+   - 触发器：14px 圆，accent 描边；hover 时实心填充 + 字白
+   - popover：白底 + 大阴影 + 圆角，max-width 320 防止挤变形
+   - 用 portal 挂 body，所以这里位置由内联 style 算 */
+
+.help-bubble-trigger {
+  /* 圆形 ?，与右侧文字 baseline 对齐 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0 0 0 4px;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.help-bubble-trigger:hover,
+.help-bubble-trigger:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  outline: none;
+}
+
+.help-bubble-popover {
+  position: absolute;
+  z-index: 9999;
+  max-width: 320px;
+  padding: 12px;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.help-bubble-popover p {
+  margin: 0 0 8px;
+}
+
+.help-bubble-popover p:last-child {
+  margin-bottom: 0;
+}
+
+.help-bubble-popover ul,
+.help-bubble-popover ol {
+  margin: 0 0 8px;
+  padding-left: 1.2em;
+}
+
+.help-bubble-popover li {
+  margin: 0;
+}
+
+.help-bubble-popover a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.help-bubble-popover code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  padding: 1px 4px;
+  background: oklch(95% 0.005 250);
+  border-radius: 3px;
+}
+
+.help-bubble-popover strong {
+  font-weight: 600;
+}
