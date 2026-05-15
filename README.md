@@ -51,7 +51,13 @@ AI 原生低代码平台 MVP。业务员在 web 产品页面上**框选一块区
 
 ## 快速开始
 
-整个上手分两段：① **一次性部署 ECS**（运维做一次，命令行）；② **用扩展自助配模型 / API key**（业务员侧，引导向导走完即可）。Plan 6 之后，日常改模型 / 换 key 都在扩展里点点鼠标完成，不用再 ssh。
+**Plan 7 之后**：装好扩展只填一个 DeepSeek API Key，剩下「服务器买哪、命令怎么跑、token 怎么填」由 AI 助手用**对话**引导你完成。下面的「一次性部署 ECS」+「自助配 API key」是**老路径**，仍然 work，懒得跟 AI 唠的话可以走。Plan 7 助手跑完后自动隐藏，再开扩展直接进框选 / CR 主流程（跟 v0.2.0 起的 Plan 6 一样）。
+
+两条部署路径（任选其一，助手会问你）：
+- **Path A 本地 Docker**：`bash deploy/local.sh` —— 在自己的 Mac/Linux/WSL 上起一套，先试一下。
+- **Path B 阿里云 ECS**：ssh 进 ECS 跑 `curl -fsSL https://raw.githubusercontent.com/weizhanhao/doskill/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-XXXX --dashscope-key sk-YYYY` —— 一条命令装齐所有依赖 + 起服务。
+
+下面是**老路径** —— 一次性部署 ECS + 用扩展自助配模型 / API key。Plan 6 之后，日常改模型 / 换 key 都在扩展里点点鼠标完成，不用再 ssh。
 
 ### 一次性部署 ECS
 
