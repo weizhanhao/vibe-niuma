@@ -128,13 +128,26 @@ class Pipeline:
             # located → coding
             branch = f"cr/{request_id}"
             await _phase_log("coding", f"▸ 切分支 {branch}...")
-            await asyncio.to_thread(self.git_manager.create_branch, branch)
+            try:
+                await asyncio.to_thread(self.git_manager.create_branch, branch)
+            except Exception as exc:  # noqa: BLE001
+                raise _PhaseError(
+                    "coding", "git-error",
+                    f"create_branch 失败：{exc}\n{''.join(traceback.format_exception(exc))}",
+                ) from exc
             self.repository.set_branch(request_id, branch)
             await self._set_state(request_id, State.CODING)
-            ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)
+            await _phase_log("coding", "▸ 打包代码上下文...")
+            try:
+                ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)
+            except Exception as exc:  # noqa: BLE001
+                raise _PhaseError(
+                    "coding", "context-pack-error",
+                    f"context_pack 失败：{exc}\n{''.join(traceback.format_exception(exc))}",
+                ) from exc
             # 把 phase=coding 的 log 闭包塞进 DevContext，runner 子进程行级回灌
             ctx.log = _make_log_sink(bus, request_id, "coding")
-            await _phase_log("coding", "▸ 起 dev runner...")
+            await _phase_log("coding", "▸ 起 dev runner（首次启动可能静默 30~60s）...")
             try:
                 run_result = await self.dev_runner.run(self.repo_path, branch, ctx)
             except Exception as exc:  # noqa: BLE001
@@ -187,3 +200,44 @@ class Pipeline:
                 ),
             )
             self.quota.release(request_id)
+        except BaseException as exc:  # noqa: BLE001
+            # 任何 _PhaseError 之外的异常（git 错误、DB 错误、CancelledError、
+            # 编程 bug）都必须收敛 —— 否则 CR 卡死、配额泄漏、扩展端无任何提示。
+            tb = "".join(traceback.format_exception(exc))
+            try:
+                current = self.repository.get(request_id).state
+            except Exception:
+                current = None
+            phase_guess = {
+                State.CLARIFYING: "clarifying",
+                State.LOCATED: "coding",
+                State.CODING: "coding",
+                State.BUILDING: "building",
+            }.get(current, "unknown")
+            try:
+                self.repository.mark_failed(
+                    request_id, phase=phase_guess, reason="unhandled", log=tb,
+                )
+            except Exception:
+                pass
+            try:
+                await self.event_bus.publish(
+                    request_id,
+                    Event(
+                        type="status",
+                        data={
+                            "state": State.FAILED.value,
+                            "phase": phase_guess,
+                            "reason": "unhandled",
+                        },
+                    ),
+                )
+                await self.event_bus.publish_log(
+                    request_id, phase_guess,
+                    f"✗ 未捕获异常：{type(exc).__name__}: {exc}",
+                )
+            except Exception:
+                pass
+            self.quota.release(request_id)
+            if isinstance(exc, asyncio.CancelledError):
+                raise

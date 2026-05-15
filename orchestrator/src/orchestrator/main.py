@@ -5,7 +5,10 @@ Plan 2 用 fake adapter 装配（见 AppState.build_pipeline）；Plan 3 在 bui
 """
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger("orchestrator.main")
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
@@ -140,7 +143,19 @@ app = FastAPI(title="AI 原生低代码平台 — Orchestrator", lifespan=lifesp
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     app_state.tasks.add(task)
-    task.add_done_callback(app_state.tasks.discard)
+
+    def _on_done(t: asyncio.Task) -> None:
+        app_state.tasks.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            # 不让后台 task 的异常静默吞掉 —— pipeline.run 自己已经会 mark_failed，
+            # 这里兜底捕获更上层的逻辑错误（任务还没进 try 就崩、event loop 异常等），
+            # 让 journalctl 能看到 traceback。
+            logger.exception("background task crashed", exc_info=exc)
+
+    task.add_done_callback(_on_done)
 
 
 @app.get("/health")

@@ -75,17 +75,21 @@ async def stream_subprocess(
     log: LogSink,
     *,
     timeout: float | None = None,
+    heartbeat_seconds: float = 5.0,
 ) -> tuple[str, str]:
     """读 proc.stdout/stderr 直到结束，每读一行 await log(line)；返回累计 stdout/stderr。
 
-    用 asyncio.gather 并行 drain 两路；任一空行（仅换行）跳过 log，但仍计入累计。
-    `timeout` 是「整个 gather + wait」的总时长上限；超时会抛 asyncio.TimeoutError，
-    调用方负责 proc.kill()。非 UTF-8 字符按 `replace` 解码；行截 200 字符（log 自己截）。
+    并行 drain 两路；空行跳过 log，但仍计入累计。`timeout` 是 gather + wait 总时长上限。
+    `heartbeat_seconds`：子进程超过该秒数没产出任何行时，定期发 "⏳ runner 静默 Xs…"
+    心跳，避免 cursor-like 体验下用户看到长时间空白。设 0 或负值禁用。
     """
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
+    loop = asyncio.get_event_loop()
+    last_output_at = loop.time()
 
     async def _drain(stream: asyncio.StreamReader | None, sink: list[str]) -> None:
+        nonlocal last_output_at
         if stream is None:
             return
         while True:
@@ -94,19 +98,42 @@ async def stream_subprocess(
                 return
             text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
             sink.append(text)
+            last_output_at = loop.time()
             if text.strip():
                 try:
                     await log(text)
                 except Exception:
-                    # log sink 不应该阻断子进程消费；吞掉异常继续 drain
+                    pass
+
+    async def _heartbeat() -> None:
+        if heartbeat_seconds <= 0:
+            return
+        started = loop.time()
+        while True:
+            await asyncio.sleep(heartbeat_seconds)
+            now = loop.time()
+            silent = now - last_output_at
+            total = int(now - started)
+            if silent >= heartbeat_seconds:
+                try:
+                    await log(f"⏳ runner 静默 {int(silent)}s（累计 {total}s）...")
+                except Exception:
                     pass
 
     async def _runner() -> None:
-        await asyncio.gather(
-            _drain(proc.stdout, stdout_lines),
-            _drain(proc.stderr, stderr_lines),
-        )
-        await proc.wait()
+        heartbeat_task = asyncio.create_task(_heartbeat())
+        try:
+            await asyncio.gather(
+                _drain(proc.stdout, stdout_lines),
+                _drain(proc.stderr, stderr_lines),
+            )
+            await proc.wait()
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except BaseException:
+                pass
 
     if timeout is None:
         await _runner()

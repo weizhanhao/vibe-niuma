@@ -173,3 +173,53 @@ async def test_quota_slot_held_at_preview_ready_released_on_failure(temp_repo, d
         temp_repo, db_session, quota=quota, dev=FakeDevRunner(raises=True)
     ).run(cr2.id)
     assert quota.in_use() == 1  # cr2 失败已释放，只剩 cr1
+
+
+async def test_create_branch_failure_marks_failed_not_stuck_at_located(
+    temp_repo, db_session
+):
+    """回归 bug：git_manager.create_branch 抛非 _PhaseError → 旧版会沉默卡死。
+
+    现在应该收敛到 fail_phase=coding/git-error 并释放 quota。
+    """
+    class _BadGit:
+        def __init__(self, p: str):
+            self._p = p
+
+        def create_branch(self, b: str):
+            raise RuntimeError("simulated git failure")
+
+    repo = ChangeRequestRepository(db_session)
+    quota = QuotaManager(capacity=5)
+    cr = repo.create(_raw())
+    p = _make_pipeline(temp_repo, db_session, quota=quota)
+    p.git_manager = _BadGit(str(temp_repo))
+    await p.run(cr.id)
+    fetched = repo.get(cr.id)
+    assert fetched.state == State.FAILED.value, f"unexpected state {fetched.state}"
+    assert fetched.fail_phase == "coding"
+    assert fetched.fail_reason == "git-error"
+    assert quota.in_use() == 0
+
+
+async def test_unexpected_exception_in_stack_marks_failed_not_stuck(
+    temp_repo, db_session
+):
+    """回归 bug：stack_adapter.context_pack 抛意外异常 → 旧版会沉默卡死。
+
+    现在该收敛到 fail_phase=coding/context-pack-error 并释放 quota。
+    """
+    class _BadStack(FakeStackAdapter):
+        async def context_pack(self, *a, **kw):
+            raise RuntimeError("boom")
+
+    repo = ChangeRequestRepository(db_session)
+    quota = QuotaManager(capacity=5)
+    cr = repo.create(_raw())
+    p = _make_pipeline(temp_repo, db_session, quota=quota, stack=_BadStack())
+    await p.run(cr.id)
+    fetched = repo.get(cr.id)
+    assert fetched.state == State.FAILED.value
+    assert fetched.fail_phase == "coding"
+    assert fetched.fail_reason == "context-pack-error"
+    assert quota.in_use() == 0
