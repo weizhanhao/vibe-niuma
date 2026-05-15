@@ -16,7 +16,7 @@ import time
 import uuid
 from urllib.request import Request, urlopen
 
-from orchestrator.adapters.types import PreviewInstance
+from orchestrator.adapters.types import LogSink, PreviewInstance
 
 
 _DOCKER_BUILD_TIMEOUT = 300
@@ -51,21 +51,26 @@ class DockerPreviewAdapter:
         self._used_ports: dict[str, int] = {}  # handle → port
 
     # ── serve ───────────────────────────────────────────────────────
-    async def serve(self, repo_path: str, branch: str) -> PreviewInstance:
+    async def serve(
+        self, repo_path: str, branch: str, *, log: LogSink | None = None
+    ) -> PreviewInstance:
+        """构建 + 起容器；Phase F 把 docker build / run 输出实时推到 log。"""
         port = self._allocate_port()
         preview_id = uuid.uuid4().hex[:12]
         image = f"doskill-preview-{preview_id}"
         name = image  # 容器名复用镜像名，便于排查
 
-        # 1) build image（前端目录）
-        build_rc, build_log = await asyncio.to_thread(
-            self._run, ["docker", "build", "-t", image, "frontend"],
-            cwd=repo_path, timeout=_DOCKER_BUILD_TIMEOUT,
+        # 1) build image（前端目录）—— stream 输出
+        if log is not None:
+            await log("▸ docker build...")
+        build_rc, build_log = await self._run_streaming(
+            ["docker", "build", "-t", image, "frontend"],
+            cwd=repo_path, timeout=_DOCKER_BUILD_TIMEOUT, log=log,
         )
         if build_rc != 0:
             raise RuntimeError(f"docker build 失败 (rc={build_rc})\n{build_log[-2000:]}")
 
-        # 2) run container
+        # 2) run container —— stream 输出
         run_cmd = [
             "docker", "run", "-d",
             "--name", name,
@@ -73,8 +78,10 @@ class DockerPreviewAdapter:
             "-p", f"{port}:{self._internal_port}",
             image,
         ]
-        run_rc, run_log = await asyncio.to_thread(
-            self._run, run_cmd, cwd=repo_path, timeout=_DOCKER_RUN_TIMEOUT,
+        if log is not None:
+            await log("▸ docker run...")
+        run_rc, run_log = await self._run_streaming(
+            run_cmd, cwd=repo_path, timeout=_DOCKER_RUN_TIMEOUT, log=log,
         )
         if run_rc != 0:
             self._release_port(name)
@@ -84,6 +91,8 @@ class DockerPreviewAdapter:
         self._used_ports[container_id] = port
 
         # 3) health check —— 轮询 HTTP 直到 200 或超时
+        if log is not None:
+            await log(f"▸ health check (up to {_HEALTH_TIMEOUT}s)...")
         url = f"http://{self._preview_host}:{port}"
         ok = await asyncio.to_thread(self._wait_http, url, _HEALTH_TIMEOUT)
         if not ok:
@@ -122,6 +131,54 @@ class DockerPreviewAdapter:
 
     def _release_port(self, handle: str) -> None:
         self._used_ports.pop(handle, None)
+
+    @staticmethod
+    async def _run_streaming(
+        cmd: list[str], *, cwd: str | None, timeout: int, log: LogSink | None,
+    ) -> tuple[int, str]:
+        """async subprocess + 按行 stream；返回 (returncode, 合并 stdout+stderr 文本)。
+
+        - log 非 None 时每行 await log(line)（已截至 200 字符上限由 publish_log 把关）
+        - timeout 是整体上限；超了 kill 后回填 124
+        - FileNotFoundError → 127（docker 没装的兜底）
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except FileNotFoundError as exc:
+            return 127, f"找不到命令: {exc}"
+
+        collected: list[str] = []
+
+        async def _drain() -> None:
+            assert proc.stdout is not None
+            while True:
+                raw = await proc.stdout.readline()
+                if not raw:
+                    return
+                text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                collected.append(text)
+                if text.strip() and log is not None:
+                    try:
+                        await log(text)
+                    except Exception:
+                        pass
+
+        try:
+            await asyncio.wait_for(_drain(), timeout=timeout)
+            await proc.wait()
+        except asyncio.TimeoutError:
+            proc.kill()
+            try:
+                await proc.wait()
+            except Exception:
+                pass
+            return 124, "\n".join(collected) + f"\n[超时 {timeout}s]"
+
+        return proc.returncode or 0, "\n".join(collected)
 
     @staticmethod
     def _run(cmd, *, cwd, timeout, check=True) -> tuple[int, str]:

@@ -17,6 +17,7 @@ from orchestrator.adapters.types import (
     BuildResult,
     DevContext,
     LocateResult,
+    LogSink,
     RawRequest,
     RequestBrief,
 )
@@ -154,8 +155,13 @@ class ReactViteStackAdapter:
         return None
 
     # ── build ───────────────────────────────────────────────────────
-    async def build(self, repo_path: str, branch: str) -> BuildResult:
-        """前端 npm ci + npm run build；后端 python -m compileall。"""
+    async def build(
+        self, repo_path: str, branch: str, *, log: LogSink | None = None
+    ) -> BuildResult:
+        """前端 npm ci + npm run build；后端 python -m compileall。
+
+        Phase F：若调用方注入 `log` 回调，stream subprocess 输出每一行实时推到扩展。
+        """
         import asyncio
         import os
 
@@ -171,30 +177,47 @@ class ReactViteStackAdapter:
                     stderr=asyncio.subprocess.STDOUT,
                     env={**os.environ, "CI": "1"},
                 )
-                stdout, _ = await proc.communicate()
-                return proc.returncode, f"--- {label} ---\n{stdout.decode(errors='replace')}\n"
+                collected: list[str] = []
+                if log is not None:
+                    await log(f"▸ {label}")
+                # 按行读 stdout（已 merge stderr）；每行 → log 回调 + 累计
+                assert proc.stdout is not None
+                while True:
+                    raw = await proc.stdout.readline()
+                    if not raw:
+                        break
+                    text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                    collected.append(text)
+                    if text.strip() and log is not None:
+                        try:
+                            await log(text)
+                        except Exception:
+                            pass
+                await proc.wait()
+                body = "\n".join(collected)
+                return proc.returncode, f"--- {label} ---\n{body}\n"
             except FileNotFoundError as exc:
                 return 127, f"--- {label} ---\n{exc}\n"
 
         frontend = repo / "frontend"
         if frontend.is_dir():
             if not (frontend / "node_modules").is_dir():
-                rc, log = await _run(["npm", "ci"], frontend, "npm ci")
-                log_parts.append(log)
+                rc, lg = await _run(["npm", "ci"], frontend, "npm ci")
+                log_parts.append(lg)
                 if rc != 0:
                     ok = False
             if ok:
-                rc, log = await _run(["npm", "run", "build"], frontend, "npm run build")
-                log_parts.append(log)
+                rc, lg = await _run(["npm", "run", "build"], frontend, "npm run build")
+                log_parts.append(lg)
                 if rc != 0:
                     ok = False
 
         backend = repo / "backend"
         if ok and backend.is_dir():
-            rc, log = await _run(
+            rc, lg = await _run(
                 ["python3", "-m", "compileall", "-q", "."], backend, "compileall backend"
             )
-            log_parts.append(log)
+            log_parts.append(lg)
             if rc != 0:
                 ok = False
 

@@ -6,6 +6,10 @@ clarify → locate → run → build/serve，每步写状态 + 推 SSE。
 - 到 `preview-ready` 时 pipeline.run() 结束 —— 槽位仍被占用，由后续 merge/discard/expire 释放。
 - 阻塞型 git 操作用 asyncio.to_thread 包装。
 - coding 阶段只 create_branch，改代码+commit 委托给 dev_runner.run。
+
+Phase F：每个 phase 注入一个绑定 (request_id, phase) 的 log 闭包，dev runner /
+StackAdapter.build / PreviewAdapter.serve 把子进程每行输出实时通过 EventBus
+publish_log，扩展端 StatusPanel 实时显示。Pipeline 自己也在关键节点发粗粒度 marker。
 """
 import asyncio
 import traceback
@@ -23,6 +27,15 @@ from orchestrator.interaction_channel import SSEInteractionChannel
 from orchestrator.quota import QuotaManager
 from orchestrator.repository import ChangeRequestRepository
 from orchestrator.states import State
+
+
+def _make_log_sink(event_bus: EventBus, request_id: str, phase: str):
+    """工厂：返回 await-able(line: str) → None；绑定 request_id+phase。"""
+
+    async def _log(line: str) -> None:
+        await event_bus.publish_log(request_id, phase, line)
+
+    return _log
 
 
 class _PhaseError(Exception):
@@ -70,11 +83,21 @@ class Pipeline:
         )
 
     async def run(self, request_id: str) -> None:
-        """驱动一条 `created` 请求。异常路径统一收敛到 _PhaseError → mark_failed。"""
+        """驱动一条 `created` 请求。异常路径统一收敛到 _PhaseError → mark_failed。
+
+        Phase F：在每个 phase 注入 log 闭包给 adapter，粗粒度 marker 在每步
+        开头/结束发；细粒度行由 adapter 内 stream subprocess 时实时回灌。
+        """
+        bus = self.event_bus
+
+        async def _phase_log(phase: str, line: str) -> None:
+            await bus.publish_log(request_id, phase, line)
+
         await self.quota.acquire(request_id)
         try:
             # created → clarifying
             await self._set_state(request_id, State.CLARIFYING)
+            await _phase_log("clarifying", "▸ 读 AGENTS.md / 等 /init 就绪...")
             channel = SSEInteractionChannel(request_id, self.event_bus)
             self._channels[request_id] = channel
             cr = self.repository.get(request_id)
@@ -85,22 +108,33 @@ class Pipeline:
                 viewport=cr.viewport,
                 request_text=cr.request_text,
             )
+            await _phase_log("clarifying", "▸ 问视觉模型判断业务意图...")
             brief = await self.interaction_skill.clarify(raw, channel)
+            await _phase_log("clarifying", "✓ 澄清完成")
 
             # clarifying → located
+            await _phase_log("locating", "▸ 解析路由配置...")
             locate_result = await self.stack_adapter.locate(raw.url)
             if not locate_result.entry_files:
                 raise _PhaseError(
                     "located", "no-route-match", f"URL 未匹配任何路由: {raw.url}"
                 )
+            await _phase_log(
+                "locating",
+                f"✓ 定位到入口：{', '.join(locate_result.entry_files[:3])}",
+            )
             await self._set_state(request_id, State.LOCATED)
 
             # located → coding
             branch = f"cr/{request_id}"
+            await _phase_log("coding", f"▸ 切分支 {branch}...")
             await asyncio.to_thread(self.git_manager.create_branch, branch)
             self.repository.set_branch(request_id, branch)
             await self._set_state(request_id, State.CODING)
             ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)
+            # 把 phase=coding 的 log 闭包塞进 DevContext，runner 子进程行级回灌
+            ctx.log = _make_log_sink(bus, request_id, "coding")
+            await _phase_log("coding", "▸ 起 dev runner...")
             try:
                 run_result = await self.dev_runner.run(self.repo_path, branch, ctx)
             except Exception as exc:  # noqa: BLE001
@@ -109,14 +143,22 @@ class Pipeline:
                 ) from exc
             if not run_result.changed:
                 raise _PhaseError("coding", "no-changes", run_result.log)
+            await _phase_log("coding", f"✓ 编码完成 commit={run_result.commit_sha}")
 
             # coding → building
             await self._set_state(request_id, State.BUILDING)
-            build_result = await self.stack_adapter.build(self.repo_path, branch)
+            await _phase_log("building", "▸ npm run build...")
+            build_log = _make_log_sink(bus, request_id, "building")
+            build_result = await self.stack_adapter.build(
+                self.repo_path, branch, log=build_log,
+            )
             if not build_result.ok:
                 raise _PhaseError("building", "build-failed", build_result.log)
+            await _phase_log("building", "▸ docker build + run...")
             try:
-                instance = await self.preview_adapter.serve(self.repo_path, branch)
+                instance = await self.preview_adapter.serve(
+                    self.repo_path, branch, log=build_log,
+                )
             except Exception as exc:  # noqa: BLE001
                 raise _PhaseError(
                     "building", "container", "".join(traceback.format_exception(exc))
@@ -126,6 +168,7 @@ class Pipeline:
             self.repository.set_preview(
                 request_id, url=instance.url, handle=instance.handle
             )
+            await _phase_log("building", f"✓ 预览容器就绪 {instance.url}")
             await self._set_state(request_id, State.PREVIEW_READY)
             # 注意：到此 pipeline 结束，槽位仍占用，由 merge/discard/expire 释放
         except _PhaseError as pe:

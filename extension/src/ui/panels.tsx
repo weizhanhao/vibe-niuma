@@ -1,9 +1,9 @@
 // 所有 panel 组件 + ProgressTrail。Plan 4 原计划一文件一 panel，这里合并以加速；
 // 各 panel 仍是独立 React 组件、可分别 import，未来拆分容易。
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MSG, type Message } from '../lib/messages';
 import { getBaseUrl, setBaseUrl } from '../background/orchestrator-client';
-import type { ChangeRequestState, HtmlMockup, RequestStateMirror } from '../lib/types';
+import type { ChangeRequestState, HtmlMockup, LogEntry, RequestStateMirror } from '../lib/types';
 
 const FSM_ORDER: ChangeRequestState[] = [
   'created', 'clarifying', 'located', 'coding', 'building', 'preview-ready',
@@ -19,6 +19,15 @@ const STATE_LABELS: Record<ChangeRequestState, string> = {
   'failed': '失败',
   'expired': '已过期',
   'discarded': '已丢弃',
+};
+
+// Phase F：phase 标签的中文 chip 文案。未知 phase 直接显示原 phase 字符串。
+const PHASE_LABEL: Record<string, string> = {
+  clarifying: '澄清',
+  locating: '定位',
+  coding: '编码',
+  building: '构建',
+  init: '/init',
 };
 
 const send = (msg: Message) => chrome.runtime.sendMessage(msg);
@@ -76,7 +85,12 @@ export function CapturePanel() {
 export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
   const q = state.pendingQuestion;
   const [free, setFree] = useState('');
-  if (!q) return <p className="help">等待澄清问题…</p>;
+  if (!q) return (
+    <section>
+      <p className="help">等待澄清问题…</p>
+      <LogFeed logs={state.logs} compact maxRows={20} />
+    </section>
+  );
   const reply = (answer: string) => send({
     type: MSG.SUBMIT_ANSWER, requestId: state.id, questionId: q.questionId, answer,
   });
@@ -102,6 +116,7 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
           回答
         </button>
       </div>
+      <LogFeed logs={state.logs} compact maxRows={20} />
     </section>
   );
 }
@@ -153,6 +168,64 @@ export function VariantsPanel({ state }: { state: RequestStateMirror }) {
   );
 }
 
+// ── LogFeed ─────────────────────────────────────────────────────────
+// Phase F：流式 log 显示器。
+// - 折叠态：最新 1 行（带 phase chip）
+// - 展开态：最近 maxRows 条滚动列表，自动滚到底
+// - 空 logs：什么都不渲染（避免占地方）
+interface LogFeedProps {
+  logs: LogEntry[];
+  defaultExpanded?: boolean;
+  maxRows?: number;
+  compact?: boolean;
+}
+
+export function LogFeed({ logs, defaultExpanded = false, maxRows = 50, compact = false }: LogFeedProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // 展开态：每次 logs 变化自动滚到底。
+  useEffect(() => {
+    if (expanded && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs, expanded]);
+
+  if (!logs || logs.length === 0) return null;
+  const latest = logs[logs.length - 1];
+  const visible = logs.slice(Math.max(0, logs.length - maxRows));
+
+  return (
+    <div className={`log-feed${compact ? ' log-feed-compact' : ''}`} aria-label="阶段日志">
+      <button
+        type="button"
+        className="log-feed-head"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <PhaseChip phase={latest.phase} />
+        <span className="log-feed-latest">{latest.line}</span>
+        <span className="log-feed-toggle" aria-hidden="true">{expanded ? '收起' : '展开'}</span>
+      </button>
+      {expanded && (
+        <div className="log-feed-body" ref={scrollRef} role="log">
+          {visible.map((entry, i) => (
+            <div key={`${entry.ts}-${i}`} className="log-row">
+              <PhaseChip phase={entry.phase} />
+              <span className="log-line">{entry.line}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhaseChip({ phase }: { phase: string }) {
+  const label = PHASE_LABEL[phase] ?? phase;
+  return <span className={`phase-chip phase-${phase}`}>{label}</span>;
+}
+
 // ── StatusPanel ─────────────────────────────────────────────────────
 export function StatusPanel({ state }: { state: RequestStateMirror }) {
   return (
@@ -163,6 +236,7 @@ export function StatusPanel({ state }: { state: RequestStateMirror }) {
       {state.branch && (
         <p className="help">分支 <code>{state.branch}</code></p>
       )}
+      <LogFeed logs={state.logs} />
     </section>
   );
 }

@@ -2,14 +2,15 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  CapturePanel, ClarifyPanel, FailedPanel, PreviewPanel, ProgressTrail,
+  CapturePanel, ClarifyPanel, FailedPanel, LogFeed, PreviewPanel, ProgressTrail,
   SettingsPanel, StatusPanel, VariantsPanel,
 } from '../src/ui/panels';
-import type { RequestStateMirror } from '../src/lib/types';
+import type { LogEntry, RequestStateMirror } from '../src/lib/types';
 
 const base: RequestStateMirror = {
   id: 'r1', state: 'clarifying', url: 'http://x', branch: null, previewUrl: null,
   failPhase: null, failReason: null, pendingQuestion: null, pendingVariants: null,
+  logs: [],
 };
 
 describe('CapturePanel', () => {
@@ -136,5 +137,55 @@ describe('SettingsPanel', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(chrome.storage.local.set).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+// ── Phase F：LogFeed ────────────────────────────────────────────────
+describe('LogFeed', () => {
+  const mkLog = (phase: string, line: string, i = 0): LogEntry => ({
+    phase, line, ts: `2026-05-15T17:00:0${i}`,
+  });
+
+  it('renders nothing when logs are empty', () => {
+    const { container } = render(<LogFeed logs={[]} />);
+    expect(container.querySelector('.log-feed')).toBeNull();
+  });
+
+  it('shows latest line in collapsed state', () => {
+    render(<LogFeed logs={[mkLog('coding', '正在分析 OrderList.tsx', 0), mkLog('coding', '改完 1 个文件', 1)]} />);
+    expect(screen.getByText('改完 1 个文件')).toBeInTheDocument();
+    // 折叠态：仅 head 可见，body 不渲染
+    expect(document.querySelector('.log-feed-body')).toBeNull();
+  });
+
+  it('expanding reveals scrollable list of recent rows', () => {
+    render(
+      <LogFeed
+        logs={[mkLog('clarifying', 'a', 0), mkLog('coding', 'b', 1), mkLog('building', 'c', 2)]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button'));
+    const body = document.querySelector('.log-feed-body');
+    expect(body).not.toBeNull();
+    expect(body?.textContent).toContain('a');
+    expect(body?.textContent).toContain('b');
+    expect(body?.textContent).toContain('c');
+  });
+
+  it('phase chip uses phase-specific class for color', () => {
+    render(<LogFeed logs={[mkLog('coding', 'x')]} />);
+    expect(document.querySelector('.phase-chip.phase-coding')).not.toBeNull();
+  });
+});
+
+describe('StatusPanel + LogFeed wiring', () => {
+  it('renders log feed when logs are present', () => {
+    const state = {
+      ...base,
+      state: 'coding' as const,
+      logs: [{ phase: 'coding', line: '▸ npm install...', ts: '2026-05-15T17:00:00' }],
+    };
+    render(<StatusPanel state={state} />);
+    expect(screen.getByText('▸ npm install...')).toBeInTheDocument();
   });
 });

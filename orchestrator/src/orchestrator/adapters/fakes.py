@@ -58,7 +58,10 @@ class FakeStackAdapter:
             box_coords=raw.box_coords,
         )
 
-    async def build(self, repo_path: str, branch: str) -> BuildResult:
+    async def build(
+        self, repo_path: str, branch: str, *, log=None
+    ) -> BuildResult:
+        # Phase F：`log` 是 Pipeline 注入的 LogSink，fake 忽略。
         if not self._build_succeeds:
             return BuildResult(ok=False, log="fake build failure")
         return BuildResult(ok=True, log="fake build ok")
@@ -87,7 +90,10 @@ class FakePreviewAdapter:
         self.live_handles: set[str] = set()
         self._port = 5100
 
-    async def serve(self, repo_path: str, branch: str) -> PreviewInstance:
+    async def serve(
+        self, repo_path: str, branch: str, *, log=None
+    ) -> PreviewInstance:
+        # Phase F：`log` 是 Pipeline 注入的 LogSink，fake 忽略。
         if not self._serve_succeeds:
             raise RuntimeError("fake preview serve failure")
         self._port += 1

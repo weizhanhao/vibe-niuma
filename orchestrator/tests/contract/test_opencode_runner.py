@@ -35,17 +35,39 @@ def _ctx() -> DevContext:
     )
 
 
-class _FakeProc:
-    def __init__(self, returncode, stdout=b"", stderr=b"", *, hang=False):
-        self.returncode = returncode
-        self._stdout, self._stderr, self._hang = stdout, stderr, hang
-    async def communicate(self):
+class _FakeStream:
+    """假 StreamReader：一次性返回 payload 然后 EOF；hang=True 永不返回。"""
+
+    def __init__(self, payload: bytes, *, hang: bool = False):
+        self._payload = payload
+        self._hang = hang
+        self._emitted = False
+
+    async def readline(self) -> bytes:
         if self._hang:
             import asyncio
             await asyncio.sleep(99)
-        return self._stdout, self._stderr
-    def kill(self): pass
-    async def wait(self): return self.returncode
+        if self._emitted:
+            return b""
+        self._emitted = True
+        return self._payload
+
+
+class _FakeProc:
+    def __init__(self, returncode, stdout=b"", stderr=b"", *, hang=False):
+        self.returncode = returncode
+        # Phase F：runner 已切到 stream_subprocess（按行 readline）。
+        self.stdout = _FakeStream(stdout, hang=hang)
+        self.stderr = _FakeStream(stderr, hang=False)
+        self._hang = hang
+    def kill(self):
+        # 真实 asyncio.subprocess.kill 让随后 wait() 立刻返回；fake 也照做。
+        self._hang = False
+    async def wait(self):
+        if self._hang:
+            import asyncio
+            await asyncio.sleep(99)
+        return self.returncode
 
 
 def _exec(captured, **kw):

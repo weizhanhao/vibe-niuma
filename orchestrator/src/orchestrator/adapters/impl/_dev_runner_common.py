@@ -5,15 +5,17 @@
 - commit_all(repo_path, branch, message)：在分支上 add -A + commit，返回 SHA
 - collect_log(stdout, stderr, limit)：截尾日志（保留尾部）
 - make_run_result(repo_path, branch, log)：跑完后判定 changed + 自动 commit
+- stream_subprocess(proc, log)：并行 drain stdout/stderr，每行调用 log
 
 约定：Pipeline 在 `coding` 阶段已经把工作树切到了 `branch`（git_manager.create_branch
 做的 `checkout -b`），所以这里所有命令都假定 HEAD 已是 branch。
 """
 from __future__ import annotations
 
+import asyncio
 import subprocess
 
-from orchestrator.adapters.types import RunResult
+from orchestrator.adapters.types import LogSink, RunResult
 
 
 def _git(repo_path: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -66,3 +68,49 @@ def make_run_result(repo_path: str, branch: str, log: str, message: str) -> RunR
         return RunResult(changed=False, commit_sha=None, log=log + "\n[no changes]")
     sha = commit_all(repo_path, branch, message)
     return RunResult(changed=True, commit_sha=sha, log=log)
+
+
+async def stream_subprocess(
+    proc: asyncio.subprocess.Process,
+    log: LogSink,
+    *,
+    timeout: float | None = None,
+) -> tuple[str, str]:
+    """读 proc.stdout/stderr 直到结束，每读一行 await log(line)；返回累计 stdout/stderr。
+
+    用 asyncio.gather 并行 drain 两路；任一空行（仅换行）跳过 log，但仍计入累计。
+    `timeout` 是「整个 gather + wait」的总时长上限；超时会抛 asyncio.TimeoutError，
+    调用方负责 proc.kill()。非 UTF-8 字符按 `replace` 解码；行截 200 字符（log 自己截）。
+    """
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    async def _drain(stream: asyncio.StreamReader | None, sink: list[str]) -> None:
+        if stream is None:
+            return
+        while True:
+            raw = await stream.readline()
+            if not raw:
+                return
+            text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            sink.append(text)
+            if text.strip():
+                try:
+                    await log(text)
+                except Exception:
+                    # log sink 不应该阻断子进程消费；吞掉异常继续 drain
+                    pass
+
+    async def _runner() -> None:
+        await asyncio.gather(
+            _drain(proc.stdout, stdout_lines),
+            _drain(proc.stderr, stderr_lines),
+        )
+        await proc.wait()
+
+    if timeout is None:
+        await _runner()
+    else:
+        await asyncio.wait_for(_runner(), timeout=timeout)
+
+    return "\n".join(stdout_lines), "\n".join(stderr_lines)

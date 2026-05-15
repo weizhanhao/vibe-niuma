@@ -43,24 +43,43 @@ def _ctx() -> DevContext:
     )
 
 
-class _FakeProc:
-    def __init__(self, returncode: int, stdout: bytes = b"", stderr: bytes = b"", *, hang: bool = False):
-        self.returncode = returncode
-        self._stdout = stdout
-        self._stderr = stderr
-        self._hang = hang
-        self.killed = False
+class _FakeStream:
+    """假 StreamReader：一次性返回所有 bytes 然后 EOF；hang=True 永不返回。"""
 
-    async def communicate(self):
+    def __init__(self, payload: bytes, *, hang: bool = False):
+        self._payload = payload
+        self._hang = hang
+        self._emitted = False
+
+    async def readline(self) -> bytes:
         if self._hang:
             import asyncio
             await asyncio.sleep(99)
-        return self._stdout, self._stderr
+        if self._emitted:
+            return b""
+        self._emitted = True
+        return self._payload
+
+
+class _FakeProc:
+    def __init__(self, returncode: int, stdout: bytes = b"", stderr: bytes = b"", *, hang: bool = False):
+        self.returncode = returncode
+        # Phase F：dev runner 已从 communicate() 切到 stream_subprocess，
+        # 通过 stdout/stderr 上的 readline() 拉行；hang=True 让 stdout 永不返回。
+        self.stdout = _FakeStream(stdout, hang=hang)
+        self.stderr = _FakeStream(stderr, hang=False)
+        self._hang = hang
+        self.killed = False
 
     def kill(self):
         self.killed = True
+        # kill 后 wait() 应立即返回（真实 asyncio.subprocess 是这样）
+        self._hang = False
 
     async def wait(self):
+        if self._hang:
+            import asyncio
+            await asyncio.sleep(99)
         return self.returncode
 
 

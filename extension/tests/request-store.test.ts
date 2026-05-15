@@ -4,6 +4,7 @@ import {
   loadFromStorage, saveToStorage,
 } from '../src/background/request-store';
 import type { ChangeRequestOut, RequestStateMirror, SSEEvent } from '../src/lib/types';
+import { MAX_LOGS_PER_MIRROR } from '../src/lib/types';
 
 const baseCr: ChangeRequestOut = {
   id: 'r1', state: 'created', url: 'http://x/orders', request_text: 't',
@@ -58,5 +59,36 @@ describe('request-store reducer', () => {
   it('loadFromStorage returns null when missing', async () => {
     await chrome.storage.local.clear();
     expect(await loadFromStorage()).toBeNull();
+  });
+
+  // ── Phase F：log 事件折叠到 mirror.logs ────────────────────────────
+  it('initialState seeds an empty logs array', () => {
+    expect(initialState(baseCr).logs).toEqual([]);
+  });
+
+  it('log event appends to mirror.logs', () => {
+    const evt: SSEEvent = {
+      type: 'log',
+      data: { phase: 'coding', line: '正在改 OrderList.tsx', ts: '2026-05-15T17:00:00' },
+    };
+    const next = applyEvent(baseMirror, evt);
+    expect(next.logs).toHaveLength(1);
+    expect(next.logs[0]).toMatchObject({ phase: 'coding', line: '正在改 OrderList.tsx' });
+  });
+
+  it('caps logs at MAX_LOGS_PER_MIRROR (FIFO drop)', () => {
+    // 灌 250 条（MAX 是 200），验证保留最近 200 条
+    let state = baseMirror;
+    const overflow = 50;
+    for (let i = 0; i < MAX_LOGS_PER_MIRROR + overflow; i++) {
+      state = applyEvent(state, {
+        type: 'log',
+        data: { phase: 'coding', line: `line-${i}`, ts: String(i) },
+      });
+    }
+    expect(state.logs).toHaveLength(MAX_LOGS_PER_MIRROR);
+    // 头条应是 line-50，尾条应是 line-249
+    expect(state.logs[0].line).toBe(`line-${overflow}`);
+    expect(state.logs[state.logs.length - 1].line).toBe(`line-${MAX_LOGS_PER_MIRROR + overflow - 1}`);
   });
 });

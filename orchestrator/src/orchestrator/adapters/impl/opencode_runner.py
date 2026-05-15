@@ -10,7 +10,11 @@ from __future__ import annotations
 import asyncio
 import os
 
-from orchestrator.adapters.impl._dev_runner_common import collect_log, make_run_result
+from orchestrator.adapters.impl._dev_runner_common import (
+    collect_log,
+    make_run_result,
+    stream_subprocess,
+)
 from orchestrator.adapters.impl.claude_code_runner import build_prompt
 from orchestrator.adapters.types import DevContext, RunResult
 from orchestrator.config import settings
@@ -43,8 +47,10 @@ class OpenCodeDevRunner:
                 env=env,
             )
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=self._timeout,
+                # Phase F：stream stdout/stderr 而不是 communicate()；
+                # 每读到一行就 await ctx.log(line)，让扩展实时看到进度。
+                stdout_text, stderr_text = await stream_subprocess(
+                    proc, ctx.log, timeout=self._timeout,
                 )
             except asyncio.TimeoutError as exc:
                 proc.kill()
@@ -55,8 +61,7 @@ class OpenCodeDevRunner:
         except FileNotFoundError as exc:
             raise RuntimeError(f"找不到 {self._cli} CLI: {exc}") from exc
 
-        log = collect_log(stdout_b.decode("utf-8", errors="replace"),
-                          stderr_b.decode("utf-8", errors="replace"))
+        log = collect_log(stdout_text, stderr_text)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"opencode CLI 非 0 退出 (rc={proc.returncode})\n{log}"

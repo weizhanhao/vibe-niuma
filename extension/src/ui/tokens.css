@@ -149,3 +149,64 @@ button { font: inherit; cursor: pointer; }
 .fail-card { background: oklch(96% 0.04 25); border: 1px solid oklch(85% 0.08 25); color: oklch(35% 0.18 25); border-radius: var(--r-md); padding: 0.8rem; }
 .fail-card .phase { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem; }
 .fail-card pre { background: var(--surface); border-radius: 6px; padding: 0.5rem; font-size: 0.72rem; overflow: auto; max-height: 8em; }
+
+/* Phase F：流式 log feed —— 折叠态 1 行 + 展开态滚动列表。 */
+.log-feed {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-soft);
+  overflow: hidden;
+  transition: border-color var(--t-fast);
+}
+.log-feed:hover { border-color: var(--line); }
+.log-feed-compact { font-size: 0.78rem; }
+.log-feed-head {
+  display: flex; align-items: center; gap: 0.45rem;
+  width: 100%; padding: 0.5rem 0.65rem;
+  background: transparent; border: 0;
+  text-align: left; font: inherit; color: var(--ink-soft);
+  cursor: pointer;
+}
+.log-feed-head:hover { background: var(--surface); }
+.log-feed-latest {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ink);
+}
+.log-feed-toggle { color: var(--ink-mute); font-size: 0.72rem; }
+.log-feed-body {
+  max-height: 14em;
+  overflow-y: auto;
+  border-top: 1px solid var(--line-soft);
+  padding: 0.4rem 0.65rem;
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.log-row {
+  display: flex; align-items: flex-start; gap: 0.45rem;
+  padding: 0.15rem 0;
+  border-top: 1px dashed transparent;
+}
+.log-row + .log-row { border-top-color: var(--line-soft); }
+.log-line { flex: 1; min-width: 0; word-break: break-all; }
+
+.phase-chip {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  background: var(--line-soft);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+/* phase chip 调色：业务可识别的语义色，不抢主操作焦点 */
+.phase-clarifying { background: oklch(94% 0.05 90); color: oklch(38% 0.10 90); }
+.phase-locating   { background: oklch(94% 0.06 200); color: oklch(38% 0.12 200); }
+.phase-coding     { background: var(--accent-soft); color: oklch(38% 0.18 264); }
+.phase-building   { background: var(--success-soft); color: oklch(35% 0.10 155); }
+.phase-init       { background: oklch(95% 0.04 320); color: oklch(40% 0.12 320); }

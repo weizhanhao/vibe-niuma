@@ -1,5 +1,15 @@
 """adapter 层的共享数据类型 —— 跨计划契约。Plan 3 的真实 adapter 实现必须遵守这些类型。"""
 from dataclasses import dataclass, field
+from typing import Awaitable, Callable
+
+# Phase F：dev runner / adapter 把进度文字推回扩展的回调签名。
+# Pipeline 注入一个绑定 request_id+phase 的闭包；fake / 缺省时是 no-op。
+LogSink = Callable[[str], Awaitable[None]]
+
+
+async def _noop_log(_: str) -> None:
+    """默认 log sink：什么都不做。"""
+    return None
 
 
 @dataclass
@@ -52,6 +62,9 @@ class DevContext:
 
     `entry_file_contents` 在 Plan 3 加入：StackAdapter.context_pack 把入口源文件
     （及一层本地 import）的内容读出来塞进去，省得 DevRunner 再去读盘 / 猜路径。
+
+    Phase F：`log` 是 Pipeline 注入的回调；dev runner 把子进程 stdout/stderr
+    每行喂给它，实时推到扩展 SSE。缺省 no-op（测试/单元场景不强制注入）。
     """
 
     brief: RequestBrief
@@ -59,6 +72,7 @@ class DevContext:
     screenshot_b64: str
     box_coords: dict
     entry_file_contents: dict[str, str] = field(default_factory=dict)
+    log: LogSink = field(default=_noop_log)
 
 
 @dataclass

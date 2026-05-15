@@ -1,6 +1,10 @@
 """4 个 adapter 的 Protocol 接口 —— 跨计划契约。所有方法 async。
 
 Plan 2 提供 fake 实现（fakes.py），Plan 3 提供真实实现。Orchestrator 主体只依赖这些接口。
+
+Phase F：`StackAdapter.build` / `PreviewAdapter.serve` 接受可选 `log` 回调；
+DevRunner 通过 `DevContext.log` 字段拿到。Pipeline 在每个 phase 注入一个绑定
+request_id + phase 的闭包。fake 实现忽略 log。
 """
 from typing import Protocol, runtime_checkable
 
@@ -9,6 +13,7 @@ from orchestrator.adapters.types import (
     DevContext,
     HtmlMockup,
     LocateResult,
+    LogSink,
     PreviewInstance,
     RawRequest,
     RequestBrief,
@@ -47,7 +52,9 @@ class StackAdapter(Protocol):
         self, locate_result: LocateResult, raw: RawRequest, brief: RequestBrief
     ) -> DevContext: ...
 
-    async def build(self, repo_path: str, branch: str) -> BuildResult: ...
+    async def build(
+        self, repo_path: str, branch: str, *, log: LogSink | None = None
+    ) -> BuildResult: ...
 
 
 @runtime_checkable
@@ -63,6 +70,8 @@ class DevRunnerAdapter(Protocol):
 class PreviewAdapter(Protocol):
     """预览层：分支 → 隔离预览环境。"""
 
-    async def serve(self, repo_path: str, branch: str) -> PreviewInstance: ...
+    async def serve(
+        self, repo_path: str, branch: str, *, log: LogSink | None = None
+    ) -> PreviewInstance: ...
 
     async def teardown(self, instance: PreviewInstance) -> None: ...

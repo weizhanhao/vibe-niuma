@@ -52,10 +52,22 @@ export interface HtmlMockup {
   html: string;
 }
 
+// Phase F：log 事件 —— 子进程每行进度文字。phase 限于 created/clarifying/locating/coding/building；
+// 容错地用 string 而非 union，后端如果增加新 phase 也不破前端 schema。
+export interface LogEntry {
+  phase: string;
+  line: string;
+  ts: string;
+}
+
+// Phase F：每个 mirror 最多保留这么多条 log；溢出 FIFO 丢老的。
+export const MAX_LOGS_PER_MIRROR = 200;
+
 export type SSEEvent =
   | { type: 'status'; data: { state: ChangeRequestState; phase?: string; reason?: string } }
   | { type: 'question'; data: { question_id: string; question: string; options: string[] | null } }
-  | { type: 'variants'; data: { question_id: string; variants: HtmlMockup[] } };
+  | { type: 'variants'; data: { question_id: string; variants: HtmlMockup[] } }
+  | { type: 'log'; data: LogEntry };
 
 export interface RequestStateMirror {
   id: string;
@@ -67,4 +79,5 @@ export interface RequestStateMirror {
   failReason: string | null;
   pendingQuestion: { questionId: string; question: string; options: string[] | null } | null;
   pendingVariants: { questionId: string; variants: HtmlMockup[] } | null;
+  logs: LogEntry[];
 }
