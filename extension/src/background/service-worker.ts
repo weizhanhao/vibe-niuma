@@ -200,8 +200,35 @@ async function handleMessage(msg: Message): Promise<unknown> {
       session.pendingRequestText = msg.requestText;
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       console.log('[doskill sw] UI_START_CAPTURE → tab', tab?.id, tab?.url);
-      if (tab?.id !== undefined) {
+      if (tab?.id === undefined) {
+        return { ok: false, error: 'no active tab' };
+      }
+      // MV3 坑：content script 只在扩展加载之后才打开/刷新的页里自动注入。
+      // 用户重载扩展时若 demo 页已经开着 → content script 不在 → sendMessage 静默
+      // 失败。先 sendMessage 探测；失败就用 chrome.scripting 手动注入再 retry。
+      // 注：crxjs 会把 content_scripts.js 哈希成 assets/content-entry.ts-loader-XXX.js，
+      // 所以这里从 runtime manifest 取真实路径，避免 hardcoded 路径在 prod build 失效。
+      try {
         await chrome.tabs.sendMessage(tab.id, { type: MSG.START_CAPTURE });
+      } catch (err) {
+        console.warn('[doskill sw] content script not in tab, injecting...', err);
+        const manifest = chrome.runtime.getManifest();
+        const files = manifest.content_scripts?.[0]?.js ?? [];
+        if (files.length === 0) {
+          console.error('[doskill sw] no content_scripts in manifest');
+          return { ok: false, error: 'no content_scripts in manifest' };
+        }
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files,
+          });
+          await chrome.tabs.sendMessage(tab.id, { type: MSG.START_CAPTURE });
+          console.log('[doskill sw] content script injected + retry ok');
+        } catch (err2) {
+          console.error('[doskill sw] inject + retry failed', err2);
+          return { ok: false, error: `inject failed: ${String(err2)}` };
+        }
       }
       return { ok: true };
     }
