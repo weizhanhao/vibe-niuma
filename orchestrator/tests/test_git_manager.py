@@ -83,6 +83,31 @@ def test_merge_conflict_raises(temp_repo):
     assert status.strip() == ""
 
 
+def test_merge_with_dirty_working_tree(temp_repo):
+    """回归：build 阶段在 commit_all 之后产生的 dist / tsbuildinfo 等
+    artifact 把工作树搞脏，旧版 merge_to_main rebase 会拒绝 ('unstaged changes')，
+    误报为 GitConflictError。现在应该 stash -u 跳过，merge 完 drop stash。
+    """
+    gm = GitManager(str(temp_repo))
+    gm.create_branch("cr/abc")
+    (temp_repo / "real_change.txt").write_text("from cr branch\n")
+    gm.commit_all("cr/abc", "cr: real change")
+    # 模拟 build artifact：未跟踪的 dist + 改过但未 stage 的 file.txt
+    (temp_repo / "file.txt").write_text("line1\ndirty\n")  # tracked & modified
+    (temp_repo / "dist_artifact.js").write_text("// build output\n")  # untracked
+    # 应该成功合并而不是 conflict
+    gm.merge_to_main("cr/abc")
+    main_files = subprocess.run(
+        ["git", "ls-tree", "--name-only", "main"], cwd=temp_repo, capture_output=True, text=True
+    ).stdout
+    assert "real_change.txt" in main_files
+    # stash 已被 drop（不留残留）
+    stash_list = subprocess.run(
+        ["git", "stash", "list"], cwd=temp_repo, capture_output=True, text=True
+    ).stdout
+    assert stash_list.strip() == ""
+
+
 def test_delete_branch(temp_repo):
     gm = GitManager(str(temp_repo))
     gm.create_branch("cr/abc")

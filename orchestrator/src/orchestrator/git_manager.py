@@ -42,17 +42,36 @@ class GitManager:
     def merge_to_main(self, branch: str) -> None:
         """先把 branch rebase 到最新 main，再 fast-forward 合并进 main。
         rebase 或 merge 冲突 → 回滚到干净状态并抛 GitConflictError。
+
+        合并前 stash -u 工作树：build 阶段（commit_all 之后）产生的 dist /
+        tsbuildinfo 等 build artifact 会污染工作树，rebase 会拒绝。stash 完拿
+        干净的树去 merge，merge 完直接 drop stash —— build artifact 是临时
+        产物，丢掉无妨。
         """
-        self._git("checkout", branch)
-        rebase = self._git("rebase", "main", check=False)
-        if rebase.returncode != 0:
-            self._git("rebase", "--abort", check=False)
+        status = self._git("status", "--porcelain").stdout
+        stashed = False
+        if status.strip():
+            self._git("stash", "push", "-u", "-m", "doskill-merge-prep")
+            stashed = True
+        try:
+            self._git("checkout", branch)
+            rebase = self._git("rebase", "main", check=False)
+            if rebase.returncode != 0:
+                self._git("rebase", "--abort", check=False)
+                self._git("checkout", "main")
+                raise GitConflictError(
+                    f"rebase conflict: {rebase.stdout}{rebase.stderr}"
+                )
             self._git("checkout", "main")
-            raise GitConflictError(f"rebase conflict: {rebase.stdout}{rebase.stderr}")
-        self._git("checkout", "main")
-        merge = self._git("merge", "--ff-only", branch, check=False)
-        if merge.returncode != 0:
-            raise GitConflictError(f"merge failed: {merge.stdout}{merge.stderr}")
+            merge = self._git("merge", "--ff-only", branch, check=False)
+            if merge.returncode != 0:
+                raise GitConflictError(
+                    f"merge failed: {merge.stdout}{merge.stderr}"
+                )
+        finally:
+            if stashed:
+                # build artifact stash 不再需要 —— 直接 drop。
+                self._git("stash", "drop", check=False)
 
     def delete_branch(self, branch: str) -> None:
         """删除分支（强制）。先确保不在该分支上。"""
