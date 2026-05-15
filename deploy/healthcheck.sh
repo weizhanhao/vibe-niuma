@@ -34,6 +34,9 @@ check "demo 仓库存在 + 有 main 分支"                  "test -d ${DEMO_REP
 check "docker daemon 可用"                            "docker info >/dev/null"
 check "doskill-orchestrator.service active"           "systemctl is-active doskill-orchestrator.service"
 check "doskill-llm-proxy.service active"              "systemctl is-active doskill-llm-proxy.service"
+check "main demo 容器 doskill-demo-backend up"        "docker inspect -f '{{.State.Running}}' doskill-demo-backend | grep -q true"
+check "main demo 容器 doskill-demo-frontend up"       "docker inspect -f '{{.State.Running}}' doskill-demo-frontend | grep -q true"
+check "main demo 端口 ${MAIN_DEMO_FRONTEND_PORT:-5199} 可连" "ss -ltn | grep -q ':${MAIN_DEMO_FRONTEND_PORT:-5199} '"
 
 printf '\n  通过 %d · 失败 %d\n' "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]

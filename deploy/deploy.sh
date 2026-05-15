@@ -145,6 +145,10 @@ sudo systemctl enable --now doskill-llm-proxy.service
 sudo systemctl enable --now doskill-orchestrator.service
 sudo systemctl restart doskill-llm-proxy.service doskill-orchestrator.service
 
+# main demo 站（业务员框选「样板间」）
+log "起 main 分支常驻 demo 站"
+bash deploy/main-demo.sh || log "main-demo 起失败（不阻塞主部署，看 docker logs）"
+
 log "完成；用 deploy/healthcheck.sh 验证"
 EOF
 
