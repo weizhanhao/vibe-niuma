@@ -38,6 +38,45 @@ def _make_log_sink(event_bus: EventBus, request_id: str, phase: str):
     return _log
 
 
+async def _with_heartbeat(
+    awaitable,
+    *,
+    log,
+    label: str,
+    interval: float = 5.0,
+):
+    """跑 awaitable，每 interval 秒发一条 「⏳ <label> 已 Xs...」心跳。
+
+    用于 LLM HTTP 调用 / git 操作这类没有 stdout 流的等待，避免 UI 长时间黑屏。
+    awaitable 完成或抛异常时心跳自动取消并清理；返回 awaitable 的结果或重抛异常。
+    """
+    import time
+    started = time.monotonic()
+    done = asyncio.Event()
+
+    async def _ticker() -> None:
+        while not done.is_set():
+            try:
+                await asyncio.wait_for(done.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                elapsed = int(time.monotonic() - started)
+                try:
+                    await log(f"⏳ {label} 已 {elapsed}s...")
+                except Exception:
+                    pass
+
+    ticker = asyncio.create_task(_ticker())
+    try:
+        return await awaitable
+    finally:
+        done.set()
+        ticker.cancel()
+        try:
+            await ticker
+        except BaseException:
+            pass
+
+
 class _PhaseError(Exception):
     """流水线某一步失败 —— 携带 phase / reason / log。"""
 
@@ -108,13 +147,21 @@ class Pipeline:
                 viewport=cr.viewport,
                 request_text=cr.request_text,
             )
-            await _phase_log("clarifying", "▸ 问视觉模型判断业务意图...")
-            brief = await self.interaction_skill.clarify(raw, channel)
+            await _phase_log("clarifying", "▸ 问视觉模型判断业务意图（LLM HTTP，首次可能 10-30s）...")
+            clarify_log = _make_log_sink(bus, request_id, "clarifying")
+            brief = await _with_heartbeat(
+                self.interaction_skill.clarify(raw, channel),
+                log=clarify_log, label="视觉模型回答中",
+            )
             await _phase_log("clarifying", "✓ 澄清完成")
 
             # clarifying → located
             await _phase_log("locating", "▸ 解析路由配置...")
-            locate_result = await self.stack_adapter.locate(raw.url)
+            locate_log = _make_log_sink(bus, request_id, "locating")
+            locate_result = await _with_heartbeat(
+                self.stack_adapter.locate(raw.url),
+                log=locate_log, label="路由解析中",
+            )
             if not locate_result.entry_files:
                 raise _PhaseError(
                     "located", "no-route-match", f"URL 未匹配任何路由: {raw.url}"
@@ -138,8 +185,12 @@ class Pipeline:
             self.repository.set_branch(request_id, branch)
             await self._set_state(request_id, State.CODING)
             await _phase_log("coding", "▸ 打包代码上下文...")
+            coding_log = _make_log_sink(bus, request_id, "coding")
             try:
-                ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)
+                ctx = await _with_heartbeat(
+                    self.stack_adapter.context_pack(locate_result, raw, brief),
+                    log=coding_log, label="代码上下文打包中",
+                )
             except Exception as exc:  # noqa: BLE001
                 raise _PhaseError(
                     "coding", "context-pack-error",
