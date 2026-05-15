@@ -205,16 +205,27 @@ async function handleMessage(msg: Message): Promise<unknown> {
       // requestText 取自 UI（业务员可能在 review 时改过文本）。
       const pc = session.pendingCapture;
       if (!pc) return { ok: false, error: 'no pending capture' };
-      session.pendingCapture = null;
       const finalText = msg.requestText ?? pc.requestText;
       console.log('[doskill sw] CONFIRM_CAPTURE → POST orchestrator');
-      const cr = await orchestratorClient.createChangeRequest({
-        url: pc.url,
-        screenshot_b64: pc.screenshotB64,
-        box_coords: pc.boxCoords,
-        viewport: pc.viewport,
-        request_text: finalText,
-      });
+      let cr: ChangeRequestOut;
+      try {
+        cr = await orchestratorClient.createChangeRequest({
+          url: pc.url,
+          screenshot_b64: pc.screenshotB64,
+          box_coords: pc.boxCoords,
+          viewport: pc.viewport,
+          request_text: finalText,
+        });
+      } catch (err) {
+        // POST 失败：保留 pendingCapture（业务员可重试），把错广播让 UI 显示
+        console.error('[doskill sw] POST failed, keeping pendingCapture', err);
+        // 把 textarea 编辑过的文本回写进 pendingCapture，免得业务员重输
+        session.pendingCapture = { ...pc, requestText: finalText };
+        await broadcastPendingCapture();
+        return { ok: false, error: String(err) };
+      }
+      // 成功才清 pendingCapture
+      session.pendingCapture = null;
       console.log('[doskill sw] CR created', cr.id);
       const next = initialState(cr);
       session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
@@ -232,6 +243,26 @@ async function handleMessage(msg: Message): Promise<unknown> {
       // Phase G：业务员点「重新框选」。丢掉 pendingCapture + pendingRequestText，回 CapturePanel。
       session.pendingCapture = null;
       session.pendingRequestText = null;
+      await broadcastPendingCapture();
+      return { ok: true };
+    }
+    case MSG.SUBMIT_TEXT_ONLY: {
+      // 直接提交（不框选）：SW 截当前页 + 空 box，走 Review 流程。
+      // box 全 0 表示「不指定区域」；orchestrator 端按 URL-only 定位即可。
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const dataUrl = tab?.windowId !== undefined
+        ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+        : '';
+      const screenshotB64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      session.pendingCapture = {
+        screenshotB64,
+        url: tab?.url ?? '',
+        boxCoords: { x: 0, y: 0, width: 0, height: 0 },
+        // viewport 在 SW 拿不到真值；用 0/0 标记「无意义」，UI 端别拿去算缩放
+        viewport: { width: 0, height: 0 },
+        requestText: msg.requestText,
+      };
+      console.log('[doskill sw] SUBMIT_TEXT_ONLY pendingCapture stashed');
       await broadcastPendingCapture();
       return { ok: true };
     }
@@ -283,7 +314,11 @@ async function handleMessage(msg: Message): Promise<unknown> {
       return { ok: true };
     }
     case MSG.NEW_CONVERSATION: {
-      // 切到 null —— UI 渲染 CapturePanel；不预创建 mirror。
+      // 切到 null + 清掉 pendingCapture / pendingRequestText —— 不然 App 路由
+      // 优先级 pendingCapture > activeId，会卡在 Review 看不到新 CapturePanel。
+      session.pendingCapture = null;
+      session.pendingRequestText = null;
+      await broadcastPendingCapture();
       await setActive(null);
       return { ok: true };
     }

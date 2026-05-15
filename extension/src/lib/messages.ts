@@ -73,6 +73,11 @@ export interface PendingCaptureChangedMsg {
   type: 'PENDING_CAPTURE_CHANGED';
   pending: PendingCapture | null;
 }
+// 直接提交：不框选，SW 截当前页 + 空 box，进 Review。
+export interface SubmitTextOnlyMsg {
+  type: 'SUBMIT_TEXT_ONLY';
+  requestText: string;
+}
 
 export type Message =
   | CaptureResultMsg | CaptureCancelMsg | StartCaptureMsg
@@ -80,7 +85,7 @@ export type Message =
   | SetActiveMsg | DeleteConversationMsg | NewConversationMsg | GetMirrorsMsg
   | RequestStateChangedMsg | MirrorsChangedMsg | RequestStateQueryMsg
   | ConfirmCaptureMsg | RetakeCaptureMsg | GetPendingCaptureMsg
-  | PendingCaptureChangedMsg;
+  | PendingCaptureChangedMsg | SubmitTextOnlyMsg;
 
 export const MSG = {
   START_CAPTURE: 'START_CAPTURE' as const,
@@ -103,4 +108,6 @@ export const MSG = {
   RETAKE_CAPTURE: 'RETAKE_CAPTURE' as const,
   GET_PENDING_CAPTURE: 'GET_PENDING_CAPTURE' as const,
   PENDING_CAPTURE_CHANGED: 'PENDING_CAPTURE_CHANGED' as const,
+  // Phase G+：直接提交（不框选）；SW 截当前页 + 空 box，走 Review。
+  SUBMIT_TEXT_ONLY: 'SUBMIT_TEXT_ONLY' as const,
 };

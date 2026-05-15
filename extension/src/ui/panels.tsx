@@ -57,9 +57,15 @@ export function ProgressTrail({ state }: { state: ChangeRequestState }) {
 }
 
 // ── CapturePanel ────────────────────────────────────────────────────
+// 第 1 步：业务员输需求。两条路：
+//   1) 「📍 框选」—— 想精确定位某区域时用（触发 overlay）
+//   2) 「→ 直接提交」—— 不关心区域时（如「做个新功能」），SW 截当前页面 + 空 box
+// 两条都进 ReviewCapturePanel，业务员确认后才 POST。
 export function CapturePanel() {
   const [text, setText] = useState('');
-  const start = () => send({ type: MSG.UI_START_CAPTURE, requestText: text });
+  const startFrame = () => send({ type: MSG.UI_START_CAPTURE, requestText: text });
+  const submitTextOnly = () => send({ type: MSG.SUBMIT_TEXT_ONLY, requestText: text });
+  const disabled = !text.trim();
   return (
     <section>
       <div className="eyebrow">第 1 步</div>
@@ -75,9 +81,18 @@ export function CapturePanel() {
         />
       </label>
       <div className="btn-row">
-        <button className="btn btn-primary" onClick={start} disabled={!text.trim()}>
-          开始框选区域
-        </button>
+        <button
+          className="btn btn-icon"
+          onClick={startFrame}
+          disabled={disabled}
+          title="精确定位：在页面上框出要改的区域"
+          aria-label="框选区域"
+        >📍 框选</button>
+        <button
+          className="btn btn-primary"
+          onClick={submitTextOnly}
+          disabled={disabled}
+        >→ 直接提交</button>
       </div>
     </section>
   );
@@ -149,8 +164,14 @@ export function ReviewCapturePanel({ pendingCapture }: { pendingCapture: Pending
 
       <div className="card" style={{ display: 'grid', gap: '0.25rem', fontSize: '0.78rem', color: 'var(--ink-soft)' }}>
         <div style={{ wordBreak: 'break-all' }}>URL: <code>{pendingCapture.url}</code></div>
-        <div>视口: {pendingCapture.viewport.width}×{pendingCapture.viewport.height}</div>
-        <div>框选: {Math.round(box.width)}×{Math.round(box.height)} px</div>
+        {pendingCapture.viewport.width > 0 && (
+          <div>视口: {pendingCapture.viewport.width}×{pendingCapture.viewport.height}</div>
+        )}
+        {box.width > 0 && box.height > 0 ? (
+          <div>框选: {Math.round(box.width)}×{Math.round(box.height)} px</div>
+        ) : (
+          <div style={{ color: 'var(--accent)' }}>无框选定位 · AI 按 URL 找改动位置</div>
+        )}
       </div>
 
       <label className="field">

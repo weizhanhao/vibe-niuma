@@ -15,16 +15,18 @@ const base: RequestStateMirror = {
 };
 
 describe('CapturePanel', () => {
-  it('button is disabled until text is entered', () => {
+  it('buttons disabled until text entered', () => {
     render(<CapturePanel />);
-    const btn = screen.getByRole('button', { name: /开始框选/ });
-    expect(btn).toBeDisabled();
-    const ta = screen.getByLabelText('业务需求');
-    fireEvent.change(ta, { target: { value: '改个颜色' } });
-    expect(btn).not.toBeDisabled();
+    const frameBtn = screen.getByRole('button', { name: /框选/ });
+    const submitBtn = screen.getByRole('button', { name: /直接提交/ });
+    expect(frameBtn).toBeDisabled();
+    expect(submitBtn).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('业务需求'), { target: { value: '改个颜色' } });
+    expect(frameBtn).not.toBeDisabled();
+    expect(submitBtn).not.toBeDisabled();
   });
 
-  it('clicking start sends UI_START_CAPTURE with text', () => {
+  it('framing button sends UI_START_CAPTURE', () => {
     const sent: unknown[] = [];
     vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
       sent.push(m);
@@ -32,8 +34,20 @@ describe('CapturePanel', () => {
     });
     render(<CapturePanel />);
     fireEvent.change(screen.getByLabelText('业务需求'), { target: { value: '改个颜色' } });
-    fireEvent.click(screen.getByRole('button', { name: /开始框选/ }));
+    fireEvent.click(screen.getByRole('button', { name: /框选/ }));
     expect(sent[0]).toEqual({ type: 'UI_START_CAPTURE', requestText: '改个颜色' });
+  });
+
+  it('submit button sends SUBMIT_TEXT_ONLY without framing', () => {
+    const sent: unknown[] = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
+      sent.push(m);
+      return Promise.resolve();
+    });
+    render(<CapturePanel />);
+    fireEvent.change(screen.getByLabelText('业务需求'), { target: { value: '加个新功能' } });
+    fireEvent.click(screen.getByRole('button', { name: /直接提交/ }));
+    expect(sent[0]).toEqual({ type: 'SUBMIT_TEXT_ONLY', requestText: '加个新功能' });
   });
 });
 
