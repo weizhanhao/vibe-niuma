@@ -44,11 +44,15 @@ export function initialState(cr: ChangeRequestOut): RequestStateMirror {
 export function applyEvent(state: RequestStateMirror, evt: SSEEvent): RequestStateMirror {
   switch (evt.type) {
     case 'status': {
+      // 注意：preview_url / branch 是后端写 DB 后才有的，第一次 GET 时是 null。
+      // 后端发 status 事件时会夹带这些字段；事件里没给的就保留 mirror 现状。
       return {
         ...state,
         state: evt.data.state,
         failPhase: evt.data.phase ?? state.failPhase,
         failReason: evt.data.reason ?? state.failReason,
+        previewUrl: evt.data.preview_url ?? state.previewUrl,
+        branch: evt.data.branch ?? state.branch,
         lastActivity: nowIso(),
       };
     }

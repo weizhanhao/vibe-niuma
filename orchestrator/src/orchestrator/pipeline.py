@@ -195,7 +195,15 @@ class Pipeline:
                     f"create_branch 失败：{exc}\n{''.join(traceback.format_exception(exc))}",
                 ) from exc
             self.repository.set_branch(request_id, branch)
-            await self._set_state(request_id, State.CODING)
+            # 同 preview-ready：branch 是新写入的，事件得夹带，否则 mirror 落空。
+            self.repository.transition(request_id, State.CODING)
+            await self.event_bus.publish(
+                request_id,
+                Event(type="status", data={
+                    "state": State.CODING.value,
+                    "branch": branch,
+                }),
+            )
             await _phase_log("coding", "▸ 打包代码上下文...")
             coding_log = _make_log_sink(bus, request_id, "coding")
             try:
@@ -245,7 +253,18 @@ class Pipeline:
                 request_id, url=instance.url, handle=instance.handle
             )
             await _phase_done("building", f"✓ 预览容器就绪 {instance.url}")
-            await self._set_state(request_id, State.PREVIEW_READY)
+            # 注意：_set_state 默认只发 {state}；这里 preview_url 是新写入 DB 的，
+            # 不夹带在事件里扩展端的 mirror 永远停在 previewUrl=null。所以这里
+            # 不用 _set_state，直接 transition + publish 一个带 preview_url 的事件。
+            self.repository.transition(request_id, State.PREVIEW_READY)
+            await self.event_bus.publish(
+                request_id,
+                Event(type="status", data={
+                    "state": State.PREVIEW_READY.value,
+                    "preview_url": instance.url,
+                    "branch": branch,
+                }),
+            )
             total = time.monotonic() - run_started
             await _phase_log("building", f"🏁 全流程完成 总耗时 {total:.1f}s")
             # 注意：到此 pipeline 结束，槽位仍占用，由 merge/discard/expire 释放

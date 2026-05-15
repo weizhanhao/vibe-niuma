@@ -68,7 +68,7 @@ export const MAX_LOGS_PER_MIRROR = 200;
 export const MAX_MIRRORS = 50;
 
 export type SSEEvent =
-  | { type: 'status'; data: { state: ChangeRequestState; phase?: string; reason?: string } }
+  | { type: 'status'; data: { state: ChangeRequestState; phase?: string; reason?: string; preview_url?: string; branch?: string } }
   | { type: 'question'; data: { question_id: string; question: string; options: string[] | null } }
   | { type: 'variants'; data: { question_id: string; variants: HtmlMockup[] } }
   | { type: 'log'; data: LogEntry };
