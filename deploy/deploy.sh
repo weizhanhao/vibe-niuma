@@ -38,9 +38,13 @@ fi
 
 # ── 投代码 ─────────────────────────────────────────────────────
 log "rsync orchestrator + demo + deploy → $ECS_HOST"
+# ⚠ admin.token 由 orchestrator systemd unit 首次启动时 ExecStartPre 自动生成，
+# 写在 $DEPLOY_ROOT/admin.token（顶层、子目录之外）。三处 rsync 走的都是子目录，
+# 默认不会动顶层文件，但加上 --exclude 当兜底防线（防止将来误加顶层 rsync）。
 rsync -az --delete \
   --exclude '.git' --exclude 'node_modules' --exclude 'venv' \
   --exclude '__pycache__' --exclude '*.pyc' --exclude 'dist' \
+  --exclude 'admin.token' \
   -e "$RSYNC_E" \
   "$REPO_ROOT/orchestrator/" "$ECS_USER@$ECS_HOST:$DEPLOY_ROOT/orchestrator/"
 # ⚠ demo 不能 --delete + 不排 .git：会把 cr/* 分支和合并到 main 的 commit 全擦掉。
@@ -158,3 +162,9 @@ log "完成；用 deploy/healthcheck.sh 验证"
 EOF
 
 log "本机：scp 完。下一步：bash deploy/healthcheck.sh"
+echo
+echo "  [deploy] ✓ 完成"
+echo "  [deploy] 第一次部署？跑这条拿 Admin Token："
+echo "  [deploy]   ssh $ECS_USER@$ECS_HOST 'cat $DEPLOY_ROOT/admin.token'"
+echo "  [deploy] 把它粘到扩展的引导向导 Step 2"
+echo
