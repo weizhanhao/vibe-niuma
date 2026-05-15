@@ -71,7 +71,10 @@ export type SSEEvent =
   | { type: 'status'; data: { state: ChangeRequestState; phase?: string; reason?: string; preview_url?: string; branch?: string } }
   | { type: 'question'; data: { question_id: string; question: string; options: string[] | null } }
   | { type: 'variants'; data: { question_id: string; variants: HtmlMockup[] } }
-  | { type: 'log'; data: LogEntry };
+  | { type: 'log'; data: LogEntry }
+  // Phase C：业务员回答后后端广播此事件，订阅者据此清掉同 question_id 的 pendingQuestion/Variants。
+  // 重连历史回放时也会出现，所以兜底「已答问题闪现」问题。
+  | { type: 'question-resolved'; data: { question_id: string } };
 
 export interface RequestStateMirror {
   id: string;

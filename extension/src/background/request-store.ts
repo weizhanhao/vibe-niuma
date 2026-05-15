@@ -82,6 +82,20 @@ export function applyEvent(state: RequestStateMirror, evt: SSEEvent): RequestSta
         : nextLogs;
       return { ...state, logs: trimmed, lastActivity: nowIso() };
     }
+    case 'question-resolved': {
+      // Phase C：仅当 pendingQuestion / pendingVariants 的 questionId 命中时清掉。
+      // 重连回放历史时，老 question 会先被 set，再被这条 resolved 清掉 —— 同步 reducer，中间一帧也不渲染。
+      const qid = evt.data.question_id;
+      const qHit = state.pendingQuestion?.questionId === qid;
+      const vHit = state.pendingVariants?.questionId === qid;
+      if (!qHit && !vHit) return state;
+      return {
+        ...state,
+        pendingQuestion: qHit ? null : state.pendingQuestion,
+        pendingVariants: vHit ? null : state.pendingVariants,
+        lastActivity: nowIso(),
+      };
+    }
   }
 }
 

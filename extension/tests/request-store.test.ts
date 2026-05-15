@@ -91,4 +91,47 @@ describe('request-store reducer', () => {
     expect(state.logs[0].line).toBe(`line-${overflow}`);
     expect(state.logs[state.logs.length - 1].line).toBe(`line-${MAX_LOGS_PER_MIRROR + overflow - 1}`);
   });
+
+  // ── Phase C：question-resolved 清除已答的 pendingQuestion / Variants ──
+  it('question-resolved clears pendingQuestion when questionId matches', () => {
+    const withQ = applyEvent(baseMirror, {
+      type: 'question',
+      data: { question_id: 'q1', question: '?', options: null },
+    });
+    expect(withQ.pendingQuestion?.questionId).toBe('q1');
+
+    const resolved = applyEvent(withQ, {
+      type: 'question-resolved',
+      data: { question_id: 'q1' },
+    });
+    expect(resolved.pendingQuestion).toBeNull();
+  });
+
+  it('question-resolved clears pendingVariants when questionId matches', () => {
+    const withV = applyEvent(baseMirror, {
+      type: 'variants',
+      data: { question_id: 'v-q', variants: [{ id: 'v1', title: 't', html: '<a/>' }] },
+    });
+    expect(withV.pendingVariants?.questionId).toBe('v-q');
+
+    const resolved = applyEvent(withV, {
+      type: 'question-resolved',
+      data: { question_id: 'v-q' },
+    });
+    expect(resolved.pendingVariants).toBeNull();
+  });
+
+  it('question-resolved with non-matching questionId is a no-op (identity preserved)', () => {
+    const withQ = applyEvent(baseMirror, {
+      type: 'question',
+      data: { question_id: 'q1', question: '?', options: null },
+    });
+    const resolved = applyEvent(withQ, {
+      type: 'question-resolved',
+      data: { question_id: 'OTHER' },
+    });
+    // 不清旧问题，identity 也不变（保护 React 渲染避免无意义 rerender）
+    expect(resolved.pendingQuestion?.questionId).toBe('q1');
+    expect(resolved).toBe(withQ);
+  });
 });

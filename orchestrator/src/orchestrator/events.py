@@ -18,7 +18,7 @@ BUFFER_MAX_EVENTS = 1000
 
 @dataclass
 class Event:
-    type: str  # "status" | "question" | "variants" | "log"
+    type: str  # "status" | "question" | "variants" | "log" | "question-resolved"
     data: dict
 
 

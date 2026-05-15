@@ -89,6 +89,8 @@ export const orchestratorClient = {
       es.addEventListener('variants', dispatch('variants') as EventListener);
       // Phase F：流式 log 行，phase=clarifying|locating|coding|building|...
       es.addEventListener('log', dispatch('log') as EventListener);
+      // Phase C：业务员回答后，后端广播 question-resolved 让前端清掉 pendingQuestion
+      es.addEventListener('question-resolved', dispatch('question-resolved') as EventListener);
       es.onerror = () => {
         if (stopped) return;
         es?.close();
