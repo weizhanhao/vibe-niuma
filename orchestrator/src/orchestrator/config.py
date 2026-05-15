@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # 预览容器只起前端，API 通过 vite proxy → backend；空串则不注入 VITE_API_URL，
     # 业务员看到的页面会是空数据。指向 main-demo 后端就能复用真实样板数据。
     preview_backend_url: str = ""
+    # 合并成功后跑这个脚本（异步），重建 main-demo 容器加载新前端代码。
+    # 空串则跳过 —— 本地开发或自定义部署可以关掉。
+    main_demo_refresh_script: str = ""
 
     # —— repo /init ——
     repo_init_timeout_seconds: int = 600        # 扫仓库 → 生成 CLAUDE.md

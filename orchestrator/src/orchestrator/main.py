@@ -259,7 +259,43 @@ def merge_change_request(
         return ChangeRequestOut.from_model(repo.get(request_id))
     repo.transition(request_id, State.MERGED)
     app_state.quota.release(request_id)
+    # 合并完后台异步重建 main-demo —— 不阻塞 HTTP 响应。SSE log 推到本 CR 的事件流，
+    # 让业务员看「合并成功 → 重建中... → 完成」的实时反馈。
+    if settings.main_demo_refresh_script:
+        _spawn(_refresh_main_demo(request_id, settings.main_demo_refresh_script))
     return ChangeRequestOut.from_model(repo.get(request_id))
+
+
+async def _refresh_main_demo(request_id: str, script_path: str) -> None:
+    """异步跑 main-demo 重建脚本，把 stdout 行级回灌到 CR 的 SSE log。"""
+    bus = app_state.event_bus
+
+    async def _log(line: str) -> None:
+        await bus.publish_log(request_id, "merged", line)
+
+    await _log("▸ 重建 main demo（编译新前端 + 重启容器）...")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", script_path, "--rebuild",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+    except FileNotFoundError as exc:
+        await _log(f"✗ 找不到刷新脚本：{exc}")
+        return
+    assert proc.stdout is not None
+    while True:
+        raw = await proc.stdout.readline()
+        if not raw:
+            break
+        text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+        if text.strip():
+            await _log(text)
+    rc = await proc.wait()
+    if rc == 0:
+        await _log("✓ main demo 已刷新，回到 :5199 刷新页面就能看到改动")
+    else:
+        await _log(f"✗ main demo 刷新失败 rc={rc}；可手动跑 deploy/main-demo.sh --rebuild")
 
 
 @app.post("/change-requests/{request_id}/discard", response_model=ChangeRequestOut)
