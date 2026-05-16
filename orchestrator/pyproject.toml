@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "sse-starlette>=2.1",
+    "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]
