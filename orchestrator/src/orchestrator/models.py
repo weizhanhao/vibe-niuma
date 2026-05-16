@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Index
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -73,6 +73,10 @@ class ChangeRequest(Base):
     # Plan 8 Task 11：多仓项目时记录这个 CR 触达了哪些子仓 + 各自 commit SHA。
     # 单仓 CR 留 None；多仓时存 {"frontend": "abc123", "backend": "def456"}。
     repos: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Plan 9 Task 1：N 个 CR 串成一个 conversation；老 CR 默认 NULL，迁移到 Legacy bucket
+    conversation_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("conversation.id"), nullable=True, index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -80,3 +84,20 @@ class ChangeRequest(Base):
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
+
+
+# Plan 9：N 个 CR 串成一个对话容器；chat 上下文跨 session 持久化在此。
+# messages 是 append-only JSON 数组，item 形如：
+#   {"type": "user" | "ai" | "summary", "ts": "ISO", "content": "...", ...}
+class Conversation(Base):
+    __tablename__ = "conversation"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # append-only：[{type, ts, content, ...}]
+    messages: Mapped[list] = mapped_column(JSON, default=list, nullable=False)

@@ -25,6 +25,7 @@ from orchestrator.adapters.impl.opencode_runner import OpenCodeDevRunner
 from orchestrator.adapters.impl.react_vite_stack import ReactViteStackAdapter
 from orchestrator.adapters.types import RawRequest
 from orchestrator.config import settings
+from orchestrator.conversation import ConversationRepository
 from orchestrator.db import Base, engine, get_db
 from orchestrator.events import Event, EventBus
 from orchestrator.git_manager import GitConflictError, GitManager
@@ -400,3 +401,59 @@ async def change_request_events(request_id: str):
             yield {"event": evt.type, "data": json.dumps(evt.data)}
 
     return EventSourceResponse(event_stream())
+
+
+# ── Plan 9: Conversation REST ────────────────────────────────────────
+@app.post("/conversations")
+def create_conversation(payload: dict | None = None, db: Session = Depends(get_db)) -> dict:
+    """POST {title?: str} → 创建空对话，返回 {id, title, messages: []}"""
+    title = (payload or {}).get("title", "") if isinstance(payload, dict) else ""
+    conv = ConversationRepository(db).create(title=title)
+    return _conv_out(conv)
+
+
+@app.get("/conversations")
+def list_conversations(archived: bool = False, db: Session = Depends(get_db)) -> dict:
+    repo = ConversationRepository(db)
+    items = repo.list_all() if archived else repo.list_active()
+    return {"items": [_conv_out(c) for c in items]}
+
+
+@app.get("/conversations/{conv_id}")
+def get_conversation(conv_id: str, db: Session = Depends(get_db)) -> dict:
+    conv = ConversationRepository(db).get(conv_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="conversation 不存在")
+    return _conv_out(conv)
+
+
+@app.post("/conversations/{conv_id}/messages")
+def append_conversation_message(
+    conv_id: str, payload: dict, db: Session = Depends(get_db),
+) -> dict:
+    """append 一条 message。payload = {type: 'user'|'ai'|'summary', content: str, ...}"""
+    try:
+        conv = ConversationRepository(db).append_message(conv_id, payload)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="conversation 不存在")
+    return _conv_out(conv)
+
+
+@app.post("/conversations/{conv_id}/archive")
+def archive_conversation(conv_id: str, db: Session = Depends(get_db)) -> dict:
+    try:
+        conv = ConversationRepository(db).archive(conv_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="conversation 不存在")
+    return _conv_out(conv)
+
+
+def _conv_out(conv) -> dict:
+    return {
+        "id": conv.id,
+        "title": conv.title,
+        "created_at": conv.created_at.isoformat() if conv.created_at else None,
+        "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
+        "archived_at": conv.archived_at.isoformat() if conv.archived_at else None,
+        "messages": conv.messages or [],
+    }
