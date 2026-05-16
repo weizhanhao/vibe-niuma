@@ -70,6 +70,9 @@ class ChangeRequest(Base):
     preview_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     preview_handle: Mapped[str | None] = mapped_column(String(255), nullable=True)
     retry_of: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Plan 8 Task 11：多仓项目时记录这个 CR 触达了哪些子仓 + 各自 commit SHA。
+    # 单仓 CR 留 None；多仓时存 {"frontend": "abc123", "backend": "def456"}。
+    repos: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
