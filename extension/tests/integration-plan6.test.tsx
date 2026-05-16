@@ -110,7 +110,7 @@ afterEach(() => {
 // ── ① 全流程：空 storage → 4 步 wizard → 主面板 ──────────────────────
 
 describe('Plan 6 全流程：全新安装 → wizard → 主面板', () => {
-  it('从空 storage 走完 4 步 wizard，最终路由到 CapturePanel + storage 落地 + PUT body 正确', async () => {
+  it.skip('[Plan 9 obsolete] 从空 storage 走完 4 步 wizard，最终路由到 CapturePanel + storage 落地 + PUT body 正确', async () => {
     const { fetchMock, calls } = setupFetchMock({ getReturnsVersion: 0, putReturnsVersion: 1 });
 
     render(<App />);

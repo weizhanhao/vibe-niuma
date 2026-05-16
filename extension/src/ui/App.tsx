@@ -1,12 +1,20 @@
-// 主路由：
+// 主路由（Plan 9 后）：
 //   - 加载中 → 占位
-//   - 未配置（chrome.storage 空 / config 不足）→ 强制 SetupWizardPanel（无法跳过到主面板）
-//   - 已配置 + 齿轮按钮 toggle → SettingsPanel
-//   - 已配置 + 默认 → 现有主流程（pendingCapture / state 路由）
-// Plan 6 Task 10：从静态布局升级为「按 config 是否就绪」分两枝路由。
+//   - 没项目 → ProjectSelectorPanel
+//   - 正在新建项目 → CreateProjectPanel
+//   - 有 active project + config 全 → MainShell（head 含 ProjectSwitcher）
+//   - 有 active project 但 config 残缺 → CreateProjectPanel（修补）
+//
+// 兼容老用户：boot 时 migrateLegacyConfig 把 doskill_config_v2 包成「默认项目」+
+// setActive。setActive 内部同步 project.config → doskill_config_v2 让 service-worker
+// 不必改读路径。
 import React, { useEffect, useState } from 'react';
 import { isConfigSufficient, loadConfig, type Config } from '../lib/config';
+import {
+  loadActiveProject, loadProjects, migrateLegacyConfig, type Project,
+} from '../lib/projects';
 import { ConversationList } from './components/ConversationList';
+import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { useMirrors } from './hooks/useMirrors';
 import { usePendingCapture } from './hooks/usePendingCapture';
 import { useRequestState } from './hooks/useRequestState';
@@ -14,13 +22,11 @@ import {
   CapturePanel, ClarifyPanel, FailedPanel, PreviewPanel, ReviewCapturePanel,
   StatusPanel, VariantsPanel,
 } from './panels';
-import { DeploymentAssistantPanel } from './panels/DeploymentAssistantPanel';
+import { CreateProjectPanel } from './panels/CreateProjectPanel';
+import { ProjectSelectorPanel } from './panels/ProjectSelectorPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
-import { SetupWizardPanel } from './panels/SetupWizardPanel';
 import type { ChangeRequestState } from '../lib/types';
 import { loadTheme, readThemeSync, saveTheme, type Theme } from '../lib/theme';
-
-const ASSISTANT_COMPLETED_KEY = 'doskill_deployment_completed_at';
 
 // loading sentinel：避免在 cfg 还没拉到时短暂渲染 wizard 闪一下。
 type ConfigState = 'loading' | Config | null;
@@ -95,76 +101,101 @@ function useThemeToggle(): [Theme, () => void] {
   return [theme, toggle];
 }
 
+type AppBootState =
+  | { kind: 'loading' }
+  | { kind: 'no-projects' }                       // 一个都没有
+  | { kind: 'no-active'; first: Project | null }  // 有 projects 但 active 是 null（删完最后一个、或主动切空）
+  | { kind: 'creating' }                          // 正在新建
+  | { kind: 'has-active'; project: Project; config: Config | null };
+
 export function App() {
-  const [config, setConfig] = useState<ConfigState>('loading');
-  const [assistantCompleted, setAssistantCompleted] = useState<number | null | 'loading'>('loading');
+  const [boot, setBoot] = useState<AppBootState>({ kind: 'loading' });
+
+  const reload = async () => {
+    // 启动时一次性迁移老 doskill_config_v2 → Project（幂等）
+    await migrateLegacyConfig();
+    const projects = await loadProjects();
+    if (projects.length === 0) {
+      setBoot({ kind: 'no-projects' });
+      return;
+    }
+    const active = await loadActiveProject();
+    if (!active) {
+      setBoot({ kind: 'no-active', first: projects[0] });
+      return;
+    }
+    const cfg = await loadConfig();
+    setBoot({ kind: 'has-active', project: active, config: cfg });
+  };
 
   useEffect(() => {
-    let mounted = true;
-    loadConfig().then((cfg) => { if (mounted) setConfig(cfg); });
-
-    // 拉一次 deployment_completed_at —— Plan 7 退场判据
-    if (chrome?.storage?.local?.get) {
-      void (async () => {
-        const out = (await chrome.storage.local.get([ASSISTANT_COMPLETED_KEY])) as Record<string, unknown>;
-        if (!mounted) return;
-        const v = out[ASSISTANT_COMPLETED_KEY];
-        setAssistantCompleted(typeof v === 'number' ? v : null);
-      })();
-    } else {
-      setAssistantCompleted(null);
-    }
-
+    void reload();
     const listener = (
       changes: Record<string, chrome.storage.StorageChange>,
       area: string,
     ) => {
       if (area !== 'local') return;
-      if (CONFIG_STORAGE_KEY in changes) {
-        loadConfig().then((cfg) => { if (mounted) setConfig(cfg); });
-      }
-      if (ASSISTANT_COMPLETED_KEY in changes) {
-        const v = changes[ASSISTANT_COMPLETED_KEY].newValue;
-        if (mounted) setAssistantCompleted(typeof v === 'number' ? v : null);
+      // 任一相关 key 变化都重 load
+      if (
+        'doskill_projects' in changes ||
+        'doskill_active_project_id' in changes ||
+        'doskill_config_v2' in changes
+      ) {
+        void reload();
       }
     };
     chrome.storage?.onChanged?.addListener?.(listener);
-    return () => {
-      mounted = false;
-      chrome.storage?.onChanged?.removeListener?.(listener);
-    };
+    return () => chrome.storage?.onChanged?.removeListener?.(listener);
   }, []);
 
-  if (config === 'loading' || assistantCompleted === 'loading') {
+  if (boot.kind === 'loading') {
+    return <div className="app"><div className="app-body"><p className="help">加载中…</p></div></div>;
+  }
+
+  if (boot.kind === 'creating') {
     return (
       <div className="app">
-        <div className="app-body"><p className="help">加载中…</p></div>
+        <CreateProjectPanel
+          onDone={() => { void reload(); }}
+          onCancel={() => { void reload(); }}
+        />
       </div>
     );
   }
 
-  // 未配置 + 助手未跑完 → 走 Plan 7 部署助手；
-  // 未配置 + 助手已跑完（异常状态） → 兜底走 Plan 6 的 SetupWizardPanel
-  if (!isConfigSufficient(config)) {
-    if (assistantCompleted === null) {
-      return (
-        <div className="app">
-          <DeploymentAssistantPanel onComplete={() => { void loadConfig().then(setConfig); }} />
-        </div>
-      );
-    }
+  if (boot.kind === 'no-projects' || boot.kind === 'no-active') {
     return (
       <div className="app">
-        <SetupWizardPanel onComplete={() => { void loadConfig().then(setConfig); }} />
+        <ProjectSelectorPanel
+          onPicked={() => { void reload(); }}
+          onCreateNew={() => setBoot({ kind: 'creating' })}
+        />
       </div>
     );
   }
 
-  return <MainShell />;
+  // has-active：config 可能不全（项目刚迁移过来 / 删了 key）→ 进 CreateProject 修补
+  if (!isConfigSufficient(boot.config)) {
+    return (
+      <div className="app">
+        <CreateProjectPanel
+          onDone={() => { void reload(); }}
+          onCancel={() => { void reload(); }}
+        />
+      </div>
+    );
+  }
+
+  return <MainShell project={boot.project} onCreateProject={() => setBoot({ kind: 'creating' })} onSwitch={() => { void reload(); }} />;
 }
 
 // ── 主壳：拆出去是为了让 wizard 那条 return 干净，避免 hooks 顺序在 wizard / 主面板之间漂移 ──
-function MainShell() {
+interface MainShellProps {
+  project: Project;
+  onCreateProject: () => void;
+  onSwitch: () => void;
+}
+function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   const state = useRequestState();
   const { mirrors, activeId } = useMirrors();
   const pendingCapture = usePendingCapture();
@@ -230,10 +261,11 @@ function MainShell() {
     <div className="app">
       <header className="app-head">
         <span className="app-logo">d</span>
-        <div className="app-title">
-          <div>DO<em>SKILL</em></div>
-          <span className="muted">change request</span>
-        </div>
+        <ProjectSwitcher
+          active={project}
+          onSwitch={onSwitch}
+          onCreateNew={onCreateProject}
+        />
         <div className={`app-status ${pill.tone}`}><span className="pulse" />{pill.label}</div>
         <div className="app-head-actions">
           <button

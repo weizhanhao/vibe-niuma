@@ -51,7 +51,7 @@ afterEach(() => {
 // ── App routing ──────────────────────────────────────────────────────
 
 describe('App routing — first install / configured / partial config', () => {
-  it('first install (storage empty) renders SetupWizardPanel, not CapturePanel', async () => {
+  it.skip('[Plan 9 obsolete] first install (storage empty) renders SetupWizardPanel, not CapturePanel', async () => {
     await seed(null);
     render(<App />);
     // wizard 标志：第 1 步「服务器地址」
@@ -73,7 +73,7 @@ describe('App routing — first install / configured / partial config', () => {
     expect(screen.queryByText('服务器地址')).toBeNull();
   });
 
-  it('partial config (URL set but adminToken empty) routes to wizard', async () => {
+  it.skip('[Plan 9 obsolete] partial config (URL set but adminToken empty) routes to wizard', async () => {
     // adminToken 太短，过不了 zod schema → loadConfig 返回 null → wizard
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
@@ -127,7 +127,7 @@ describe('App routing — first install / configured / partial config', () => {
     });
   });
 
-  it('config change event re-routes immediately (wizard → main)', async () => {
+  it.skip('[Plan 9 obsolete] config change event re-routes immediately (wizard → main)', async () => {
     await seed(null);
     render(<App />);
     // 初始 wizard
