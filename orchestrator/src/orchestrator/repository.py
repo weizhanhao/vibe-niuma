@@ -71,6 +71,13 @@ class ChangeRequestRepository:
         cr.branch = branch
         self._db.commit()
 
+    def set_repos(self, request_id: str, repos: dict[str, str]) -> None:
+        """Plan 8 Task 11+12：多仓 CR 把 {repo_name: sha} 落到 ChangeRequest.repos 列。"""
+        cr = self._get_or_raise(request_id)
+        cr.repos = repos
+        cr.last_activity_at = datetime.utcnow()
+        self._db.commit()
+
     def set_preview(self, request_id: str, url: str, handle: str) -> None:
         cr = self._get_or_raise(request_id)
         cr.preview_url = url

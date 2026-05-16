@@ -256,7 +256,15 @@ class Pipeline:
                 ) from exc
             if not run_result.changed:
                 raise _PhaseError("coding", "no-changes", run_result.log)
-            await _phase_done("coding", f"✓ 编码完成 commit={run_result.commit_sha}")
+            # Plan 8 Task 12：commit_sha 多仓时是 dict，单仓时是 str。
+            # 多仓 → 写到 ChangeRequest.repos JSON 列；log 显示精简版「{repo:sha8, ...}」。
+            sha = run_result.commit_sha
+            if isinstance(sha, dict):
+                self.repository.set_repos(request_id, sha)
+                display = "{" + ", ".join(f"{r}:{s[:8]}" for r, s in sorted(sha.items())) + "}"
+                await _phase_done("coding", f"✓ 编码完成 (多仓) commit={display}")
+            else:
+                await _phase_done("coding", f"✓ 编码完成 commit={sha}")
 
             # coding → building
             await self._set_state(request_id, State.BUILDING)

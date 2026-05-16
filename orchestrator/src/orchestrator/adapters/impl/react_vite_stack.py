@@ -21,6 +21,7 @@ from orchestrator.adapters.types import (
     RawRequest,
     RequestBrief,
 )
+from orchestrator.multi_repo import discover_sub_repos
 
 
 # 路由文件的候选位置（按优先级）
@@ -155,71 +156,117 @@ class ReactViteStackAdapter:
         return None
 
     # ── build ───────────────────────────────────────────────────────
+    async def _run_subprocess(
+        self, cmd: list[str], cwd: Path, label: str, log: LogSink | None = None
+    ) -> tuple[int, str]:
+        """Execute a subprocess, streaming each output line to `log` if provided.
+
+        Returns (returncode, formatted_log_segment).
+        """
+        import asyncio
+        import os
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, cwd=str(cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={**os.environ, "CI": "1"},
+            )
+            collected: list[str] = []
+            if log is not None:
+                await log(f"▸ {label}")
+            # Read stdout line-by-line (stderr merged); push each line to the log sink.
+            assert proc.stdout is not None
+            while True:
+                raw = await proc.stdout.readline()
+                if not raw:
+                    break
+                text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                collected.append(text)
+                if text.strip() and log is not None:
+                    try:
+                        await log(text)
+                    except Exception:
+                        pass
+            await proc.wait()
+            body = "\n".join(collected)
+            return proc.returncode, f"--- {label} ---\n{body}\n"
+        except FileNotFoundError as exc:
+            return 127, f"--- {label} ---\n{exc}\n"
+
     async def build(
         self, repo_path: str, branch: str, *, log: LogSink | None = None
     ) -> BuildResult:
         """前端 npm ci + npm run build；后端 python -m compileall。
 
-        Phase F：若调用方注入 `log` 回调，stream subprocess 输出每一行实时推到扩展。
-        """
-        import asyncio
-        import os
+        多仓模式：若 discover_sub_repos 返回非空，遍历每个含 package.json 的子仓
+        分别跑 npm ci + npm run build（无 package.json 的子仓视为后端，跳过）。
+        任一子仓失败 → ok=False，但继续收集其余日志再返回。
 
+        单仓模式（fallback）：若 discover_sub_repos 返回空，沿用旧逻辑在
+        <repo_path>/frontend/ 下跑 npm，<repo_path>/backend/ 下跑 compileall。
+
+        Phase F：若调用方注入 `log` 回调，stream subprocess 输出每行实时推到扩展。
+        """
         repo = Path(repo_path)
         log_parts: list[str] = []
         ok = True
 
-        async def _run(cmd: list[str], cwd: Path, label: str) -> tuple[int, str]:
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd, cwd=str(cwd),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env={**os.environ, "CI": "1"},
+        sub_repos = discover_sub_repos(repo)
+
+        if sub_repos:
+            # ── multi-repo path ──────────────────────────────────────
+            for sub in sub_repos:
+                if not (sub / "package.json").exists():
+                    # Backend-like sub-repo (no package.json) — skip npm.
+                    continue
+                label_prefix = sub.name
+                # npm ci (skip if node_modules already present)
+                if not (sub / "node_modules").is_dir():
+                    rc, lg = await self._run_subprocess(
+                        ["npm", "ci"], sub, f"{label_prefix}: npm ci", log
+                    )
+                    log_parts.append(lg)
+                    if rc != 0:
+                        ok = False
+                # npm run build — run even if a previous sub-repo failed (collect all logs)
+                rc, lg = await self._run_subprocess(
+                    ["npm", "run", "build"], sub, f"{label_prefix}: npm run build", log
                 )
-                collected: list[str] = []
-                if log is not None:
-                    await log(f"▸ {label}")
-                # 按行读 stdout（已 merge stderr）；每行 → log 回调 + 累计
-                assert proc.stdout is not None
-                while True:
-                    raw = await proc.stdout.readline()
-                    if not raw:
-                        break
-                    text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-                    collected.append(text)
-                    if text.strip() and log is not None:
-                        try:
-                            await log(text)
-                        except Exception:
-                            pass
-                await proc.wait()
-                body = "\n".join(collected)
-                return proc.returncode, f"--- {label} ---\n{body}\n"
-            except FileNotFoundError as exc:
-                return 127, f"--- {label} ---\n{exc}\n"
-
-        frontend = repo / "frontend"
-        if frontend.is_dir():
-            if not (frontend / "node_modules").is_dir():
-                rc, lg = await _run(["npm", "ci"], frontend, "npm ci")
                 log_parts.append(lg)
                 if rc != 0:
                     ok = False
-            if ok:
-                rc, lg = await _run(["npm", "run", "build"], frontend, "npm run build")
+        else:
+            # ── single-repo fallback (legacy path) ───────────────────
+            frontend = repo / "frontend"
+            if frontend.is_dir():
+                if not (frontend / "node_modules").is_dir():
+                    rc, lg = await self._run_subprocess(
+                        ["npm", "ci"], frontend, "npm ci", log
+                    )
+                    log_parts.append(lg)
+                    if rc != 0:
+                        ok = False
+                if ok:
+                    rc, lg = await self._run_subprocess(
+                        ["npm", "run", "build"], frontend, "npm run build", log
+                    )
+                    log_parts.append(lg)
+                    if rc != 0:
+                        ok = False
+
+            backend = repo / "backend"
+            if ok and backend.is_dir():
+                rc, lg = await self._run_subprocess(
+                    ["python3", "-m", "compileall", "-q", "."],
+                    backend,
+                    "compileall backend",
+                    log,
+                )
                 log_parts.append(lg)
                 if rc != 0:
                     ok = False
-
-        backend = repo / "backend"
-        if ok and backend.is_dir():
-            rc, lg = await _run(
-                ["python3", "-m", "compileall", "-q", "."], backend, "compileall backend"
-            )
-            log_parts.append(lg)
-            if rc != 0:
-                ok = False
 
         return BuildResult(ok=ok, log="".join(log_parts) or "no build steps ran")
 

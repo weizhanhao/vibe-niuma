@@ -6,10 +6,13 @@
   /orders/:id  → OrderDetail   （动态路由，难 case）
   /settings    → Settings
 """
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch, call
+
 import pytest
 
 from orchestrator.adapters.impl.react_vite_stack import ReactViteStackAdapter
-from orchestrator.adapters.types import LocateResult, RawRequest, RequestBrief
+from orchestrator.adapters.types import BuildResult, LocateResult, RawRequest, RequestBrief
 
 
 def _adapter(repo):
@@ -130,3 +133,167 @@ async def test_build_fails_on_broken_python_syntax(demo_repo_copy):
     # 不要求 frontend 一定成功（可能没装），但 backend 编译不过应该让 ok=False
     if "compileall backend" in res.log:
         assert res.ok is False, res.log[-2000:]
+
+
+# ── multi-repo build tests ──────────────────────────────────────────
+
+
+def _make_multi_repo(tmp_path: Path, sub_repos: list[tuple[str, bool]]) -> Path:
+    """Create a project folder with sub-repos.
+
+    Args:
+        tmp_path: Temp directory root.
+        sub_repos: List of (name, has_package_json) tuples.
+
+    Returns the project root path.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    for name, has_pkg in sub_repos:
+        repo_dir = project / name
+        repo_dir.mkdir()
+        (repo_dir / ".git").mkdir()  # presence marker only
+        if has_pkg:
+            (repo_dir / "package.json").write_text('{"name": "' + name + '"}')
+        else:
+            (repo_dir / "pyproject.toml").write_text('[tool.poetry]\nname = "' + name + '"\n')
+    return project
+
+
+async def test_build_invokes_npm_build_per_frontend_sub_repo(tmp_path):
+    """When sub_repos are detected and both have package.json, npm ci + npm run build
+    must be called for each, with the correct cwd."""
+    project = _make_multi_repo(
+        tmp_path,
+        [("backend_fe", True), ("frontend", True)],
+    )
+    adapter = ReactViteStackAdapter(repo_path=str(project))
+
+    collected_calls: list[tuple[list[str], str]] = []
+
+    async def fake_run(cmd: list[str], cwd: Path, label: str, log=None) -> tuple[int, str]:
+        collected_calls.append((list(cmd), str(cwd)))
+        return 0, f"--- {label} ---\nok\n"
+
+    with patch(
+        "orchestrator.adapters.impl.react_vite_stack.discover_sub_repos"
+    ) as mock_discover:
+        mock_discover.return_value = [
+            project / "backend_fe",
+            project / "frontend",
+        ]
+        with patch.object(adapter, "_run_subprocess", side_effect=fake_run):
+            res = await adapter.build(repo_path=str(project), branch="main")
+
+    assert res.ok is True, res.log
+
+    cwds_used = [cwd for _, cwd in collected_calls]
+    cmds_used = [cmd for cmd, _ in collected_calls]
+
+    # npm ci and npm run build should each have been called for both sub-repos
+    npm_ci_cwds = [cwd for cmd, cwd in collected_calls if cmd == ["npm", "ci"]]
+    npm_build_cwds = [cwd for cmd, cwd in collected_calls if cmd == ["npm", "run", "build"]]
+
+    assert str(project / "backend_fe") in npm_ci_cwds
+    assert str(project / "frontend") in npm_ci_cwds
+    assert str(project / "backend_fe") in npm_build_cwds
+    assert str(project / "frontend") in npm_build_cwds
+
+
+async def test_build_skips_backend_sub_repo(tmp_path):
+    """Sub-repos without package.json (backend-like) must be skipped; npm only
+    called for the frontend sub-repo that has package.json."""
+    project = _make_multi_repo(
+        tmp_path,
+        [("backend", False), ("frontend", True)],
+    )
+    adapter = ReactViteStackAdapter(repo_path=str(project))
+
+    collected_calls: list[tuple[list[str], str]] = []
+
+    async def fake_run(cmd: list[str], cwd: Path, label: str, log=None) -> tuple[int, str]:
+        collected_calls.append((list(cmd), str(cwd)))
+        return 0, f"--- {label} ---\nok\n"
+
+    with patch(
+        "orchestrator.adapters.impl.react_vite_stack.discover_sub_repos"
+    ) as mock_discover:
+        mock_discover.return_value = [
+            project / "backend",
+            project / "frontend",
+        ]
+        with patch.object(adapter, "_run_subprocess", side_effect=fake_run):
+            res = await adapter.build(repo_path=str(project), branch="main")
+
+    assert res.ok is True, res.log
+
+    cwds_used = [cwd for _, cwd in collected_calls]
+    # backend must never appear as a cwd for any npm call
+    assert str(project / "backend") not in cwds_used
+    # frontend must have been built
+    assert str(project / "frontend") in cwds_used
+
+
+async def test_build_fails_if_any_sub_repo_fails(tmp_path):
+    """If any frontend sub-repo build fails, BuildResult.ok must be False; logs
+    from all sub-repos must be collected."""
+    project = _make_multi_repo(
+        tmp_path,
+        [("frontend_a", True), ("frontend_b", True)],
+    )
+    adapter = ReactViteStackAdapter(repo_path=str(project))
+
+    call_count = 0
+
+    async def fake_run(cmd: list[str], cwd: Path, label: str, log=None) -> tuple[int, str]:
+        nonlocal call_count
+        call_count += 1
+        # First sub-repo (frontend_a) succeeds, second (frontend_b) fails on build
+        if str(project / "frontend_b") in str(cwd) and cmd == ["npm", "run", "build"]:
+            return 1, f"--- {label} ---\nbuild error\n"
+        return 0, f"--- {label} ---\nok\n"
+
+    with patch(
+        "orchestrator.adapters.impl.react_vite_stack.discover_sub_repos"
+    ) as mock_discover:
+        mock_discover.return_value = [
+            project / "frontend_a",
+            project / "frontend_b",
+        ]
+        with patch.object(adapter, "_run_subprocess", side_effect=fake_run):
+            res = await adapter.build(repo_path=str(project), branch="main")
+
+    assert res.ok is False, "Expected False when a sub-repo build fails"
+    # Logs from both sub-repos must be present
+    assert "frontend_a" in res.log or "npm ci" in res.log
+    assert "build error" in res.log
+
+
+async def test_build_falls_back_to_single_repo_when_no_sub_repos(tmp_path):
+    """When discover_sub_repos returns empty, old single-repo path is used:
+    npm runs inside <repo_path>/frontend/, not inside any sub-repo."""
+    repo = tmp_path / "single_repo"
+    repo.mkdir()
+    frontend = repo / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text('{"name": "app"}')
+
+    adapter = ReactViteStackAdapter(repo_path=str(repo))
+
+    collected_calls: list[tuple[list[str], str]] = []
+
+    async def fake_run(cmd: list[str], cwd: Path, label: str, log=None) -> tuple[int, str]:
+        collected_calls.append((list(cmd), str(cwd)))
+        return 0, f"--- {label} ---\nok\n"
+
+    with patch(
+        "orchestrator.adapters.impl.react_vite_stack.discover_sub_repos"
+    ) as mock_discover:
+        mock_discover.return_value = []  # no sub-repos
+        with patch.object(adapter, "_run_subprocess", side_effect=fake_run):
+            res = await adapter.build(repo_path=str(repo), branch="main")
+
+    assert res.ok is True, res.log
+    # npm must have been called with cwd == <repo>/frontend
+    frontend_cwds = [cwd for _, cwd in collected_calls]
+    assert str(frontend) in frontend_cwds, f"Expected cwd {frontend}, got {frontend_cwds}"
