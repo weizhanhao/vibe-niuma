@@ -32,6 +32,7 @@ from orchestrator.adapters.interfaces import (
     StackAdapter,
 )
 from orchestrator.adapters.types import RawRequest
+from orchestrator.compaction import CompactionLLM, compact
 from orchestrator.events import Event, EventBus
 from orchestrator.git_manager import GitManager
 from orchestrator.history_writer import write_history
@@ -133,6 +134,8 @@ class Pipeline:
         stack_adapter: StackAdapter,
         dev_runner: DevRunnerAdapter,
         preview_adapter: PreviewAdapter,
+        compaction_llm: CompactionLLM | None = None,
+        compaction_threshold_soft: int = 40_000,
     ):
         self.repo_path = repo_path
         self.repository = repository
@@ -143,6 +146,10 @@ class Pipeline:
         self.stack_adapter = stack_adapter
         self.dev_runner = dev_runner
         self.preview_adapter = preview_adapter
+        # Plan 9 Task 5：compaction 入参可注入；缺省为 None → 用 _DefaultCompactionLLM
+        # 联网。阈值默认 40k tokens（spec §动态压缩）。
+        self.compaction_llm = compaction_llm
+        self.compaction_threshold_soft = compaction_threshold_soft
         self._channels: dict[str, SSEInteractionChannel] = {}
 
     def channel_for(self, request_id: str) -> SSEInteractionChannel:
@@ -154,6 +161,49 @@ class Pipeline:
         await self.event_bus.publish(
             request_id, Event(type="status", data={"state": state.value})
         )
+
+    async def _maybe_compact_history(self, request_id, ctx, *, log) -> None:
+        """Plan 9 Task 5：把 CR 所在 conversation 的 messages 压缩后塞 ctx.chat_history。
+
+        - 没挂 conversation_id → noop（兼容老 CR / Legacy 流）
+        - compact 产生新 summary（输出长度变了）→ 把新 summary append 到 conversation
+        - 任何异常都吞掉 + log warning，绝不让历史问题阻塞主流程
+        """
+        try:
+            cr = self.repository.get(request_id)
+            if cr is None or not cr.conversation_id:
+                return
+            from orchestrator.conversation import ConversationRepository
+
+            conv_repo = ConversationRepository(self.repository._db)
+            conv = conv_repo.get(cr.conversation_id)
+            if conv is None:
+                return
+            pre_messages = list(conv.messages or [])
+            compacted = await compact(
+                pre_messages,
+                llm=self.compaction_llm,
+                threshold_soft=self.compaction_threshold_soft,
+            )
+            # 找新 summary（compacted 多出来的 summary 行）
+            pre_summary_contents = {
+                m.get("content") for m in pre_messages if m.get("type") == "summary"
+            }
+            new_summaries = [
+                m for m in compacted
+                if m.get("type") == "summary"
+                and m.get("content") not in pre_summary_contents
+            ]
+            for s in new_summaries:
+                conv_repo.append_message(cr.conversation_id, s)
+            ctx.chat_history = compacted
+            if new_summaries:
+                await log(
+                    "coding",
+                    f"▸ chat history 触发压缩：合并 {new_summaries[0].get('replaces_count', '?')} 条老 AI 消息为 summary",
+                )
+        except Exception:  # noqa: BLE001
+            logger.warning("compaction 失败 cr=%s（不影响 pipeline）", request_id, exc_info=True)
 
     async def run(self, request_id: str) -> None:
         """驱动一条 `created` 请求。异常路径统一收敛到 _PhaseError → mark_failed。
@@ -252,6 +302,12 @@ class Pipeline:
                 ) from exc
             # 把 phase=coding 的 log 闭包塞进 DevContext，runner 子进程行级回灌
             ctx.log = _make_log_sink(bus, request_id, "coding")
+
+            # Plan 9 Task 5：把 conversation 历史经 compact() 注入 ctx.chat_history。
+            # 阈值未到 → 原样塞；阈值到 → LLM 出 summary，append 回 conversation
+            # 表（下轮直接命中、不重算）。任何异常吞掉 + log warning，不阻塞流水线。
+            await self._maybe_compact_history(request_id, ctx, log=_phase_log)
+
             await _phase_log("coding", "▸ 起 dev runner（首次启动可能静默 30~60s，下方滚动是其 stdout）...")
             try:
                 run_result = await self.dev_runner.run(self.repo_path, branch, ctx)

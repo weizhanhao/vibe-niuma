@@ -73,6 +73,9 @@ class DevContext:
     box_coords: dict
     entry_file_contents: dict[str, str] = field(default_factory=dict)
     log: LogSink = field(default=_noop_log)
+    # Plan 9 Task 5：conversation 历史（compaction 后的视图），dev runner 用来
+    # 维持跨 CR 上下文连续。条目形如 {type: user|ai|summary, ts, content, ...}
+    chat_history: list[dict] = field(default_factory=list)
 
 
 @dataclass

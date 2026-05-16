@@ -21,6 +21,10 @@ def test_change_request_has_expected_columns():
         "created_at",
         "updated_at",
         "last_activity_at",
+        # Plan 8 Task 11：多仓项目 commit sha 字典；
+        # Plan 9 Task 1：所属 conversation 外键
+        "repos",
+        "conversation_id",
     }
 
 

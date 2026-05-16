@@ -14,9 +14,10 @@ def test_restart_recovery_marks_non_terminal_as_interrupted(
         viewport={}, request_text="x",
     )
     cr = repo.create(raw)
+    cr_id = cr.id  # 在 lifespan close session 前缓存 id（之后 cr 会 detached）
     for s in (State.CLARIFYING, State.LOCATED, State.CODING):
-        repo.transition(cr.id, s)
-    assert repo.get(cr.id).state == State.CODING.value
+        repo.transition(cr_id, s)
+    assert repo.get(cr_id).state == State.CODING.value
 
     # 起 TestClient（触发 lifespan）
     from fastapi.testclient import TestClient
@@ -43,7 +44,16 @@ def test_restart_recovery_marks_non_terminal_as_interrupted(
     finally:
         app.dependency_overrides.clear()
 
-    refreshed = repo.get(cr.id)
-    assert refreshed.state == State.FAILED.value
-    assert refreshed.fail_phase == "interrupted"
-    assert refreshed.fail_reason == "orchestrator-restart"
+    # lifespan recovery 在内部用 session_factory（被 monkeypatch 成 lambda: db_session）
+    # 起新 session 改 row、提交后 close —— 我们这条 cr 实例随之 detached。
+    # 用一条原生 SQL 绕开 ORM identity map，拿到最权威的 DB 状态。
+    from sqlalchemy import text
+    with test_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT state, fail_phase, fail_reason FROM change_requests WHERE id = :id"),
+            {"id": cr_id},
+        ).fetchone()
+    assert row is not None
+    assert row[0] == State.FAILED.value
+    assert row[1] == "interrupted"
+    assert row[2] == "orchestrator-restart"
