@@ -1437,3 +1437,41 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .preview-dock-state-merged { color: var(--accent); }
 .preview-dock-state-discarded { color: var(--ink-mute); }
+
+/* ── compacted range notice (Plan 9 Task 11) ───────────────────── */
+.compacted-range {
+  margin: 8px 0;
+}
+.compacted-range-toggle {
+  appearance: none;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.compacted-range-toggle:hover {
+  color: var(--ink-soft);
+  border-color: var(--line-hard);
+  background: var(--surface-2);
+}
+.compacted-range-arrow {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.compacted-range-drawer {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  display: grid;
+  gap: 6px;
+}
