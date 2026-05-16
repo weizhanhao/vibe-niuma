@@ -31,6 +31,7 @@ from datetime import datetime
 from pathlib import Path
 
 from orchestrator.adapters.types import LocateResult, RawRequest, RequestBrief
+from orchestrator.multi_repo import discover_sub_repos
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,31 @@ def _matches_large_intent(brief: RequestBrief, raw_request: RawRequest) -> bool:
     return any(kw in haystack for kw in _LARGE_INTENT_KEYWORDS)
 
 
+def _history_root(repo_path: str) -> Path:
+    """决定 .doskill/history/ 应落在哪个目录下。
+
+    语义规则：
+    - 多仓项目（repo_path 下有含 .git/ 的子目录）→ repo_path 本身是项目根，
+      历史落在 <repo_path>/.doskill/history/（不在任一子仓内部）。
+    - 单仓项目（无子目录含 .git/）→ 保持原有行为，
+      历史同样落在 <repo_path>/.doskill/history/。
+
+    无论单仓或多仓，路径计算结果相同；区别在语义上——多仓时
+    repo_path 是包含 N 个子仓的项目根，单仓时 repo_path 就是 git 根本身。
+
+    Args:
+        repo_path: 项目路径（可以是单仓 git 根，也可以是多仓项目顶层目录）。
+
+    Returns:
+        Path to .doskill/history/ directory (not yet created).
+    """
+    project_path = Path(repo_path)
+    # discover_sub_repos 扫顶层子目录：多仓时非空，单仓时为空。
+    # 无论哪种情况，history 都挂在 project_path 下。
+    _ = discover_sub_repos(project_path)  # 触发多仓语义检测（结果不影响路径）
+    return project_path / ".doskill" / "history"
+
+
 def write_history(
     *,
     repo_path: str,
@@ -148,6 +174,7 @@ def write_history(
     - 仅 large 写 spec.md + plan.md。
     - 同 CR 重跑 → 同一目录覆盖（幂等）。
     - 写入失败由调用方捕获记录，本函数不吞异常。
+    - 多仓项目（repo_path 含子仓）时，历史落在项目根，不在任一子仓内部。
     """
     classification = classify_size(
         brief=brief,
@@ -156,7 +183,7 @@ def write_history(
         dev_runner_files_changed=dev_runner_files_changed,
     )
 
-    out_dir = Path(repo_path) / ".doskill" / "history" / f"cr-{request_id}"
+    out_dir = _history_root(repo_path) / f"cr-{request_id}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     result_md = _render_result(

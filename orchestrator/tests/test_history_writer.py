@@ -25,6 +25,7 @@ from orchestrator.adapters.types import (
 )
 from orchestrator.history_writer import (
     SizeClassification,
+    _history_root,
     classify_size,
     write_history,
 )
@@ -526,3 +527,113 @@ async def test_pipeline_history_write_failure_does_not_break_pipeline(
     assert fetched.state == State.PREVIEW_READY.value, (
         "history 写盘异常不应让 pipeline 状态偏离 preview-ready"
     )
+
+
+# ── 多仓项目路径语义 ─────────────────────────────────────────────────────
+
+
+def _make_sub_repo(parent: Path, name: str) -> Path:
+    """在 parent/<name>/ 下创建一个最简 git 仓库，返回其路径。"""
+    import subprocess
+
+    sub = parent / name
+    sub.mkdir()
+    run = lambda *a: subprocess.run(
+        ["git", *a], cwd=sub, check=True, capture_output=True,
+    )
+    run("init", "-b", "main")
+    run("config", "user.email", "t@t")
+    run("config", "user.name", "t")
+    (sub / "file.txt").write_text("v1\n")
+    run("add", "file.txt")
+    run("commit", "-m", "init")
+    return sub
+
+
+def test_history_root_helper_returns_project_root_for_multi_repo(tmp_path: Path):
+    """_history_root() 在多子仓项目下应返回 project_root/.doskill/history。"""
+    # Arrange: 项目根含两个子仓（各自有 .git）
+    _make_sub_repo(tmp_path, "frontend")
+    _make_sub_repo(tmp_path, "backend")
+
+    # Act
+    result = _history_root(str(tmp_path))
+
+    # Assert: 落在项目根（tmp_path），不在任一子仓内
+    assert result == tmp_path / ".doskill" / "history"
+
+
+def test_history_root_helper_unchanged_for_single_repo(tmp_path: Path):
+    """_history_root() 在单仓（无子目录含 .git）下保持原有行为。"""
+    # Arrange: 只是一个普通目录，没有含 .git 的子目录
+    (tmp_path / "src").mkdir()
+
+    # Act
+    result = _history_root(str(tmp_path))
+
+    # Assert: 同样落在传入路径的 .doskill/history
+    assert result == tmp_path / ".doskill" / "history"
+
+
+def test_history_writes_to_project_root_in_multi_repo(tmp_path: Path):
+    """多仓项目下 write_history 必须写到 project_root/.doskill/history/，
+    不能写到任何子仓内部。"""
+    # Arrange: 建 frontend/ + backend/ 两个子仓
+    _make_sub_repo(tmp_path, "frontend")
+    _make_sub_repo(tmp_path, "backend")
+
+    # Act
+    write_history(
+        repo_path=str(tmp_path),
+        request_id="multi-cr-1",
+        raw_request=_raw("加搜索功能"),
+        brief=_brief(),
+        locate_result=_locate(["frontend/src/App.tsx", "backend/src/api.py"]),
+        branch="cr/multi-cr-1",
+        preview_url="http://localhost:5200",
+        phase_timings={"clarifying": 1.0, "coding": 5.0},
+        total_elapsed=6.0,
+        dev_runner_files_changed=["frontend/src/App.tsx", "backend/src/api.py"],
+    )
+
+    # Assert 1: 历史目录在项目根
+    project_history_dir = tmp_path / ".doskill" / "history" / "cr-multi-cr-1"
+    assert project_history_dir.exists(), (
+        f"多仓项目的历史应写到 {project_history_dir}，但目录不存在"
+    )
+    assert (project_history_dir / "result.md").exists()
+
+    # Assert 2: 子仓内部不应有 .doskill/
+    assert not (tmp_path / "frontend" / ".doskill").exists(), (
+        "frontend 子仓内部不应出现 .doskill/ 目录"
+    )
+    assert not (tmp_path / "backend" / ".doskill").exists(), (
+        "backend 子仓内部不应出现 .doskill/ 目录"
+    )
+
+
+def test_history_path_unchanged_in_single_repo(tmp_path: Path):
+    """单仓项目下 write_history 行为与原先完全一致：历史写到 repo/.doskill/history/。"""
+    # Arrange: 普通单仓，没有含 .git 的子目录
+    (tmp_path / "src").mkdir()
+
+    # Act
+    write_history(
+        repo_path=str(tmp_path),
+        request_id="single-cr-1",
+        raw_request=_raw("改颜色"),
+        brief=_brief(),
+        locate_result=_locate(),
+        branch="cr/single-cr-1",
+        preview_url=None,
+        phase_timings={"coding": 2.0},
+        total_elapsed=2.0,
+        dev_runner_files_changed=["src/App.tsx"],
+    )
+
+    # Assert: 历史在 tmp_path（repo 根）
+    out_dir = tmp_path / ".doskill" / "history" / "cr-single-cr-1"
+    assert out_dir.exists()
+    assert (out_dir / "result.md").exists()
+    text = (out_dir / "result.md").read_text(encoding="utf-8")
+    assert "**small**" in text
