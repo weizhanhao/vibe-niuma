@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 logger = logging.getLogger("orchestrator.main")
 
@@ -91,6 +92,37 @@ class AppState:
 app_state = AppState()
 
 
+def _bucket_legacy_crs(db: Session) -> None:
+    """Plan 9 Task 6：现存 conversation_id IS NULL 的 CR → bucket 到 Legacy。
+    幂等：已有 Legacy + 已 bucket 完的 CR 跳过。"""
+    from sqlalchemy import select, update as sa_update
+    from orchestrator.models import ChangeRequest, Conversation
+
+    # CR 数量 = 0 时跳过
+    null_count = db.scalar(
+        select(ChangeRequest).where(ChangeRequest.conversation_id.is_(None)).limit(1)
+    )
+    if null_count is None:
+        return
+    # 查或建 Legacy（按 title 唯一性约定）
+    legacy = db.scalar(select(Conversation).where(Conversation.title == "Legacy（迁移自 v0.4）"))
+    if legacy is None:
+        legacy = Conversation(
+            id="legacy" + "0" * 26,
+            title="Legacy（迁移自 v0.4）",
+            messages=[],
+        )
+        db.add(legacy)
+        db.commit()
+    # 批量 update
+    db.execute(
+        sa_update(ChangeRequest)
+        .where(ChangeRequest.conversation_id.is_(None))
+        .values(conversation_id=legacy.id)
+    )
+    db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
@@ -107,6 +139,9 @@ async def lifespan(app: FastAPI):
             repo.mark_failed(
                 cr.id, phase="interrupted", reason="orchestrator-restart", log=""
             )
+        # Plan 9 Task 6：bucket 所有 conversation_id IS NULL 的 CR 到一个 Legacy
+        # conversation（每个 orchestrator 实例一个 bucket，只在第一次运行时创建）
+        _bucket_legacy_crs(db)
     finally:
         db.close()
 
@@ -219,7 +254,22 @@ async def create_change_request(
         viewport=payload.viewport,
         request_text=payload.request_text,
     )
-    cr = repo.create(raw)
+    # Plan 9 Task 3：conversation_id 缺省时自动 create 一个新对话
+    conv_repo = ConversationRepository(db)
+    conv_id = payload.conversation_id
+    if conv_id is None:
+        conv = conv_repo.create()
+        conv_id = conv.id
+    elif conv_repo.get(conv_id) is None:
+        raise HTTPException(status_code=404, detail=f"conversation {conv_id} 不存在")
+    cr = repo.create(raw, conversation_id=conv_id)
+    # 把用户消息 append 到 conversation
+    conv_repo.append_message(conv_id, {
+        "type": "user",
+        "ts": datetime.utcnow().isoformat(),
+        "content": payload.request_text,
+        "cr_id": cr.id,
+    })
     pipeline = app_state.build_pipeline(db)
     app_state.pipelines[cr.id] = pipeline
     _spawn(pipeline.run(cr.id))

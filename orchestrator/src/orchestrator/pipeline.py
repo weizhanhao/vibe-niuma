@@ -19,6 +19,11 @@ import asyncio
 import logging
 import subprocess
 import traceback
+from datetime import datetime
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat()
 
 from orchestrator.adapters.interfaces import (
     DevRunnerAdapter,
@@ -334,6 +339,28 @@ class Pipeline:
                     "branch": branch,
                 }),
             )
+            # Plan 9 Task 3：append AI 消息到 conversation（如挂了的话），便于
+            # 业务员在 ChatPanel 里看到「AI: 改完了 → 预览 {url}」一条
+            cr_for_conv = self.repository.get(request_id)
+            if cr_for_conv is not None and cr_for_conv.conversation_id:
+                try:
+                    from orchestrator.conversation import ConversationRepository
+                    sha_str = ""
+                    if isinstance(sha, dict):
+                        sha_str = ", ".join(f"{r}:{s[:8]}" for r, s in sorted(sha.items()))
+                    elif sha:
+                        sha_str = sha[:8]
+                    ConversationRepository(self.repository._db).append_message(
+                        cr_for_conv.conversation_id,
+                        {
+                            "type": "ai",
+                            "ts": _now_iso(),
+                            "content": f"改完了 → 预览就绪 {instance.url}\n分支 {branch} commit {sha_str}",
+                            "cr_id": request_id,
+                        },
+                    )
+                except Exception:
+                    pass  # 不阻塞主流程
             total = time.monotonic() - run_started
             await _phase_log("building", f"🏁 全流程完成 总耗时 {total:.1f}s")
             # 注意：到此 pipeline 结束，槽位仍占用，由 merge/discard/expire 释放

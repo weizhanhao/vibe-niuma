@@ -14,7 +14,12 @@ class ChangeRequestRepository:
     def __init__(self, db: Session):
         self._db = db
 
-    def create(self, raw: RawRequest, retry_of: str | None = None) -> ChangeRequest:
+    def create(
+        self,
+        raw: RawRequest,
+        retry_of: str | None = None,
+        conversation_id: str | None = None,
+    ) -> ChangeRequest:
         cr = ChangeRequest(
             id=uuid.uuid4().hex,
             url=raw.url,
@@ -24,6 +29,7 @@ class ChangeRequestRepository:
             request_text=raw.request_text,
             state=State.CREATED.value,
             retry_of=retry_of,
+            conversation_id=conversation_id,
         )
         self._db.add(cr)
         self._db.commit()
