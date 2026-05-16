@@ -14,12 +14,13 @@ import {
   loadActiveProject, loadProjects, migrateLegacyConfig, type Project,
 } from '../lib/projects';
 import { ConversationList } from './components/ConversationList';
+import { PreviewDock } from './components/PreviewDock';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { useMirrors } from './hooks/useMirrors';
 import { usePendingCapture } from './hooks/usePendingCapture';
 import { useRequestState } from './hooks/useRequestState';
 import {
-  CapturePanel, ClarifyPanel, FailedPanel, PreviewPanel, ReviewCapturePanel,
+  CapturePanel, ClarifyPanel, FailedPanel, ReviewCapturePanel,
   StatusPanel, VariantsPanel,
 } from './panels';
 import { CreateProjectPanel } from './panels/CreateProjectPanel';
@@ -233,11 +234,19 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     );
   }
 
+  // Plan 9 Task 9：preview-ready / merged / discarded 时不再把 PreviewPanel 当 body —— 主体
+  // 让位给 CapturePanel（业务员继续打字 → 起新一轮 CR），预览/合并/丢弃挪到底部 PreviewDock。
+  const isDoneState = !!state && (
+    state.state === 'preview-ready' ||
+    state.state === 'merged' ||
+    state.state === 'discarded'
+  );
+
   let body: React.ReactNode;
   if (pendingCapture) {
     // Phase G：优先级最高——业务员刚框完，必须先确认。
     body = <ReviewCapturePanel pendingCapture={pendingCapture} />;
-  } else if (!state) {
+  } else if (!state || isDoneState) {
     body = <CapturePanel />;
   } else if (state.pendingVariants) {
     body = <VariantsPanel state={state} />;
@@ -245,15 +254,13 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     body = <ClarifyPanel state={state} />;
   } else if (state.state === 'failed' || state.state === 'expired') {
     body = <FailedPanel state={state} />;
-  } else if (
-    state.state === 'preview-ready' ||
-    state.state === 'merged' ||
-    state.state === 'discarded'
-  ) {
-    body = <PreviewPanel state={state} />;
   } else {
     body = <StatusPanel state={state} />;
   }
+
+  // PreviewDock 数据源：conversation 里**最近一条带 preview_url 的 CR**。mirrors 已按
+  // lastActivity 降序，取第一条带 previewUrl 的就行。若没有，用 active state 兜底。
+  const dockMirror = mirrors.find((m) => !!m.previewUrl) ?? state;
 
   const pill = statusPillFromState(state ? state.state : null, !!pendingCapture);
 
@@ -283,6 +290,7 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
       </header>
       <ConversationList mirrors={mirrors} activeId={activeId} />
       <div className="app-body">{body}</div>
+      <PreviewDock state={dockMirror ?? null} />
     </div>
   );
 }

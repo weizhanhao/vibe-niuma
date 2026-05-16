@@ -1397,3 +1397,43 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .project-list-item:hover { border-color: var(--accent-dim); background: var(--surface-3); }
 .project-list-name { font-size: 13px; color: var(--ink); font-weight: 500; }
 .project-list-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); }
+
+/* ── preview dock (Plan 9 Task 9) ──────────────────────────────── */
+.preview-dock {
+  border-top: 1px solid var(--line);
+  background: linear-gradient(to bottom, var(--surface-2), var(--surface));
+  padding: 10px 14px;
+  display: grid;
+  gap: 8px;
+}
+.preview-dock.is-merged { border-top-color: var(--accent-dim); }
+.preview-dock.is-discarded { opacity: 0.78; }
+.preview-dock-top {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.preview-dock-url {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.preview-dock-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.preview-dock-state {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 0 0;
+}
+.preview-dock-state-merged { color: var(--accent); }
+.preview-dock-state-discarded { color: var(--ink-mute); }
