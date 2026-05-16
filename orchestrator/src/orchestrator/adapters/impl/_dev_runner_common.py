@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+from pathlib import Path
 
 from orchestrator.adapters.types import LogSink, RunResult
+from orchestrator.multi_repo import discover_sub_repos
 
 
 def _git(repo_path: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -25,12 +27,10 @@ def _git(repo_path: str, *args: str, check: bool = True) -> subprocess.Completed
     )
 
 
-def has_changes(repo_path: str, branch: str) -> bool:
-    """branch 相对 main 是否有差异（含未提交 + 已提交 commits）。"""
+def _single_has_changes(repo_path: str, branch: str) -> bool:
     porcelain = _git(repo_path, "status", "--porcelain").stdout.strip()
     if porcelain:
         return True
-    # 跟 main 比有没有新 commit
     diff = _git(
         repo_path, "rev-list", "--count", f"main..{branch}", check=False,
     )
@@ -43,14 +43,31 @@ def has_changes(repo_path: str, branch: str) -> bool:
     return False
 
 
-def commit_all(repo_path: str, branch: str, message: str) -> str:
-    """add -A + commit，返回 commit SHA；若无可提交则不创建空 commit、返回当前 HEAD。"""
+def has_changes(repo_path: str, branch: str) -> bool:
+    """branch 相对 main 是否有差异（含未提交 + 已提交 commits）。
+    Plan 8 Task 7：多仓项目 → 任一子仓有改动即 True。"""
+    sub_repos = discover_sub_repos(Path(repo_path))
+    if sub_repos:
+        return any(_single_has_changes(str(r), branch) for r in sub_repos)
+    return _single_has_changes(repo_path, branch)
+
+
+def _single_commit_all(repo_path: str, branch: str, message: str) -> str:
     porcelain = _git(repo_path, "status", "--porcelain").stdout.strip()
     if not porcelain:
         return _git(repo_path, "rev-parse", "HEAD").stdout.strip()
     _git(repo_path, "add", "-A")
     _git(repo_path, "commit", "-m", message)
     return _git(repo_path, "rev-parse", "HEAD").stdout.strip()
+
+
+def commit_all(repo_path: str, branch: str, message: str) -> str | dict[str, str]:
+    """add -A + commit，返回 commit SHA；若无可提交则不创建空 commit、返回当前 HEAD。
+    Plan 8 Task 7：多仓项目 → 遍历每个子仓，返回 {repo_name: sha}。"""
+    sub_repos = discover_sub_repos(Path(repo_path))
+    if sub_repos:
+        return {r.name: _single_commit_all(str(r), branch, message) for r in sub_repos}
+    return _single_commit_all(repo_path, branch, message)
 
 
 def collect_log(stdout: str, stderr: str, limit: int = 8000) -> str:

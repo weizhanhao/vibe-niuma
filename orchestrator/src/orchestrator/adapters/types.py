@@ -80,7 +80,7 @@ class RunResult:
     """dev runner 跑完的结果；changed 为 False 表示没产出改动。"""
 
     changed: bool
-    commit_sha: str | None
+    commit_sha: str | dict[str, str] | None  # 多仓项目用 dict[repo_name → sha]；单仓 str
     log: str
 
 
