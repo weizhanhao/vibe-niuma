@@ -1782,23 +1782,28 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   align-items: center; justify-content: center;
   color: var(--ink-mute); font-size: 12.5px; text-align: center;
 }
-.chat-stream__msg { display: flex; flex-direction: column; gap: 8px; max-width: 100%; }
-.chat-stream__msg--user { align-self: flex-end; align-items: flex-end; }
-.chat-stream__msg--ai { align-self: flex-start; align-items: flex-start; width: 100%; }
+/* 业务员反馈：用户消息和 AI 回复都靠左，去掉「我右你左」的传统聊天对齐，
+   全部平铺，跟 Linear / Raycast / Cursor 那种工具型 AI 一致。 */
+.chat-stream__msg {
+  display: flex; flex-direction: column; gap: 8px;
+  align-self: flex-start; align-items: flex-start;
+  width: 100%; max-width: 100%;
+}
 .chat-stream__bubble {
   padding: 9px 13px; border-radius: var(--r-lg);
   background: var(--bubble-ai-bg);
   color: var(--bubble-ai-ink);
   font-size: 13px; line-height: 1.55; white-space: pre-wrap;
-  max-width: 92%;
+  max-width: 100%;
   border: 1px solid var(--line-soft);
 }
 .chat-stream__msg--user .chat-stream__bubble {
   background: var(--bubble-user-bg);
   color: var(--bubble-user-ink);
   border-color: var(--bubble-user-line);
-  border-radius: var(--r-lg) var(--r-lg) var(--r-xs) var(--r-lg);
-  max-width: 88%;
+  /* 镜像气泡尾巴：从右下角 → 左下角 */
+  border-radius: var(--r-lg) var(--r-lg) var(--r-lg) var(--r-xs);
+  max-width: 92%;
 }
 .chat-stream__msg--ai .chat-stream__bubble {
   background: transparent;
@@ -1918,27 +1923,38 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .inline-card__activity-line {
   white-space: pre-wrap; word-break: break-word;
 }
+/* toggle 撑满 inline-card 宽度 —— 展开/收起时整块「思考过程」视觉锚点宽度
+   保持一致（业务员反馈：宽度别变来变去）。 */
 .inline-card__activity-toggle {
-  align-self: flex-start;
-  appearance: none; border: none; background: transparent;
-  color: var(--ink-mute); font-size: 11.5px;
-  padding: 4px 8px 4px 4px; cursor: pointer; border-radius: var(--r-sm);
-  display: inline-flex; align-items: center; gap: 4px;
+  align-self: stretch;
+  appearance: none;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  display: flex; align-items: center; gap: 6px;
   font-weight: 500;
-  transition: color var(--t-fast), background var(--t-fast);
+  width: 100%;
+  text-align: left;
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
 }
 .inline-card__activity-toggle:hover {
-  color: var(--ink); background: var(--surface-2);
+  color: var(--ink);
+  background: var(--surface-3);
+  border-color: var(--line);
 }
 .inline-card__activity-toggle-icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; font-size: 10px;
+  width: 12px; font-size: 10px;
   color: var(--ink-faint);
 }
 .inline-card__activity-toggle-count {
+  margin-left: auto;
   color: var(--ink-faint);
   font-size: 11px;
-  margin-left: 2px;
 }
 .inline-card__preview {
   align-self: flex-start;
