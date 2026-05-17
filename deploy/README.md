@@ -18,8 +18,27 @@ ssh user@ecs "cd /opt/doskill/orchestrator && DOSKILL_E2E=1 venv/bin/pytest -m e
 之后每次发布只需：
 
 ```bash
-bash deploy/deploy.sh                # 仅投代码 + 重启服务
+bash deploy/deploy.sh                # 仅投代码 + 重启服务（前会自动备份当前版本）
 bash deploy/healthcheck.sh
+```
+
+## 回滚
+
+每次 `deploy.sh` 都会把 ECS 上的 `orchestrator/` + `llm-proxy/` 备份到 `*.prev/`，
+出问题直接：
+
+```bash
+bash deploy/rollback.sh              # 交互式：先 show 当前 vs prev，y 确认
+bash deploy/rollback.sh -y           # 紧急时跳过确认
+```
+
+回滚不动数据库（Plan 9 加列加表是 backward-compat 的）。回滚后当前版本会保留在
+`*.broken/` 现场调查用，下次 deploy 时被新 prev 覆盖。
+
+查 ECS 上当前在跑哪个版本：
+
+```bash
+ssh ${ECS_USER}@${ECS_HOST} 'cat /opt/doskill/RELEASE_INFO'
 ```
 
 ## 各组件

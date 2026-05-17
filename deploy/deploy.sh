@@ -36,6 +36,30 @@ if [ "${1:-}" = "--full" ]; then
   "${SSH[@]}" "cd $DEPLOY_ROOT && set -a && . .env && set +a && bash deploy/provision.sh"
 fi
 
+# ── 备份当前 ECS 版本（rollback 用） ──────────────────────────────
+# 每次部署前把 ECS 上的 orchestrator/ 和 llm-proxy/ 整体 cp 到 *.prev/，覆盖上一次
+# 备份。只保留 1 份历史（最近一次能跑的版本），YAGNI 不做多版本。
+# 同时把当前 git rev 落到 RELEASE_INFO，方便 ssh 上去查「现在是哪个版本」。
+# admin.token / demo/.git 不动；DB 不动（Plan 9 加列加表→老代码不读不写即可）。
+log "ECS: 备份当前 orchestrator + llm-proxy 到 *.prev/（rollback 用）"
+CURRENT_REV="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+CURRENT_TAG="$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null || echo none)"
+"${SSH[@]}" bash -se <<EOF
+set -euo pipefail
+cd $DEPLOY_ROOT
+# 保留上一版 RELEASE_INFO 给 rollback.sh 查；当前一版还没投代码所以是「上一次部署的」
+if [ -f RELEASE_INFO ]; then cp RELEASE_INFO RELEASE_INFO.prev; fi
+# 物理备份当前 orchestrator + llm-proxy 整树。venv/__pycache__ 不备份（重启会重 pip）
+for dir in orchestrator llm-proxy; do
+  if [ -d "\$dir" ]; then
+    rm -rf "\$dir.prev"
+    tar -C . --exclude="\$dir/venv" --exclude="\$dir/__pycache__" --exclude="\$dir/.pytest_cache" \
+        -cf - "\$dir" | (mkdir -p "\$dir.prev" && tar -C "\$dir.prev" --strip-components=1 -xf -)
+    echo "  备份 \$dir → \$dir.prev/"
+  fi
+done
+EOF
+
 # ── 投代码 ─────────────────────────────────────────────────────
 log "rsync orchestrator + demo + deploy → $ECS_HOST"
 # ⚠ admin.token 由 orchestrator systemd unit 首次启动时 ExecStartPre 自动生成，
@@ -158,7 +182,14 @@ sudo systemctl restart doskill-llm-proxy.service doskill-orchestrator.service
 log "起 main 分支常驻 demo 站"
 bash deploy/main-demo.sh || log "main-demo 起失败（不阻塞主部署，看 docker logs）"
 
-log "完成；用 deploy/healthcheck.sh 验证"
+# 写 RELEASE_INFO（rollback.sh 用来显示「现在是哪个版本」）
+cat > RELEASE_INFO <<RELEOF
+deployed_at=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+git_rev=$CURRENT_REV
+git_tag=$CURRENT_TAG
+RELEOF
+
+log "完成；用 deploy/healthcheck.sh 验证。回滚：bash deploy/rollback.sh"
 EOF
 
 log "本机：scp 完。下一步：bash deploy/healthcheck.sh"
