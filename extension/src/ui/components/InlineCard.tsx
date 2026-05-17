@@ -53,6 +53,16 @@ function formatElapsed(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// 服务器写 log 用 `datetime.utcnow().isoformat()`，**没 Z 后缀**。
+// JS `new Date('...')` 看到没时区的 ISO 字符串当作本地时间，UTC+8 会凭空多 8h。
+// 兜底：检测到 naive ISO 时手动补 Z 让 JS 当 UTC 解析。
+// （服务端真修 = 改 isoformat 时带时区；这里是客户端最后一道防线。）
+function parseTimestamp(ts: string | undefined): number {
+  if (!ts) return NaN;
+  const hasTz = /Z|[+-]\d{2}:?\d{2}$/.test(ts);
+  return new Date(hasTz ? ts : ts + 'Z').getTime();
+}
+
 export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
   const stateText = STATE_LABEL[mirror.state] ?? mirror.state;
   const modeBadge = MODE_LABEL[crMode] ?? crMode;
@@ -79,11 +89,12 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
   const elapsed = (() => {
     const startTs = mirror.logs[0]?.ts ?? mirror.lastActivity;
     if (!startTs) return 0;
-    const start = new Date(startTs).getTime();
+    const start = parseTimestamp(startTs);
     if (Number.isNaN(start)) return 0;
     const end = isRunning
       ? now
-      : new Date(mirror.logs[mirror.logs.length - 1]?.ts ?? startTs).getTime();
+      : parseTimestamp(mirror.logs[mirror.logs.length - 1]?.ts ?? startTs);
+    if (Number.isNaN(end)) return 0;
     return Math.max(0, end - start);
   })();
   const elapsedLabel = formatElapsed(elapsed);

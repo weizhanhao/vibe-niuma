@@ -65,7 +65,9 @@ class EventBus:
                 data={
                     "phase": phase,
                     "line": text[:200],
-                    "ts": datetime.utcnow().isoformat(),
+                    # 必须带 Z 后缀（UTC）—— 客户端 new Date('2026-...T...')
+                    # 没时区会按本地时间解析，UTC+8 业务员看到的相对时间会偏 8h。
+                    "ts": datetime.utcnow().isoformat() + "Z",
                 },
             ),
         )
