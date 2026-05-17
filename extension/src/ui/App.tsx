@@ -252,30 +252,20 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     state ? state.state : ''
   }:${submitTick}`;
   const { messages: serverMessages } = useActiveConversation(activeConvId, refreshKey);
-  // 合并 server messages + 当前 conv 的乐观消息，dedupe by content（server 拉回来后丢掉乐观）
+  // 合并 server + 乐观消息：保留乐观（这样 InlineCard 早早 mount 看流式日志）；
+  // 同 content 的 server user message 被丢（避免重复气泡）。
+  // 其他 server 消息（ai/summary/system）都保留 + 按 ts 排序。
   const messages = (() => {
     const optimistic = activeConvId ? (optimisticSends[activeConvId] ?? []) : [];
     if (optimistic.length === 0) return serverMessages;
-    const serverContents = new Set(
-      serverMessages.filter((m) => m.type === 'user').map((m) => m.content),
+    const optContents = new Set(optimistic.map((o) => o.content));
+    const filteredServer = serverMessages.filter(
+      (s) => !(s.type === 'user' && optContents.has(s.content)),
     );
-    const keepOptimistic = optimistic.filter((o) => !serverContents.has(o.content));
-    return [...serverMessages, ...keepOptimistic];
+    const merged: ConversationMessage[] = [...filteredServer, ...optimistic];
+    merged.sort((a, b) => a.ts.localeCompare(b.ts));
+    return merged;
   })();
-  // 服务器拉到了之后清理掉已确认的乐观条目
-  useEffect(() => {
-    if (!activeConvId) return;
-    setOptimisticSends((prev) => {
-      const cur = prev[activeConvId] ?? [];
-      if (cur.length === 0) return prev;
-      const serverContents = new Set(
-        serverMessages.filter((m) => m.type === 'user').map((m) => m.content),
-      );
-      const remaining = cur.filter((o) => !serverContents.has(o.content));
-      if (remaining.length === cur.length) return prev;
-      return { ...prev, [activeConvId]: remaining };
-    });
-  }, [activeConvId, serverMessages]);
 
   const handleNewConversation = async () => {
     try {
@@ -448,7 +438,26 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
             attachments={attachments}
             onAttachmentsChange={setAttachments}
             conversationId={activeConvId}
-            onSubmitted={() => setSubmitTick((t) => t + 1)}
+            onSubmitted={({ cr_id, mode }) => {
+              setSubmitTick((t) => t + 1);
+              // 把 cr_id 贴到最后那条乐观 user 消息上 → ChatStream 立即给它
+              // mount 一个 InlineCard，state 还在 created/clarifying，业务员能
+              // 看到从头到尾的流式日志。
+              if (cr_id && activeConvId) {
+                setOptimisticSends((prev) => {
+                  const cur = prev[activeConvId] ?? [];
+                  if (cur.length === 0) return prev;
+                  const updated = [...cur];
+                  const lastIdx = updated.length - 1;
+                  updated[lastIdx] = {
+                    ...updated[lastIdx],
+                    cr_id,
+                    cr_mode: mode,
+                  };
+                  return { ...prev, [activeConvId]: updated };
+                });
+              }
+            }}
             onOptimisticSend={(text, atts) => {
               if (!activeConvId) return;
               const optimistic: ConversationMessage = {

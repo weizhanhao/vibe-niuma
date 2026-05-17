@@ -24,14 +24,20 @@ const MODE_LABEL: Record<IntentMode, string> = {
   chat_only: '聊天',
 };
 
+interface SubmittedInfo {
+  cr_id?: string | null;
+  mode?: IntentMode;
+}
+
 interface Props {
   attachments?: Attachment[];
   onAttachmentsChange?: (next: Attachment[]) => void;
   initialText?: string;
   /** 当前 active conversation id。UI 显式带，SW 不依赖 session 状态。 */
   conversationId?: string | null;
-  /** SUBMIT_MESSAGE 成功送达 SW 后回调。MainShell 用它 invalidate ChatStream cache 立即刷新。 */
-  onSubmitted?: () => void;
+  /** SUBMIT_MESSAGE 成功送达 SW 后回调。带 cr_id/mode 让 MainShell 把
+   *  cr_id patch 到最后那条乐观 user 消息上，InlineCard 早早 mount 看到流式日志。 */
+  onSubmitted?: (info: SubmittedInfo) => void;
   /** 乐观 UI：点击发送的瞬间同步触发，MainShell 立刻渲染 user 气泡，
    *  不等服务器分类返回（典型 1-3s）。 */
   onOptimisticSend?: (text: string, attachments: Attachment[]) => void;
@@ -78,14 +84,16 @@ export function ChatInputBar({
         text: sent,
         conversation_id: conversationId,
         ...(sentAtt.length > 0 ? { attachments: sentAtt } : {}),
-      }) as { ok: boolean; error?: string } | undefined;
+      }) as {
+        ok: boolean; error?: string;
+        cr_id?: string | null; mode?: IntentMode;
+      } | undefined;
       if (reply && reply.ok === false) {
         console.warn('[doskill] SUBMIT_MESSAGE failed', reply.error);
-        // 失败：回填 text 让业务员能重试
         setText(sent);
         onAttachmentsChange(sentAtt);
       } else {
-        onSubmitted?.();
+        onSubmitted?.({ cr_id: reply?.cr_id ?? null, mode: reply?.mode });
       }
     } catch (err) {
       console.warn('[doskill] SUBMIT_MESSAGE exception', err);
