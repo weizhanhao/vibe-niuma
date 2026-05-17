@@ -136,6 +136,7 @@ class Pipeline:
         preview_adapter: PreviewAdapter,
         compaction_llm: CompactionLLM | None = None,
         compaction_threshold_soft: int = 40_000,
+        chat_responder=None,  # Plan 10 Task 4: ChatResponder for chat_only path
     ):
         self.repo_path = repo_path
         self.repository = repository
@@ -150,6 +151,8 @@ class Pipeline:
         # 联网。阈值默认 40k tokens（spec §动态压缩）。
         self.compaction_llm = compaction_llm
         self.compaction_threshold_soft = compaction_threshold_soft
+        # Plan 10 Task 4/5：chat_only 路径用 ChatResponder；不注入则 run_chat_only raise
+        self.chat_responder = chat_responder
         self._channels: dict[str, SSEInteractionChannel] = {}
 
     def channel_for(self, request_id: str) -> SSEInteractionChannel:
@@ -205,8 +208,20 @@ class Pipeline:
         except Exception:  # noqa: BLE001
             logger.warning("compaction 失败 cr=%s（不影响 pipeline）", request_id, exc_info=True)
 
-    async def run(self, request_id: str) -> None:
-        """驱动一条 `created` 请求。异常路径统一收敛到 _PhaseError → mark_failed。
+    async def run(self, request_id: str, *, mode: str = "new_cr") -> None:
+        """驱动一条 CR；按 mode 分派：
+          - 'new_cr' → _run_new_cr 完整 pipeline（clarify → locate → code → build → preview）
+          - 'refine_cr' → _run_refine_cr 跳过 clarify/locate，复用上 CR branch + preview
+        chat_only 走单独入口 run_chat_only（不产生 CR）。
+        """
+        if mode == "refine_cr":
+            await self._run_refine_cr(request_id)
+        else:
+            # 'new_cr' 或缺省 → 现有完整 pipeline
+            await self._run_new_cr(request_id)
+
+    async def _run_new_cr(self, request_id: str) -> None:
+        """完整 pipeline（new_cr 路径）—— 现状不破。
 
         Phase F：在每个 phase 注入 log 闭包给 adapter，粗粒度 marker 在每步
         开头/结束发；细粒度行由 adapter 内 stream subprocess 时实时回灌。
@@ -477,3 +492,134 @@ class Pipeline:
             self.quota.release(request_id)
             if isinstance(exc, asyncio.CancelledError):
                 raise
+
+    # ── Plan 10 Task 5: refine_cr 路径 ───────────────────────────────
+
+    async def _run_refine_cr(self, request_id: str) -> None:
+        """业务员追加反馈（「字号大一点」）→ 复用上 CR branch + preview，
+        跳过 clarify / locate，直接 dev_runner 在 base_branch 上续 commit。
+
+        失败 → mark_failed 而不是 raise，跟 _run_new_cr 错误路径一致。
+        """
+        bus = self.event_bus
+
+        async def _phase_log(phase: str, line: str) -> None:
+            await bus.publish_log(request_id, phase, line)
+
+        try:
+            cr = self.repository.get(request_id)
+            if cr is None:
+                raise _PhaseError("refine", "no-cr", f"CR not found: {request_id}")
+            if not cr.refine_of:
+                raise _PhaseError(
+                    "refine", "no-refine-of",
+                    "refine_cr 必须 set_refine_of(base_cr_id) 才能跑",
+                )
+            base = self.repository.get(cr.refine_of)
+            if base is None or not base.branch:
+                raise _PhaseError(
+                    "refine", "base-cr-invalid",
+                    f"base CR 不存在或没 branch：{cr.refine_of}",
+                )
+
+            # 走完 FSM 路径：created → clarifying → located → coding（每步几乎不耗时）
+            # 保持审计 trail；refine 跳过的是「实际工作」不是「状态机」。
+            await self._set_state(request_id, State.CLARIFYING)
+            await self._set_state(request_id, State.LOCATED)
+            await self._set_state(request_id, State.CODING)
+            await _phase_log("coding", f"▸ refine 模式：续改 base branch {base.branch}")
+
+            # 沿用 base 的 entry_files；不重 locate
+            from orchestrator.adapters.types import (
+                LocateResult, RawRequest, RequestBrief,
+            )
+            raw = RawRequest(
+                url=cr.url,
+                screenshot_b64=cr.screenshot_b64,
+                box_coords=cr.box_coords,
+                viewport=cr.viewport,
+                request_text=cr.request_text,
+            )
+            brief = RequestBrief(
+                original_text=cr.request_text,
+                clarifications=[],
+                selected_mockup=None,
+            )
+            # 假定 base 已 locate 过；refine 重新 locate 拿同样 entry_files
+            locate_result = await self.stack_adapter.locate(raw.url)
+            ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)
+            ctx.log = lambda line: bus.publish_log(request_id, "coding", line)
+            # Plan 10 Task 6: dev_runner 看到 mode='refine' + base_branch 续改
+            ctx.mode = "refine"
+            ctx.base_branch = base.branch
+            await self._maybe_compact_history(request_id, ctx, log=_phase_log)
+
+            run_result = await self.dev_runner.run(self.repo_path, base.branch, ctx)
+            if not run_result.changed:
+                raise _PhaseError("coding", "no-changes", run_result.log or "")
+            self.repository.set_branch(request_id, base.branch)
+
+            # 走 FSM building → preview-ready；实际不调 preview_adapter（容器热重载）
+            await self._set_state(request_id, State.BUILDING)
+            self.repository.set_preview(
+                request_id,
+                url=base.preview_url or "",
+                handle=base.preview_handle or "",
+            )
+            self.repository.transition(request_id, State.PREVIEW_READY)
+            await bus.publish(
+                request_id,
+                Event(type="status", data={
+                    "state": State.PREVIEW_READY.value,
+                    "preview_url": base.preview_url,
+                    "branch": base.branch,
+                    "mode": "refine_cr",
+                }),
+            )
+            await _phase_log("coding", f"✓ refine 完成 → 同 preview {base.preview_url}")
+        except _PhaseError as pe:
+            self.repository.mark_failed(
+                request_id, phase=pe.phase, reason=pe.reason, log=pe.log,
+            )
+            await bus.publish(
+                request_id,
+                Event(type="status", data={
+                    "state": State.FAILED.value,
+                    "fail_phase": pe.phase,
+                    "fail_reason": pe.reason,
+                }),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.repository.mark_failed(
+                request_id, phase="refine", reason="unexpected",
+                log=f"{type(exc).__name__}: {exc}",
+            )
+            await bus.publish(
+                request_id,
+                Event(type="status", data={
+                    "state": State.FAILED.value,
+                    "fail_phase": "refine",
+                    "fail_reason": "unexpected",
+                }),
+            )
+
+    # ── Plan 10 Task 5: chat_only 路径 ──────────────────────────────
+
+    async def run_chat_only(
+        self, *, conversation_id: str, user_message: str, repo_doc: str = "",
+    ) -> str:
+        """纯 LLM 回复 —— 不进 quota / 不切 branch / 不起 docker / 不创建 CR。
+
+        Raises:
+            RuntimeError: chat_responder 未注入
+            KeyError: conversation 不存在
+        """
+        if self.chat_responder is None:
+            raise RuntimeError(
+                "chat_responder 未注入；构造 Pipeline 时传 chat_responder=ChatResponder(...)",
+            )
+        return await self.chat_responder.respond(
+            conversation_id=conversation_id,
+            user_message=user_message,
+            repo_doc=repo_doc,
+        )

@@ -90,6 +90,20 @@ class ChangeRequestRepository:
         cr.preview_handle = handle
         self._db.commit()
 
+    def set_refine_of(self, request_id: str, base_cr_id: str) -> None:
+        """Plan 10 Task 5：标记此 CR 是 refine 上一 CR；同时设 mode='refine_cr'。"""
+        cr = self._get_or_raise(request_id)
+        cr.refine_of = base_cr_id
+        cr.mode = "refine_cr"
+        cr.last_activity_at = datetime.utcnow()
+        self._db.commit()
+
+    def set_mode(self, request_id: str, mode: str) -> None:
+        """Plan 10：显式设 mode（new_cr / refine_cr）。"""
+        cr = self._get_or_raise(request_id)
+        cr.mode = mode
+        self._db.commit()
+
     def touch_activity(self, request_id: str) -> None:
         cr = self._get_or_raise(request_id)
         cr.last_activity_at = datetime.utcnow()

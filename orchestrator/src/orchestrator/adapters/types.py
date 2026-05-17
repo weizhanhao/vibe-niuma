@@ -76,6 +76,10 @@ class DevContext:
     # Plan 9 Task 5：conversation 历史（compaction 后的视图），dev runner 用来
     # 维持跨 CR 上下文连续。条目形如 {type: user|ai|summary, ts, content, ...}
     chat_history: list[dict] = field(default_factory=list)
+    # Plan 10 Task 5+6：refine_cr 路径下 'refine'；new_cr / 缺省时 'new'
+    mode: str = "new"
+    # Plan 10：refine 模式下 dev_runner 在这个已存在 branch 上续 commit；new 时 None
+    base_branch: str | None = None
 
 
 @dataclass
