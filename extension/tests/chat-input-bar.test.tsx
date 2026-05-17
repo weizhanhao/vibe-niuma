@@ -51,7 +51,7 @@ describe('ChatInputBar attachments + mode', () => {
     expect(onChange).toHaveBeenCalledWith([mkAtt('A'), mkAtt('C')]);
   });
 
-  it('commander footer 显示「项目 · 模式」chip', () => {
+  it('commander footer 只显示项目 chip，不显示 mode 分类（业务员视角无意义）', () => {
     render(
       <ChatInputBar
         attachments={[]}
@@ -60,9 +60,9 @@ describe('ChatInputBar attachments + mode', () => {
         projectName="默认项目"
       />,
     );
-    // 新设计：底部 commander 面板里有「项目 · 模式」状态 chip
     expect(screen.getByText('默认项目')).toBeInTheDocument();
-    expect(screen.getByText('新需求')).toBeInTheDocument();
+    // mode chip（新需求/续改/聊天）业务员看不懂、易误解，已移除
+    expect(screen.queryByText(/新需求|续改|聊天/)).toBeNull();
   });
 
   it('sending text dispatches SUBMIT_MESSAGE with attachments + convId', async () => {

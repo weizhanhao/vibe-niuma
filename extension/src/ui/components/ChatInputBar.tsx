@@ -10,9 +10,8 @@
 // 老的 SUBMIT_TEXT_ONLY / UI_START_CAPTURE 短期内仍 work（v0.5 路径），但新的发送按钮
 // 走 SUBMIT_MESSAGE。框选保留 UI_START_CAPTURE 是因为 overlay 还在那条链路上工作。
 // props 都可选 —— App.tsx 改造完成前老调用 `<ChatInputBar />` 仍能跑（空 attachments）。
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { MAX_ATTACHMENTS } from '../../lib/attachments';
-import { classifyIntent } from '../../lib/intent';
 import { MSG, type Message } from '../../lib/messages';
 import type { Attachment, IntentMode } from '../../lib/types';
 
@@ -31,12 +30,6 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 const send = (msg: Message) => chrome.runtime.sendMessage(msg);
-
-const MODE_LABEL: Record<IntentMode, string> = {
-  new_cr: '新需求',
-  refine_cr: '续改',
-  chat_only: '聊天',
-};
 
 interface SubmittedInfo {
   cr_id?: string | null;
@@ -71,15 +64,6 @@ export function ChatInputBar({
   const [text, setText] = useState(initialText);
   // 同界面 lightbox：点缩略图弹层看原图（chrome extension 不让 data: URL 开新标签）
   const [lightboxAtt, setLightboxAtt] = useState<Attachment | null>(null);
-
-  const decision = useMemo(
-    () => classifyIntent({
-      messageText: text,
-      conversationMessages: [],
-      lastCrState: null,
-    }),
-    [text],
-  );
 
   const disabled = !text.trim();
 
@@ -166,15 +150,6 @@ export function ChatInputBar({
     onAttachmentsChange(attachments.filter((_, i) => i !== idx));
   };
 
-  // mode chip 文案 + 颜色：根据 classifier 即时显示，给业务员心理预期
-  const modeKey = decision.mode;
-  const modeText = MODE_LABEL[modeKey] ?? modeKey;
-  const modeClass = modeKey === 'refine_cr'
-    ? 'chat-input-meta__mode chat-input-meta__mode--refine'
-    : modeKey === 'chat_only'
-    ? 'chat-input-meta__mode chat-input-meta__mode--chat'
-    : 'chat-input-meta__mode';
-
   return (
     <div className="chat-input-bar">
       {attachments.length > 0 && (
@@ -239,18 +214,9 @@ export function ChatInputBar({
           </button>
         </div>
 
-        {(projectName || modeText) && (
-          <span className="chat-input-meta">
-            {projectName && (
-              <>
-                <span className="chat-input-meta__project" title={projectName}>{projectName}</span>
-                <span className="chat-input-meta__sep">·</span>
-              </>
-            )}
-            <span className={modeClass} title={`下一条会作为「${modeText}」提交`}>
-              <span className="chat-input-meta__mode-dot" aria-hidden="true" />
-              {modeText}
-            </span>
+        {projectName && (
+          <span className="chat-input-meta" title={projectName}>
+            <span className="chat-input-meta__project">{projectName}</span>
           </span>
         )}
 

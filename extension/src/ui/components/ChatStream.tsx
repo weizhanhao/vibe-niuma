@@ -69,7 +69,11 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
             </div>
           );
         }
-        const mirror = m.cr_id ? mirrors[m.cr_id] : undefined;
+        // 只 user message 挂 InlineCard —— 后端在 preview-ready 时给同一个 CR
+        // 同时 append 一条带 cr_id 的 AI message「改完了 → 预览就绪 ...」。
+        // 那条 AI 已经被降级成 footnote（见下 isCrSuccessFootnote），它不该再
+        // mount 第二张 InlineCard 跟 user message 的卡片重复。
+        const mirror = (m.type === 'user' && m.cr_id) ? mirrors[m.cr_id] : undefined;
         const atts = m.attachments ?? [];
         // 后端 pipeline 在 preview-ready 时往 conversation append 一条形如
         //   「改完了 → 预览就绪 http://... \n 分支 cr/... commit abcdef」

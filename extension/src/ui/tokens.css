@@ -1581,12 +1581,11 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   opacity: 0.4; cursor: not-allowed;
 }
 
-/* 项目 · 模式 chip —— 安静地告诉业务员「现在在哪、下一条会怎么提交」 */
+/* 项目 chip —— 安静地告诉业务员「现在改的是哪个项目」 */
 .chat-input-meta {
   display: inline-flex; align-items: center;
-  gap: 6px;
   margin-left: 4px;
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--ink-mute);
@@ -1595,24 +1594,11 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   min-width: 0;
 }
 .chat-input-meta__project {
-  max-width: 100px;
+  max-width: 140px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   color: var(--ink-soft);
   font-weight: 600;
 }
-.chat-input-meta__sep {
-  color: var(--ink-faint);
-}
-.chat-input-meta__mode {
-  display: inline-flex; align-items: center; gap: 4px;
-  color: var(--ink-soft);
-}
-.chat-input-meta__mode-dot {
-  width: 5px; height: 5px; border-radius: 50%;
-  background: var(--accent);
-}
-.chat-input-meta__mode--refine .chat-input-meta__mode-dot { background: var(--warning); }
-.chat-input-meta__mode--chat .chat-input-meta__mode-dot { background: var(--ink-mute); }
 
 .chat-input-footer__spacer { flex: 1; }
 
@@ -1871,15 +1857,16 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .chat-stream__summary-icon { font-size: 10px; opacity: 0.7; }
 
+/* InlineCard —— 平铺布局，无边框无 shadow，融进 chat stream */
 .inline-card {
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  padding: 12px 14px;
-  display: flex; flex-direction: column; gap: 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  display: flex; flex-direction: column; gap: 8px;
   width: 100%; max-width: 100%;
   font-size: 12.5px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 .inline-card__head { display: flex; gap: 8px; align-items: center; }
 .inline-card__elapsed {
@@ -1908,9 +1895,10 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   animation: doskill-spin 0.7s linear infinite;
 }
 @keyframes doskill-spin { to { transform: rotate(360deg); } }
-.inline-card.is-running { border-color: var(--accent-dim); }
-.inline-card--failed { border-color: var(--danger-dim); }
-.inline-card--preview-ready { border-color: var(--success-dim); }
+/* state 视觉信号已由 state label/dot 颜色承担，平铺态不再用边框做 highlight */
+.inline-card.is-running,
+.inline-card--failed,
+.inline-card--preview-ready { border: none; }
 .inline-card__fail {
   color: var(--danger); font-size: 11.5px;
   padding: 6px 10px; background: var(--danger-soft); border-radius: var(--r-sm);
