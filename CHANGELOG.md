@@ -2,6 +2,55 @@
 
 doskill 项目版本记录。语义化版本（major.minor.patch），主要面向业务员看到的能力变化。
 
+## [v0.6.0] — 2026-05-17
+
+**主题：Cursor 式 Agent Tab + 多附件 + 真多轮澄清 + 意图路由**
+
+让扩展真正像 Cursor 工作：顶部多 tab、底部 sticky 输入框、AI 主动判断「这是新需求 / 续改 / 闲聊」分别走不同处理路径，澄清没有固定轮数限制。
+
+### Added
+
+- **POST `/conversations/{conv_id}/messages` 统一入口**（orchestrator）：业务员每条 message 进这里，server 用 LLM 分类决定走 new_cr / refine_cr / chat_only 三条路径之一。返 `{message_id, mode, cr_id?, ai_message_id?, confidence, is_unsure, reason}`。`is_unsure` 用于 UI 提示业务员手动确认。
+- **IntentClassifier**（orchestrator + extension mirror）：基于 LLM 的意图分类器，看消息 + 最近 6 条历史 + 上一 CR state 判 mode。客户端用启发式 mirror 给即时 UX hint，server 仍以 LLM 决策为准。
+- **ChatResponder（chat_only 路径）**：业务员说「这个改得怎么样」「为啥用这种方案」时不进 pipeline，AI 直接文字回复并 append 到 conversation。
+- **多附件（≤3 张）**：`Attachment` schema + `attachments` JSON 列 + `LLMClient.complete_vision_multi*`。业务员一次 message 可附 0-3 张图（framed_region / pasted_image / screenshot_active_tab / attached_file）；vision API 一次塞多图判意图。
+- **真多轮澄清**（BrainstormingSkill 重写）：去掉 `max_questions=3` 硬上限，改 `MAX_SOFT_ROUNDS=8` 软上限。每轮 LLM 重判「done? 下一题？」，业务员可点「✓ 够了直接干」`STOP_CLARIFY_SENTINEL` 主动结束。每个问题必带 2-4 个 options，末位固定「我自己描述」。
+- **refine_cr 路径**：识别「字号大一点」「再深点」这类追加修饰，pipeline 在 base CR 的 branch 上续 commit + Vite 热重载复用同预览容器，秒级反馈。
+- **self_heal 自愈**：CR 失败后 LLM 决定 retry / retry_with_revised_prompt / escalate（最多 2 次），自动恢复网络抖动或 transient build 错。
+- **AgentTabBar + HistoryDropdown**（extension）：顶部多 tab（每 tab 一会话，× 关闭，+ 新建，🕐 历史下拉）。LRU at 8 tabs。
+- **ChatStream + InlineCard**（extension）：主体是消息流，user message 下方挂 CR 状态卡 + 预览链接；summary 渲染为折叠条。
+- **AttachmentTray + mode badge**（extension）：输入框上方实时显示模式徽章；附件 chip 可移除；满 3 张「+」禁用。
+
+### Changed
+
+- `BrainstormingSkill` 问答返 JSON shape：从 `{questions:[...]}` 改为每轮 `{done, question, options, variants?}`。
+- `RawRequest` 加 `attachments: list[dict]`；`images()` 方法返 vision-ready 图列表（兼容老 single screenshot_b64）。
+- `Pipeline.run(request_id, *, mode)` 三分支调度。
+- `Pipeline.run_chat_only(...)` 不进配额、不切 branch、不起 docker。
+- MainShell 重布局：顶部 AgentTabBar，主体 ChatStream，底部 ChatInputBar；ConversationList 被替代。
+
+### Removed
+
+- 老 POST `/conversations/{id}/messages` 裸 append 入口（被新的意图路由入口取代；端到端覆盖见 `test_messages_api.py`）。
+- `BrainstormingSkill.max_questions` 硬上限。
+
+### Dependencies
+
+无新增。
+
+### Migration
+
+- `change_request` 表新加列：`attachments JSON / mode VARCHAR(16) / refine_of VARCHAR(36) / self_heal_attempts INT`。
+- ECS 上靠 `_ensure_schema_migrations` 在 lifespan 自动 ALTER；零运维。
+- v0.5 客户端继续可用：老 POST `/change-requests` 路径保留，`screenshot_b64` 单字段自动转 Attachment。
+
+### 测试
+
+- orchestrator：333 passed / 5 skipped（含 3 个 Plan 10 obsolete legacy contract）
+- extension：283 passed / 4 skipped；vite build 通过
+
+---
+
 ## [v0.5.0] — 2026-05-16
 
 **主题：多项目 + Cursor 式持续对话 + 动态压缩**
