@@ -1862,6 +1862,21 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .chat-stream__summary-icon { font-size: 10px; opacity: 0.7; }
 
+/* 「思考中...」占位：从 user message 发出到 intent_classifier 返回（1-3s）
+   这段空窗期里给业务员一个心跳信号，避免「系统死了」的迷茫。
+   InlineCard 一 mount 就把这个 placeholder 替换掉。 */
+.chat-stream__thinking {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--ink-mute);
+  padding: 4px 2px;
+}
+.chat-stream__thinking-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid var(--accent); border-right-color: transparent;
+  border-radius: 50%;
+  animation: doskill-spin 0.7s linear infinite;
+}
+
 /* InlineCard —— 平铺布局，无边框无 shadow，融进 chat stream */
 .inline-card {
   border: none;

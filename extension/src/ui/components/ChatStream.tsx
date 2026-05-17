@@ -117,6 +117,16 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
             {mirror && (
               <InlineCard mirror={mirror} crMode={m.cr_mode ?? 'new_cr'} />
             )}
+            {/* 乐观 user message 发出后到拿到 cr_id（intent_classifier 1-3s）
+                之间不能让业务员面对空白；App.tsx 给这条 message 打 meta.pending，
+                ChatStream 渲染一个「思考中...」占位，spinner + 一行字。
+                onSubmitted 后 App 清掉 meta.pending → InlineCard 接管。 */}
+            {(m.meta as { pending?: boolean } | undefined)?.pending && (
+              <div className="chat-stream__thinking" role="status" aria-live="polite">
+                <span className="chat-stream__thinking-spinner" aria-hidden="true" />
+                <span>思考中...</span>
+              </div>
+            )}
           </div>
         );
       })}

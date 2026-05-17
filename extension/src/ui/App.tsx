@@ -461,23 +461,25 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
             projectName={project.name}
             onSubmitted={({ cr_id, mode }) => {
               setSubmitTick((t) => t + 1);
-              // 把 cr_id 贴到最后那条乐观 user 消息上 → ChatStream 立即给它
-              // mount 一个 InlineCard，state 还在 created/clarifying，业务员能
-              // 看到从头到尾的流式日志。
-              if (cr_id && activeConvId) {
-                setOptimisticSends((prev) => {
-                  const cur = prev[activeConvId] ?? [];
-                  if (cur.length === 0) return prev;
-                  const updated = [...cur];
-                  const lastIdx = updated.length - 1;
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    cr_id,
-                    cr_mode: mode,
-                  };
-                  return { ...prev, [activeConvId]: updated };
-                });
-              }
+              // 不论拿没拿到 cr_id（chat_only 模式无 cr_id）都要清「思考中」
+              // 占位 —— intent_classifier 已返回，下一步要么 InlineCard 接管，
+              // 要么服务器 AI 消息会到。
+              if (!activeConvId) return;
+              setOptimisticSends((prev) => {
+                const cur = prev[activeConvId] ?? [];
+                if (cur.length === 0) return prev;
+                const updated = [...cur];
+                const lastIdx = updated.length - 1;
+                const last = updated[lastIdx];
+                const nextMeta = { ...(last.meta ?? {}) };
+                delete nextMeta.pending;
+                updated[lastIdx] = {
+                  ...last,
+                  ...(cr_id ? { cr_id, cr_mode: mode } : {}),
+                  meta: Object.keys(nextMeta).length > 0 ? nextMeta : undefined,
+                };
+                return { ...prev, [activeConvId]: updated };
+              });
             }}
             onOptimisticSend={(text, atts) => {
               if (!activeConvId) return;
@@ -487,6 +489,10 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
                 type: 'user',
                 content: text,
                 ...(atts.length > 0 ? { attachments: atts } : {}),
+                // pending 标记 → ChatStream 立刻在 user 气泡下渲染「思考中...」
+                // 占位（intent_classifier 1-3s 期间业务员不再面对空白）。
+                // onSubmitted 拿到响应后会清掉。
+                meta: { pending: true },
               };
               setOptimisticSends((prev) => ({
                 ...prev,
