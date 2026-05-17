@@ -264,14 +264,24 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
         <div className="option-row">
           {q.options.map((opt) => {
             const isFree = _FREE_OPTION_PAT.test(opt);
+            const isRecommended = !isFree && q.recommended === opt;
             const selected = freeMode && isFree;
+            const cls = [
+              'option',
+              selected ? 'option--selected' : '',
+              isRecommended ? 'option--recommended' : '',
+            ].filter(Boolean).join(' ');
             return (
               <button
                 key={opt}
-                className={`option${selected ? ' option--selected' : ''}`}
+                className={cls}
                 onClick={() => (isFree ? setFreeMode(true) : reply(opt))}
+                title={isRecommended ? 'AI 觉得这个最像你想要的' : undefined}
               >
-                {opt}
+                <span>{opt}</span>
+                {isRecommended && (
+                  <span className="option__badge">推荐</span>
+                )}
               </button>
             );
           })}
@@ -326,6 +336,159 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
     </section>
   );
 }
+
+// ── FormPanel ──────────────────────────────────────────────────────
+// 多题一次性表单：业务员一次提交所有答案。每题独立 radio/checkbox + 「我自己描述」
+// 内联输入。任何 multi=true 题就显示 checkbox；否则 radio。
+export function FormPanel({ state }: { state: RequestStateMirror }) {
+  const form = state.pendingForm;
+  // selections: Record<questionIndex, string[]>  - 多选用数组；单选只有 1 项
+  const [selections, setSelections] = useState<Record<number, string[]>>({});
+  // freeTexts: Record<questionIndex, string>  - 「我自己描述」展开后的文本
+  const [freeTexts, setFreeTexts] = useState<Record<number, string>>({});
+  useEffect(() => {
+    setSelections({});
+    setFreeTexts({});
+  }, [form?.questionId]);
+
+  if (!form) return (
+    <section>
+      <p className="help">等待澄清问题…</p>
+      <LogFeed logs={state.logs} compact maxRows={20} />
+    </section>
+  );
+
+  const toggleOption = (qi: number, opt: string, multi: boolean) => {
+    setSelections((prev) => {
+      const cur = prev[qi] ?? [];
+      if (multi) {
+        return {
+          ...prev,
+          [qi]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt],
+        };
+      }
+      // 单选：替换为单元素数组
+      return { ...prev, [qi]: cur[0] === opt ? [] : [opt] };
+    });
+  };
+
+  const sendAnswers = (payload: Record<string, string | string[]>) => {
+    send({
+      type: MSG.SUBMIT_ANSWER,
+      requestId: state.id,
+      questionId: form.questionId,
+      answer: JSON.stringify(payload),
+    });
+  };
+
+  // 至少每题选一项才算可提交
+  const canSubmit = form.questions.every((q, qi) => {
+    const sel = selections[qi] ?? [];
+    const ft = (freeTexts[qi] ?? '').trim();
+    return sel.length > 0 || ft.length > 0;
+  });
+
+  const submit = () => {
+    const payload: Record<string, string | string[]> = {};
+    form.questions.forEach((q, qi) => {
+      const sel = selections[qi] ?? [];
+      const ft = (freeTexts[qi] ?? '').trim();
+      // 合并：选中的非「我自己描述」+ 自由文本
+      const merged = sel.filter((x) => !_FREE_OPTION_PAT.test(x));
+      if (ft) merged.push(ft);
+      payload[q.question] = q.multi ? merged : (merged[0] ?? '');
+    });
+    sendAnswers(payload);
+  };
+
+  return (
+    <section>
+      <div className="eyebrow">
+        <span className="ix">STEP 03</span>
+        <span>clarify · {form.questions.length} 题一次问</span>
+        <span className="rule" />
+      </div>
+      {form.questions.map((q, qi) => {
+        const sel = selections[qi] ?? [];
+        const freeOn = sel.some((x) => _FREE_OPTION_PAT.test(x));
+        return (
+          <div key={qi} className="form-question">
+            <h4 className="form-question__title">
+              {qi + 1}. {q.question}
+              {q.multi && <span className="form-question__hint">（可多选）</span>}
+            </h4>
+            <div className="option-row">
+              {q.options.map((opt) => {
+                const isFree = _FREE_OPTION_PAT.test(opt);
+                const isRecommended = !isFree && q.recommended === opt;
+                const checked = sel.includes(opt);
+                const cls = [
+                  'option',
+                  checked ? 'option--selected' : '',
+                  isRecommended ? 'option--recommended' : '',
+                ].filter(Boolean).join(' ');
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    className={cls}
+                    onClick={() => toggleOption(qi, opt, q.multi)}
+                    title={isRecommended ? 'AI 觉得这个最像你想要的' : undefined}
+                  >
+                    <span className="option__check" aria-hidden="true">
+                      {checked ? (q.multi ? '☑' : '◉') : (q.multi ? '☐' : '○')}
+                    </span>
+                    <span>{opt}</span>
+                    {isRecommended && (
+                      <span className="option__badge">推荐</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {freeOn && (
+              <div className="clarify-freeform">
+                <textarea
+                  autoFocus
+                  rows={2}
+                  maxLength={300}
+                  value={freeTexts[qi] ?? ''}
+                  onChange={(e) =>
+                    setFreeTexts((p) => ({ ...p, [qi]: e.target.value }))
+                  }
+                  placeholder="补充描述……"
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="btn-row">
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          onClick={() => send({
+            type: MSG.SUBMIT_ANSWER, requestId: state.id,
+            questionId: form.questionId, answer: '__STOP_CLARIFY__',
+          })}
+          title="不再问，按现在的理解直接开干"
+        >
+          ✓ 够了，直接干
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary btn-small"
+          disabled={!canSubmit}
+          onClick={submit}
+        >
+          一次提交 →
+        </button>
+      </div>
+      <LogFeed logs={state.logs} compact maxRows={20} />
+    </section>
+  );
+}
+
 
 // ── VariantsPanel ───────────────────────────────────────────────────
 export function VariantsPanel({ state }: { state: RequestStateMirror }) {

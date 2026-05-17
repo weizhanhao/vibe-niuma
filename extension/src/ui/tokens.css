@@ -461,10 +461,9 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .option-row { display: grid; gap: 6px; }
 .option {
   appearance: none;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -475,6 +474,8 @@ code { font-family: var(--mono); font-size: 0.9em; }
   font: inherit;
   transition: border-color var(--t-fast), background var(--t-fast);
 }
+.option > span:nth-child(1) { flex-shrink: 0; }
+.option > span:nth-child(2) { flex: 1; min-width: 0; }
 .option:hover { border-color: var(--line-hard); background: var(--surface-3); }
 .option .num {
   font-family: var(--mono);
@@ -497,6 +498,49 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .option--selected {
   border-color: var(--accent);
   background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+}
+.option--recommended {
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 20%, transparent) inset;
+}
+.option__badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.option__check {
+  font-family: var(--mono);
+  color: var(--accent);
+  width: 16px;
+  text-align: center;
+}
+
+/* ── 表单（多题一次问）—— FormPanel ─────────────────────────────── */
+.form-question {
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.form-question__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.form-question__hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-mute);
 }
 
 /* ── clarify free-form input (业务员选「我自己描述」后内联展开） ── */
@@ -1729,6 +1773,13 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .inline-card__head { display: flex; gap: 8px; align-items: center; }
+.inline-card__elapsed {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
 .inline-card__mode {
   padding: 2px 8px; border-radius: 999px;
   background: var(--badge-new-bg);

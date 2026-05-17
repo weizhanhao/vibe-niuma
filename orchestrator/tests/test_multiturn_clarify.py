@@ -60,18 +60,42 @@ class _ScriptedLLM:
 
 
 class _ScriptedChannel:
+    """支持 ask / ask_rich / present_form / present_variants 全套。
+
+    answers: 单题（ask/ask_rich）按顺序消耗
+    form_answers: 多题表单按顺序消耗（每项是 {question: answer} dict）
+    """
     def __init__(self, answers: list[str] | None = None,
-                 variant_selection: str | None = None):
+                 variant_selection: str | None = None,
+                 form_answers: list[dict] | None = None):
         self._answers = answers or []
         self._variant_selection = variant_selection
+        self._form_answers = form_answers or []
         self.ask_calls: list[tuple[str, list[str] | None]] = []
+        self.ask_rich_calls: list[tuple[str, list[str] | None, str | None]] = []
         self.variants_calls: list = []
+        self.form_calls: list[list[dict]] = []
 
     async def ask(self, question: str, options=None) -> str:
         self.ask_calls.append((question, options))
         if not self._answers:
             return ""
         return self._answers.pop(0)
+
+    async def ask_rich(self, question: str, options=None, *, recommended=None) -> str:
+        # 既记 rich 调用（带 recommended），也 mirror 进 ask_calls 让老断言
+        # 不区分单题路径继续工作。
+        self.ask_rich_calls.append((question, options, recommended))
+        self.ask_calls.append((question, options))
+        if not self._answers:
+            return ""
+        return self._answers.pop(0)
+
+    async def present_form(self, questions: list[dict]) -> dict:
+        self.form_calls.append(questions)
+        if not self._form_answers:
+            return {}
+        return self._form_answers.pop(0)
 
     async def present_variants(self, variants):
         from orchestrator.adapters.types import VariantSelection
@@ -89,23 +113,38 @@ def _raw(text: str = "改") -> RawRequest:
 def _plan_round(
     unknowns: list[str] | bool,
     *, question: str = "", options: list[str] | None = None,
+    recommended: str | None = None,
     weight: str = "light",
+    questions: list[dict] | None = None,
 ) -> str:
     """Plan 工厂。
 
     传 bool：True ⇒ unknowns=[]（done），False ⇒ unknowns=['(需要再问)']
     传 list：直接用作 unknowns
+    questions 优先（多题表单）；否则 question + options 平铺（单题）
     """
     if isinstance(unknowns, bool):
         u = [] if unknowns else ["（需要再问）"]
     else:
         u = unknowns
-    return json.dumps({
-        "weight": weight,
-        "unknowns": u,
-        "question": question,
-        "options": options or [],
-    })
+    body: dict = {"weight": weight, "unknowns": u}
+    if questions is not None:
+        body["questions"] = questions
+    else:
+        body["question"] = question
+        body["options"] = options or []
+        if recommended:
+            body["recommended"] = recommended
+    return json.dumps(body)
+
+
+def _q(question: str, options: list[str], *,
+       multi: bool = False, recommended: str | None = None) -> dict:
+    """One question entry for `questions` array."""
+    q: dict = {"question": question, "options": options, "multi": multi}
+    if recommended:
+        q["recommended"] = recommended
+    return q
 
 
 def _plan_heavy_variants(variants: list[dict]) -> str:
@@ -277,6 +316,94 @@ async def test_llm_failure_falls_back_to_open_question_not_done():
     assert options is not None and "我自己描述" in options
     # STOP → 没产生 clarifications
     assert brief.clarifications == []
+
+
+# ── 多题表单 + 推荐项 ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_single_question_with_recommended_passes_to_ask_rich():
+    """单题带 recommended → 走 ask_rich 路径，channel 拿到推荐项标记。"""
+    llm = _ScriptedLLM([
+        _plan_round(
+            False, question="想换成什么 UI？",
+            options=["按钮组", "tab", "segmented", "我自己描述"],
+            recommended="segmented",
+        ),
+        _plan_round(True),
+    ])
+    channel = _ScriptedChannel(answers=["segmented"])
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+    await skill.clarify(_raw("把下拉框换掉"), channel)
+
+    assert len(channel.ask_rich_calls) == 1
+    q, options, recommended = channel.ask_rich_calls[0]
+    assert recommended == "segmented"
+    assert "segmented" in options
+
+
+@pytest.mark.asyncio
+async def test_multi_question_form_path():
+    """LLM 返 questions=[Q1, Q2] → present_form 一次问完两题。"""
+    llm = _ScriptedLLM([
+        _plan_round(False, questions=[
+            _q("换成什么 UI？", ["按钮组", "tab", "我自己描述"], recommended="按钮组"),
+            _q("保留哪些状态？", ["全部", "已支付", "待支付"], multi=True),
+        ]),
+        _plan_round(True),
+    ])
+    channel = _ScriptedChannel(form_answers=[{
+        "换成什么 UI？": "按钮组",
+        "保留哪些状态？": "全部 / 已支付",
+    }])
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+    brief = await skill.clarify(_raw("改下拉框"), channel)
+
+    # 一次 form 调用，不走单题 ask
+    assert len(channel.form_calls) == 1
+    assert len(channel.ask_calls) == 0
+    assert len(channel.ask_rich_calls) == 0
+    # 两题都被序列化进 clarifications
+    assert len(brief.clarifications) == 2
+    qs = {c["question"] for c in brief.clarifications}
+    assert qs == {"换成什么 UI？", "保留哪些状态？"}
+    # multi-select 用 / 分隔
+    multi_answer = next(c["answer"] for c in brief.clarifications if c["question"] == "保留哪些状态？")
+    assert "全部" in multi_answer and "已支付" in multi_answer
+
+
+@pytest.mark.asyncio
+async def test_multi_question_form_with_stop_breaks_loop():
+    """业务员在表单里按 STOP → form 返回 {__stop__: True} → loop 立刻 break。"""
+    llm = _ScriptedLLM([
+        _plan_round(False, questions=[
+            _q("Q1", ["a", "b"]),
+            _q("Q2", ["x", "y"]),
+        ]),
+    ])
+    channel = _ScriptedChannel(form_answers=[{"__stop__": True}])
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+    brief = await skill.clarify(_raw("?"), channel)
+
+    assert len(channel.form_calls) == 1
+    # STOP → 没产生 clarifications
+    assert brief.clarifications == []
+
+
+@pytest.mark.asyncio
+async def test_recommended_only_valid_if_matches_options():
+    """LLM 写了一个 options 里没有的 recommended → 解析端清成 None，UI 不会乱高亮。"""
+    from orchestrator.adapters.impl.brainstorming_skill import _parse_unknowns
+    text = json.dumps({
+        "weight": "light",
+        "unknowns": ["x"],
+        "question": "?",
+        "options": ["A", "B"],
+        "recommended": "C",  # 不在 options 里
+    })
+    parsed = _parse_unknowns(text)
+    assert len(parsed["questions"]) == 1
+    assert parsed["questions"][0]["recommended"] is None
 
 
 # ── heavy 路径仍走 variants 不进 loop ─────────────────────────────

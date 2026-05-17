@@ -35,6 +35,7 @@ export function initialState(cr: ChangeRequestOut): RequestStateMirror {
     failPhase: cr.fail_phase,
     failReason: cr.fail_reason,
     pendingQuestion: null,
+    pendingForm: null,
     pendingVariants: null,
     logs: [],
     lastActivity: nowIso(),
@@ -63,7 +64,22 @@ export function applyEvent(state: RequestStateMirror, evt: SSEEvent): RequestSta
           questionId: evt.data.question_id,
           question: evt.data.question,
           options: evt.data.options ?? null,
+          recommended: evt.data.recommended ?? null,
         },
+        // 切换到新单题清掉残留的旧 form
+        pendingForm: null,
+        lastActivity: nowIso(),
+      };
+    }
+    case 'form': {
+      return {
+        ...state,
+        pendingForm: {
+          questionId: evt.data.question_id,
+          questions: evt.data.questions,
+        },
+        // 切换到表单清掉残留的旧单题
+        pendingQuestion: null,
         lastActivity: nowIso(),
       };
     }
@@ -83,15 +99,17 @@ export function applyEvent(state: RequestStateMirror, evt: SSEEvent): RequestSta
       return { ...state, logs: trimmed, lastActivity: nowIso() };
     }
     case 'question-resolved': {
-      // Phase C：仅当 pendingQuestion / pendingVariants 的 questionId 命中时清掉。
+      // Phase C：仅当 pendingQuestion / pendingForm / pendingVariants 的 questionId 命中时清掉。
       // 重连回放历史时，老 question 会先被 set，再被这条 resolved 清掉 —— 同步 reducer，中间一帧也不渲染。
       const qid = evt.data.question_id;
       const qHit = state.pendingQuestion?.questionId === qid;
+      const fHit = state.pendingForm?.questionId === qid;
       const vHit = state.pendingVariants?.questionId === qid;
-      if (!qHit && !vHit) return state;
+      if (!qHit && !fHit && !vHit) return state;
       return {
         ...state,
         pendingQuestion: qHit ? null : state.pendingQuestion,
+        pendingForm: fHit ? null : state.pendingForm,
         pendingVariants: vHit ? null : state.pendingVariants,
         lastActivity: nowIso(),
       };
@@ -112,7 +130,13 @@ export function applySnapshot(state: RequestStateMirror, cr: ChangeRequestOut): 
 }
 
 export function clearPending(state: RequestStateMirror): RequestStateMirror {
-  return { ...state, pendingQuestion: null, pendingVariants: null, lastActivity: nowIso() };
+  return {
+    ...state,
+    pendingQuestion: null,
+    pendingForm: null,
+    pendingVariants: null,
+    lastActivity: nowIso(),
+  };
 }
 
 // ── 多 mirror map 容器 ─────────────────────────────────────────────

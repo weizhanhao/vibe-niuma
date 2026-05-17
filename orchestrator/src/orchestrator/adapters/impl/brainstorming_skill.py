@@ -65,7 +65,7 @@ _DESCRIBE_SCREEN_PROMPT = (
 )
 
 
-# 主 prompt：让 LLM 列「还要知道哪些事才能写代码」。
+# 主 prompt：让 LLM 列「还要知道哪些事才能写代码」+ 一次问多题 + 标推荐。
 UNKNOWNS_PROMPT_TEMPLATE = """\
 你是 doskill 的需求澄清助手。业务员对一个网页提了改造需求，你要 **用代码精确实现它**。
 在你能写下第一行代码之前，把所有 **业务层未知** 列出来。
@@ -82,6 +82,14 @@ UNKNOWNS_PROMPT_TEMPLATE = """\
 
 技术细节不算 unknown：「改哪个文件」「用 useState 还是 useReducer」「class 还是 css
 module」「动画时长」「文件路径」—— 这些是技术决策，不是业务问题，**不要问，不要列**。
+
+**多题打包**：如果 unknowns 里有 **2-4 个互相独立** 的问题（决定一项不会影响另一项），
+**打包一次性问**（业务员一次提交）。如果某项的答案会决定后续要问什么（依赖），
+**只问那一项**，后面的下一轮再问。
+
+**推荐项**：每题里挑出**你最推荐**的选项，用 `recommended` 字段标出来（写完整 option
+文本，不是 index）。业务员看到 (推荐) 标签会更容易决定，不知道该选什么时也有锚点。
+**没明显推荐就留空**，别强行推荐。
 
 # 输入
 
@@ -103,31 +111,43 @@ module」「动画时长」「文件路径」—— 这些是技术决策，不�
 {{
   "weight": "light",
   "unknowns": ["...", "..."],
-  "question": "下一个最该问的业务问题",
-  "options": ["选项1（具体方案）", "选项2", "选项3", "我自己描述"]
+  "questions": [
+    {{
+      "question": "想换成什么样的 UI 控件？",
+      "options": ["横排按钮组", "顶部 tab", "segmented 控件（iOS 风）", "我自己描述"],
+      "multi": false,
+      "recommended": "segmented 控件（iOS 风）"
+    }},
+    {{
+      "question": "要保留哪些状态值？(可多选)",
+      "options": ["全部", "已支付", "待支付", "已取消", "已退款"],
+      "multi": true,
+      "recommended": null
+    }}
+  ]
 }}
 ```
 
-- `weight`: 一般是 `"light"`；如果业务员要的是**重新设计整个页面**（信息架构大改），
-  用 `"heavy"` 并给 `variants` 字段：`[{{"id":"v1","title":"...","html":"<完整 HTML 草稿>"}}]`，
-  2-3 套独立 mockup，不再走 unknowns 路径。
-- `unknowns`: 列具体到字段/元素/取值的未知点。**空数组 ⇒ done，直接写代码。**
-- `question`: unknowns 非空时必填。问下一个最重要的那一个。
-- `options`: unknowns 非空时必填 2-4 个具体可选项，**最后一个固定「我自己描述」**。
+- `weight`: 一般是 `"light"`；信息架构大改用 `"heavy"` 走 `variants` 路径（同前）。
+- `unknowns`: 具体到字段/元素/取值的未知点。**空数组 ⇒ done，直接写代码。**
+- `questions`: unknowns 非空时必填，**1-4 个**。
+  - 每个 question 自带 `options`（2-5 个）+ `multi`（true=多选 / false=单选）+ `recommended`（可选）
+  - **`options` 最后一个固定「我自己描述」**（multi=true 时业务员可勾任意多个 + 自己描述）
+  - 当且仅当 unknowns 全独立时一次问多个；任何一个的答案会改变后面问什么 → 只问第一个
+- `recommended` 必须是 options 数组里某个完整字符串（不是 index）；不强推则填 null
 
-# unknowns 的好例子（具体、可问）
+# unknowns 的好例子
 
-- "业务员说『不喜欢下拉框』但没说换成什么 UI 控件（按钮组 / tab / segmented / chip）"
-- "业务员没说要保留哪些状态值（全部/已支付/待支付？按订单流程分？）"
+- "业务员说『不喜欢下拉框』但没说换成什么 UI 控件"
+- "业务员没说要保留哪些状态值"
 - "业务员说『好看点』但没指出是配色/布局/字号问题"
-- "业务员说『加个图标』但没说放哪个位置（左边/右边/独立按钮）"
 
-# unknowns 为空的正确例子（清晰、可写）
+# 一次问多题 vs 只问一题
 
-- 「按钮背景色改成 #1890ff」→ 元素=按钮背景 取值=#1890ff，**没有 unknown**
-- 「placeholder 改成『按客户名搜索』」→ 元素=placeholder 取值=具体文本，**没有 unknown**
-- 「字号 14px 改成 16px」→ 元素+取值都有，**没有 unknown**
-- 「下拉框换成 segmented 控件，状态保留 全部/已支付/待支付」→ 控件+数据全有，**没有 unknown**
+✓ **可打包**（独立）：业务员说「改下拉框」→ 同时问「换成什么控件 / 保留哪些状态值」
+  —— 两个答案互不影响。
+✗ **不可打包**（有依赖）：业务员说「让首页好看点」→ 不能同时问「配色用什么 / 主色调 RGB」
+  —— 先确认是配色问题，才有必要问 RGB。
 
 # question / options 形式约束
 
@@ -211,7 +231,7 @@ class BrainstormingSkill:
                 selected_mockup=selected_mockup,
             )
 
-        # light 路径：unknowns 驱动多轮
+        # light 路径：unknowns 驱动多轮，每轮 LLM 可一次问 1-4 题（独立的打包问）
         current_plan = plan
         round_i = 0
         while True:
@@ -221,11 +241,11 @@ class BrainstormingSkill:
                     await log("✓ LLM 报告 unknowns=[] —— 需求已清晰")
                 break
 
-            question = (current_plan.get("question") or "").strip()
-            if not question:
-                # 没 question 又 unknowns 非空 → 退化场景，break 防卡死
+            questions = current_plan.get("questions") or []
+            if not questions:
+                # 没题又 unknowns 非空 → 退化场景，break 防卡死
                 if callable(log):
-                    await log("⚠ LLM 没给 question 也没说 done，break")
+                    await log("⚠ LLM 没给 questions 也没说 done，break")
                 break
 
             if isinstance(unknowns, list) and unknowns and callable(log):
@@ -233,20 +253,35 @@ class BrainstormingSkill:
                 for u in unknowns[:5]:
                     await log(f"  · {u}")
 
-            options = current_plan.get("options") or []
-            if not isinstance(options, list):
-                options = []
-            options = [str(o) for o in options if o]
-            answer = await channel.ask(question, options or None)
-            if answer is None:
-                break
-            answer = answer.strip()
-            if answer == STOP_CLARIFY_SENTINEL:
-                if callable(log):
-                    await log("✓ 业务员主动结束澄清，进入定位...")
-                break
-            if answer:
-                clarifications.append({"question": question, "answer": answer})
+            # 一题走老的 ask（保留单题路径，UI 不变）；多题走 present_form
+            if len(questions) == 1:
+                q = questions[0]
+                # 把 recommended 透传给 channel：扩展用 dict 形态的 options 包载荷
+                answer = await self._ask_single(channel, q)
+                if answer is None:
+                    break
+                answer = answer.strip()
+                if answer == STOP_CLARIFY_SENTINEL:
+                    if callable(log):
+                        await log("✓ 业务员主动结束澄清，进入定位...")
+                    break
+                if answer:
+                    clarifications.append({
+                        "question": q["question"], "answer": answer,
+                    })
+            else:
+                # 多题表单：一次问，等业务员一次提交
+                form_answers = await self._present_form(channel, questions)
+                if form_answers is None:
+                    break
+                if form_answers.get("__stop__"):
+                    if callable(log):
+                        await log("✓ 业务员主动结束澄清，进入定位...")
+                    break
+                for q in questions:
+                    a = form_answers.get(q["question"], "")
+                    if a:
+                        clarifications.append({"question": q["question"], "answer": a})
 
             round_i += 1
             if round_i >= _HARD_ROUND_CAP:
@@ -266,6 +301,41 @@ class BrainstormingSkill:
         )
 
     # ── 内部 ─────────────────────────────────────────────────────────
+    async def _ask_single(
+        self, channel: InteractionChannel, q: dict,
+    ) -> str | None:
+        """单题路径：透传 recommended 给 channel（如它支持），fall back 普通 ask。
+
+        recommended 走 options 列表外的 kwarg；老 channel 不识别就直接走基本路径。
+        """
+        question = q["question"]
+        options = q.get("options") or None
+        recommended = q.get("recommended")
+        # 如果 channel 有 ask_rich（接 recommended），优先用；否则降级
+        ask_rich = getattr(channel, "ask_rich", None)
+        if callable(ask_rich):
+            return await ask_rich(question, options, recommended=recommended)
+        return await channel.ask(question, options)
+
+    async def _present_form(
+        self, channel: InteractionChannel, questions: list[dict],
+    ) -> dict | None:
+        """多题路径：调 channel.present_form；老 channel 没此方法时降级串行 ask。"""
+        present_form = getattr(channel, "present_form", None)
+        if callable(present_form):
+            return await present_form(questions)
+        # 降级：一题一题问；任何一答 STOP 立刻退出
+        answers: dict = {}
+        for q in questions:
+            a = await self._ask_single(channel, q)
+            if a is None:
+                return None
+            a = a.strip()
+            if a == STOP_CLARIFY_SENTINEL:
+                return {"__stop__": True}
+            answers[q["question"]] = a
+        return answers
+
     async def _load_repo_doc(self) -> str:
         if self._repo_initializer is None:
             return ""
@@ -407,13 +477,31 @@ def _fallback_open_question() -> dict:
     return {
         "weight": "light",
         "unknowns": ["LLM 解析失败/服务不可用 — 需要业务员补充细节"],
-        "question": "再具体描述一下你想要的效果？比如换成什么样的 UI、要保留哪些功能。",
-        "options": ["我自己描述"],
+        "questions": [{
+            "question": "再具体描述一下你想要的效果？比如换成什么样的 UI、要保留哪些功能。",
+            "options": ["我自己描述"],
+            "multi": False,
+            "recommended": None,
+        }],
+    }
+
+
+def _normalize_question(q: dict) -> dict:
+    """把 LLM 返回的一个 question 字典规整成内部稳定 schema。"""
+    options = [str(o) for o in (q.get("options") or []) if str(o).strip()]
+    rec_raw = q.get("recommended")
+    # recommended 必须命中 options 之一才有效，避免脏数据导致 UI 高亮错位
+    recommended = str(rec_raw) if rec_raw and str(rec_raw) in options else None
+    return {
+        "question": str(q.get("question") or "").strip(),
+        "options": options,
+        "multi": bool(q.get("multi") or False),
+        "recommended": recommended,
     }
 
 
 def _parse_unknowns(text: str) -> dict:
-    """解析 LLM 返的 {weight, unknowns, question, options}。
+    """解析 LLM 返 {weight, unknowns, questions[]}（兼容老 {question, options}）。
 
     解析失败 → 兜底**开放问题**（不 default done）。
     兼容老 LLM 返 {done: true/false}：done=true 视为 unknowns=[]。
@@ -442,17 +530,32 @@ def _parse_unknowns(text: str) -> dict:
     elif data.get("done") is True:
         unknowns = []
     elif data.get("done") is False:
-        # 老 LLM 没列 unknowns 但说没 done → 给个占位 unknown 防 default done
         unknowns = ["（LLM 未列具体未知项但报告未 done）"]
     else:
-        # 没说 done 也没 unknowns → 兜底开放问题
         return _fallback_open_question()
+
+    # questions: 新版 LLM 返列表；老版返单 question + options 平铺
+    questions_raw = data.get("questions")
+    questions: list[dict] = []
+    if isinstance(questions_raw, list) and questions_raw:
+        for q in questions_raw[:4]:
+            if isinstance(q, dict):
+                nq = _normalize_question(q)
+                if nq["question"]:
+                    questions.append(nq)
+    elif data.get("question"):
+        # 老 schema: 单题 + 平铺 options
+        questions.append(_normalize_question({
+            "question": data.get("question"),
+            "options": data.get("options"),
+            "multi": data.get("multi"),
+            "recommended": data.get("recommended"),
+        }))
 
     return {
         "weight": "light",
         "unknowns": unknowns,
-        "question": str(data.get("question") or "").strip(),
-        "options": [str(o) for o in (data.get("options") or []) if str(o).strip()],
+        "questions": questions,
     }
 
 

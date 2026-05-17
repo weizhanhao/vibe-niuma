@@ -43,6 +43,16 @@ function humanize(line: string): string {
     .trim();
 }
 
+// 计时器格式化：< 60s 用 12s；>= 60s 用 m:ss
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return '';
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
   const stateText = STATE_LABEL[mirror.state] ?? mirror.state;
   const modeBadge = MODE_LABEL[crMode] ?? crMode;
@@ -56,6 +66,27 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
   useEffect(() => {
     if (isRunning) setExpanded(true);
   }, [isRunning]);
+
+  // ── 运行时间 ──
+  // 起点：首条 log 时间戳（CR 第一次出活动）；没 log 用 lastActivity 兜底
+  // 终点：跑中 → 当前时间（每秒 tick）；终态 → 最后一条 log 时间戳
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isRunning) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isRunning]);
+  const elapsed = (() => {
+    const startTs = mirror.logs[0]?.ts ?? mirror.lastActivity;
+    if (!startTs) return 0;
+    const start = new Date(startTs).getTime();
+    if (Number.isNaN(start)) return 0;
+    const end = isRunning
+      ? now
+      : new Date(mirror.logs[mirror.logs.length - 1]?.ts ?? startTs).getTime();
+    return Math.max(0, end - start);
+  })();
+  const elapsedLabel = formatElapsed(elapsed);
 
   // 新 log 来了自动滚到底（cursor-like）
   useEffect(() => {
@@ -74,6 +105,14 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
           {isRunning && <span className="inline-card__spinner" aria-hidden="true" />}
           {stateText}
         </span>
+        {elapsedLabel && (
+          <span
+            className="inline-card__elapsed"
+            title={isRunning ? '运行时间（实时）' : '总耗时'}
+          >
+            {elapsedLabel}
+          </span>
+        )}
       </div>
 
       {/* 跑中 + 已展开 + 有 logs → 显示流；跑中无 logs → 准备中占位 */}

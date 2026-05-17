@@ -67,9 +67,18 @@ export const MAX_LOGS_PER_MIRROR = 200;
 // 非终态受保护，不会被驱逐（除非全是非终态——MVP 不会发生）。
 export const MAX_MIRRORS = 50;
 
+// 表单单题：UI 渲染一个 question + options + 单/多选 + 推荐高亮
+export interface FormQuestion {
+  question: string;
+  options: string[];
+  multi: boolean;
+  recommended: string | null;
+}
+
 export type SSEEvent =
   | { type: 'status'; data: { state: ChangeRequestState; phase?: string; reason?: string; preview_url?: string; branch?: string } }
-  | { type: 'question'; data: { question_id: string; question: string; options: string[] | null } }
+  | { type: 'question'; data: { question_id: string; question: string; options: string[] | null; recommended?: string | null } }
+  | { type: 'form'; data: { question_id: string; questions: FormQuestion[] } }
   | { type: 'variants'; data: { question_id: string; variants: HtmlMockup[] } }
   | { type: 'log'; data: LogEntry }
   // Phase C：业务员回答后后端广播此事件，订阅者据此清掉同 question_id 的 pendingQuestion/Variants。
@@ -86,7 +95,8 @@ export interface RequestStateMirror {
   previewUrl: string | null;
   failPhase: string | null;
   failReason: string | null;
-  pendingQuestion: { questionId: string; question: string; options: string[] | null } | null;
+  pendingQuestion: { questionId: string; question: string; options: string[] | null; recommended?: string | null } | null;
+  pendingForm: { questionId: string; questions: FormQuestion[] } | null;
   pendingVariants: { questionId: string; variants: HtmlMockup[] } | null;
   logs: LogEntry[];
   // Phase E：最后一次活动时间戳（ISO）。任何 apply* / clearPending 都会刷新。

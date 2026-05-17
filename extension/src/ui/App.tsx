@@ -29,7 +29,7 @@ import { usePendingCapture } from './hooks/usePendingCapture';
 import { useRequestState } from './hooks/useRequestState';
 import { useTabs } from './hooks/useTabs';
 import {
-  ClarifyPanel, FailedPanel, ReviewCapturePanel,
+  ClarifyPanel, FailedPanel, FormPanel, ReviewCapturePanel,
   StatusPanel, VariantsPanel,
 } from './panels';
 import { CreateProjectPanel } from './panels/CreateProjectPanel';
@@ -374,6 +374,8 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   let body: React.ReactNode = null;
   if (tabState?.pendingVariants) {
     body = <VariantsPanel state={tabState} />;
+  } else if (tabState?.pendingForm) {
+    body = <FormPanel state={tabState} />;
   } else if (tabState?.pendingQuestion) {
     body = <ClarifyPanel state={tabState} />;
   } else if (tabState && (tabState.state === 'failed' || tabState.state === 'expired')) {
