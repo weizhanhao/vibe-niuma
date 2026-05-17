@@ -75,6 +75,9 @@ class AppState:
             dev_runner = OpenCodeDevRunner()
         else:
             dev_runner = ClaudeCodeDevRunner()
+        # 共用一个 stack_adapter：pipeline 用来 locate+context_pack，
+        # BrainstormingSkill 用来在 brainstorm 时 grep 当前 URL 对应组件的真 UI 标签。
+        stack_adapter = ReactViteStackAdapter(repo_path=settings.demo_repo_path)
         return Pipeline(
             repo_path=settings.demo_repo_path,
             repository=ChangeRequestRepository(db),
@@ -84,8 +87,10 @@ class AppState:
             interaction_skill=BrainstormingSkill(
                 LLMClient(),
                 repo_initializer=self.repo_initializer,
+                stack_adapter=stack_adapter,
+                repo_path=settings.demo_repo_path,
             ),
-            stack_adapter=ReactViteStackAdapter(repo_path=settings.demo_repo_path),
+            stack_adapter=stack_adapter,
             dev_runner=dev_runner,
             # lifespan 装填的单例；测试场景 (preview=None) 回退到新建一个，
             # 保证测试不依赖 lifespan 顺序。

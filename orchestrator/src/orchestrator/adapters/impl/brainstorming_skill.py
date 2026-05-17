@@ -17,17 +17,31 @@ JSON 解析失败 → 兜底**绝不默认 done**，问一个开放问题让业�
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
+import time
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.adapters.impl._llm import LLMClient
+from orchestrator.adapters.impl.ui_label_extractor import (
+    extract_ui_labels, needs_resync, render_ui_labels_for_prompt,
+)
 from orchestrator.adapters.interfaces import InteractionChannel
 from orchestrator.adapters.types import HtmlMockup, RawRequest, RequestBrief
 
 if TYPE_CHECKING:
+    from orchestrator.adapters.interfaces import StackAdapter
     from orchestrator.repo_init import RepoInitializer
+
+_logger = logging.getLogger(__name__)
+
+# 自愈触发的冷却时间：一段时间内只触发一次 AGENTS.md 重写。
+# 防止业务员连续提需求时 RepoInitializer 每条 brainstorm 跑一遍（30-60s + 大几 K token）。
+_RESYNC_COOLDOWN_SECONDS = 300.0  # 5 分钟
 
 
 # 公开常量：测试断言用。改这里也意味着改契约。
@@ -106,12 +120,15 @@ module」「动画时长」「文件路径」—— 这些是技术决策，不�
 文本，不是 index）。业务员看到 (推荐) 标签会更容易决定，不知道该选什么时也有锚点。
 **没明显推荐就留空**，别强行推荐。
 
-# 输入
+# 输入（优先级从高到低）
 
-## 截图里看到的元素（**这是当前画面真相，优先级最高**）
+## 1. 实时从前端源码 grep 出的真 UI 标签（**最高优先级 — 这才是业务员真看到的字**）
+{ui_labels_in_scope}
+
+## 2. 截图里看到的元素（vision 描述，第二优先级）
 {screen_context}
 
-## 项目知识（业务/数据规则参考；UI 状态可能滞后于截图，**截图为准**）
+## 3. 项目知识 AGENTS.md（业务/数据规则参考；UI 标签**以上面 1+2 为准**）
 {repo_doc}
 
 ## 业务员原始需求
@@ -173,22 +190,28 @@ module」「动画时长」「文件路径」—— 这些是技术决策，不�
 # 命名约束（**关键，防止 LLM 编造业务员看不到的字段**）
 
 业务员只看得见**截图里那些字**。当 options 文本要指向 UI 元素 / 列 / 字段 /
-按钮 / 区块时，**必须用 screen_context 里能看到的标签原文**。
+按钮 / 区块时，命名必须按下面优先级取：
 
-**严禁**用 repo_doc 里的 **数据库字段名 / 后端术语 / 表 schema 注释** 当 UI 标签。
-repo_doc 是开发者用的内部模型，业务员根本不知道。
+1. `ui_labels_in_scope` 里**实时从源码 grep 出的标签** ←【最高优先】
+2. `screen_context` 里 vision 看到的文字
+3. `repo_doc`（AGENTS.md）
+
+**严禁**直接用 `repo_doc` 里的 **数据库字段名 / 后端术语 / 表 schema 中文注释**
+当 UI 标签。repo_doc 是开发者用的内部模型，业务员根本不知道。AGENTS.md 的字段
+注释告诉你**业务含义**，但**真实显示用字**永远查 `ui_labels_in_scope`。
 
 反例（这条 brainstorm 之前真坏过）：
-- 截图：订单表格列叫「金额」（vision 真看到的）
-- repo_doc：`total_amount | numeric(10,2) | 订单总金额`（这是 DB 字段+注释）
+- `ui_labels_in_scope`：`OrderTable.tsx: 订单号 / 客户 / 状态 / 金额`
+- `repo_doc`：`total_amount | numeric(10,2) | 订单总金额`（DB 字段+注释）
 - 业务员说：「保留 3 位小数」
-- ✗ 错的 option：「订单列表页的『订单总金额』列」← 业务员页面上**根本没**这个字！
-- ✓ 对的 option：「订单列表页的『金额』列」← 跟截图里看到的字一样
+- ✗ 错的 option：「订单列表页的『订单总金额』列」← 业务员页面上**根本没**这字！
+- ✓ 对的 option：「订单列表页的『金额』列」← 跟 ui_labels_in_scope 一致
 
-如果 screen_context 里**没明确写**某个区块的 UI 标签 → 用**通用位置描述**（「订单表
-最右边那列」「顶部统计卡」），**绝对不要**去 repo_doc 里抓 DB 字段名补。
+如果 `ui_labels_in_scope` 是空 / 没匹配到当前 URL → 退到 `screen_context`。
+都没有 → 用**通用位置描述**（「订单表最右边那列」「顶部统计卡」），**绝对不要**
+去 `repo_doc` 里抓 DB 字段名补。
 
-如果你脑子里想用一个名字但说不准截图里有没有 → 那就是不该用。
+如果你脑子里想用一个名字但说不准 ui_labels_in_scope 有没有 → 那就是不该用。
 """
 
 
@@ -201,12 +224,21 @@ class BrainstormingSkill:
         *,
         max_questions: int = 3,  # 历史参数，新设计不用；保留兼容签名
         repo_initializer: "RepoInitializer | None" = None,
+        stack_adapter: "StackAdapter | None" = None,
+        repo_path: Path | str | None = None,
     ):
         self._llm = llm
         self._max_questions = max_questions
         self._repo_initializer = repo_initializer
+        # Plan「AGENTS.md 当索引」：每次 brainstorm 用 stack_adapter.locate 拿
+        # 当前 URL 对应组件，再读源码 grep 出真 UI label，喂给 prompt。两者
+        # 都 None 时降级为老行为（只靠 vision + AGENTS.md）。
+        self._stack_adapter = stack_adapter
+        self._repo_path = Path(repo_path) if repo_path else None
         # 单次 clarify 内缓存的截图描述（vision 调用结果）
         self._screen_context_cache: dict[str, str] = {}
+        # 自愈触发的冷却时间戳（monotonic 秒数），避免高频重写 AGENTS.md
+        self._last_resync_attempt: float = 0.0
 
     async def clarify(
         self, raw: RawRequest, channel: InteractionChannel
@@ -236,10 +268,17 @@ class BrainstormingSkill:
             await log("▸ 视觉模型描述截图里的元素...")
         screen_context = await self._describe_screen(raw, log=log)
 
+        # 「AGENTS.md 当索引」: locate 当前 URL → grep entry_files 拿真 UI 标签 →
+        # 不一致触发后台重写 AGENTS.md。三层信号一起喂给 _plan。
+        ui_labels_text = await self._extract_ui_labels_in_scope(
+            raw, repo_doc=repo_doc, log=log,
+        )
+
         if callable(log):
             await log("▸ 文本模型评估「需求清楚了吗」...")
         plan = await self._plan(
             raw, repo_doc, screen_context=screen_context,
+            ui_labels_text=ui_labels_text,
             channel=channel, prev_answers=[],
         )
         clarifications: list[dict] = []
@@ -326,6 +365,7 @@ class BrainstormingSkill:
 
             current_plan = await self._plan(
                 raw, repo_doc, screen_context=screen_context,
+                ui_labels_text=ui_labels_text,
                 channel=channel, prev_answers=clarifications,
             )
 
@@ -426,6 +466,7 @@ class BrainstormingSkill:
     async def _plan(
         self, raw: RawRequest, repo_doc: str, *,
         screen_context: str = "",
+        ui_labels_text: str = "",
         channel: InteractionChannel | None = None,
         prev_answers: list[dict] | None = None,
     ) -> dict:
@@ -443,6 +484,7 @@ class BrainstormingSkill:
 
         prompt = self._build_unknowns_prompt(
             raw, repo_doc, screen_context=screen_context,
+            ui_labels_text=ui_labels_text,
             prev_answers=prev_answers,
         )
 
@@ -517,6 +559,7 @@ class BrainstormingSkill:
     def _build_unknowns_prompt(
         self, raw: RawRequest, repo_doc: str, *,
         screen_context: str = "",
+        ui_labels_text: str = "",
         prev_answers: list[dict] | None = None,
     ) -> str:
         """填 UNKNOWNS_PROMPT_TEMPLATE 的占位符。"""
@@ -531,6 +574,7 @@ class BrainstormingSkill:
         prev_qa = "\n".join(prev_qa_lines) if prev_qa_lines else "（暂无）"
 
         body = UNKNOWNS_PROMPT_TEMPLATE.format(
+            ui_labels_in_scope=ui_labels_text or "（无 stack_adapter 注入 / 这次没扫到源码）",
             screen_context=screen_context or "（无截图描述）",
             repo_doc=repo_doc or "（无）",
             request=raw.request_text or "（空）",
@@ -544,6 +588,88 @@ class BrainstormingSkill:
         self, raw: RawRequest, repo_doc: str, **kwargs,
     ) -> str:
         return self._build_unknowns_prompt(raw, repo_doc, **kwargs)
+
+    async def _extract_ui_labels_in_scope(
+        self, raw: RawRequest, *, repo_doc: str, log=None,
+    ) -> str:
+        """用 stack_adapter.locate 拿当前 URL 对应组件 → 读源码 grep 真 UI 标签。
+
+        - stack_adapter / repo_path 未注入 → 空串（降级老行为）
+        - locate 失败 / 文件读不到 → 空串 + 一条警告 log
+        - 跟 repo_doc 不一致 → fire-and-forget 触发 RepoInitializer.ensure(force=True)
+          （5 分钟冷却 + status 已 INITIALIZING 跳过，防高频重写 AGENTS.md）
+        """
+        if not self._stack_adapter or not self._repo_path or not raw.url:
+            return ""
+
+        try:
+            locate_result = await self._stack_adapter.locate(raw.url)
+        except Exception as exc:  # noqa: BLE001
+            if callable(log):
+                try:
+                    await log(f"⚠ locate 失败，跳过实时 UI 标签：{type(exc).__name__}: {exc}")
+                except Exception:
+                    pass
+            return ""
+
+        contents: dict[str, str] = {}
+        for rel in locate_result.entry_files:
+            p = self._repo_path / rel
+            if not p.is_file():
+                continue
+            try:
+                contents[rel] = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+
+        by_file = extract_ui_labels(contents)
+        if not by_file:
+            if callable(log):
+                try:
+                    await log("ℹ 当前 URL 对应源码没匹配到中文 UI 标签")
+                except Exception:
+                    pass
+            return ""
+
+        total = sum(len(v) for v in by_file.values())
+        if callable(log):
+            try:
+                await log(f"✓ 实时从源码扫到 {total} 个 UI 标签（{len(by_file)} 个文件）")
+            except Exception:
+                pass
+
+        # 自愈：跟 AGENTS.md 比对，不一致 → 后台异步重写 doc。
+        try:
+            if needs_resync(by_file, repo_doc) and self._repo_initializer is not None:
+                now = time.monotonic()
+                init_status = self._repo_initializer.status
+                from orchestrator.repo_init import RepoInitStatus
+                # 已经在 init 中 → 不要叠。冷却内也跳过。
+                if (init_status != RepoInitStatus.INITIALIZING
+                        and now - self._last_resync_attempt > _RESYNC_COOLDOWN_SECONDS):
+                    self._last_resync_attempt = now
+                    if callable(log):
+                        try:
+                            await log("⚠ AGENTS.md 跟实时 UI 不一致，已触发后台重写")
+                        except Exception:
+                            pass
+                    asyncio.create_task(
+                        self._safe_resync_repo_doc(),
+                    )
+        except Exception:  # noqa: BLE001
+            _logger.warning("auto-resync trigger failed", exc_info=True)
+
+        return render_ui_labels_for_prompt(by_file)
+
+    async def _safe_resync_repo_doc(self) -> None:
+        """fire-and-forget 包装：调 RepoInitializer.ensure(force=True)，吞所有异常。
+        失败也不影响 brainstorm 主流程；下次 brainstorm 时 cooldown 过了会再试。"""
+        if self._repo_initializer is None:
+            return
+        try:
+            await self._repo_initializer.ensure(force=True)
+        except Exception:  # noqa: BLE001
+            _logger.warning("auto-resync AGENTS.md failed (will retry next session)", exc_info=True)
 
 
 # ── JSON 解析（绝不默认 done） ─────────────────────────────────────
