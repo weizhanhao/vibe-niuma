@@ -779,9 +779,14 @@ def create_conversation(payload: dict | None = None, db: Session = Depends(get_d
 
 @app.get("/conversations")
 def list_conversations(archived: bool = False, db: Session = Depends(get_db)) -> dict:
+    """列出对话 —— 只返元数据（id/title/timestamps），messages 留给 GET 单条取。
+
+    历史教训：早先返完整 messages JSON 列时撞 MySQL sort_buffer 限制
+    （1038 Out of sort memory），整个端点 500。前端 tab 命名 + 历史列表都炸。
+    """
     repo = ConversationRepository(db)
-    items = repo.list_all() if archived else repo.list_active()
-    return {"items": [_conv_out(c) for c in items]}
+    items = repo.list_meta(include_archived=archived)
+    return {"items": items}
 
 
 @app.get("/conversations/{conv_id}")

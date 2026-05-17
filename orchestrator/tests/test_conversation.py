@@ -57,6 +57,39 @@ def test_list_active_excludes_archived(db_session):
     assert a.id not in active_ids
 
 
+# bug: prod 上 GET /conversations?archived=false 500 —— messages JSON 列累积大后
+# ORDER BY updated_at DESC 撞 MySQL sort_buffer_size。list_meta 跳过 messages
+# 字段拿元数据，前端 tab 命名 + 历史列表都靠这条。
+def test_list_meta_omits_messages_payload(db_session):
+    repo = ConversationRepository(db_session)
+    conv = repo.create()
+    # 灌一条很长的 message，模拟生产上累积的 LLM 历史
+    big = "x" * 10_000
+    repo.append_message(conv.id, {
+        "id": "m1", "type": "user", "ts": "2026-05-17T20:00:00", "content": big,
+    })
+    items = repo.list_meta()
+    assert len(items) >= 1
+    me = next(i for i in items if i["id"] == conv.id)
+    # messages 字段必须空（list 接口不传 payload）
+    assert me["messages"] == []
+    # 但元数据全在
+    assert me["title"].startswith("xxxx")
+    assert me["updated_at"] is not None
+    assert me["created_at"] is not None
+
+
+def test_list_meta_excludes_archived_by_default(db_session):
+    repo = ConversationRepository(db_session)
+    a = repo.create()
+    b = repo.create()
+    repo.archive(a.id)
+    ids = {i["id"] for i in repo.list_meta()}
+    assert b.id in ids and a.id not in ids
+    ids_all = {i["id"] for i in repo.list_meta(include_archived=True)}
+    assert a.id in ids_all and b.id in ids_all
+
+
 def test_change_request_conversation_id_fk(db_session):
     repo = ConversationRepository(db_session)
     conv = repo.create()
