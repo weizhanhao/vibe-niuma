@@ -89,6 +89,43 @@ class AnswerIn(BaseModel):
     answer: str
 
 
+class PostMessageIn(BaseModel):
+    """POST /conversations/{conv_id}/messages 入参。
+
+    Plan 10 Task 10：业务员一次输入（chat 或截图改）的统一入口。
+    intent classifier 根据 text + attachments + 历史决定路由到 new_cr/refine_cr/chat_only。
+    override_mode：业务员显式强制（⇧⌘↵=force new_cr），跳过 LLM 分类。
+    """
+    text: str
+    attachments: list[Attachment] | None = None
+    override_mode: Literal["new_cr", "refine_cr", "chat_only"] | None = None
+
+    @field_validator("attachments")
+    @classmethod
+    def _max_3(cls, v: list[Attachment] | None) -> list[Attachment] | None:
+        if v is not None and len(v) > MAX_ATTACHMENTS_PER_MESSAGE:
+            raise ValueError(
+                f"附件最多 {MAX_ATTACHMENTS_PER_MESSAGE} 张，给了 {len(v)} 张"
+            )
+        return v
+
+
+class PostMessageOut(BaseModel):
+    """POST /conversations/{conv_id}/messages 出参。
+
+    - mode='chat_only' → cr_id=None, ai_message_id 是新 AI message 的 id
+    - mode='new_cr' / 'refine_cr' → cr_id 是新 CR 的 id, ai_message_id=None
+    - is_unsure：classifier 信心 <0.6，UI 提示业务员「不对点这里改 mode」
+    """
+    message_id: str
+    mode: Literal["new_cr", "refine_cr", "chat_only"]
+    cr_id: str | None = None
+    ai_message_id: str | None = None
+    confidence: float
+    is_unsure: bool
+    reason: str = ""
+
+
 MessageType = Literal["user", "ai", "summary", "system"]
 
 

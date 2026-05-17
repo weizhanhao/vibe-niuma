@@ -111,6 +111,25 @@ class ChangeRequestRepository:
         cr.last_activity_at = datetime.utcnow()
         self._db.commit()
 
+    def list_by_conversation(self, conversation_id: str) -> list[ChangeRequest]:
+        """Plan 10 Task 10：拉一个 conversation 内所有 CR，按 created_at 升序。"""
+        stmt = (
+            select(ChangeRequest)
+            .where(ChangeRequest.conversation_id == conversation_id)
+            .order_by(ChangeRequest.created_at.asc())
+        )
+        return list(self._db.scalars(stmt))
+
+    def latest_in_conversation(self, conversation_id: str) -> ChangeRequest | None:
+        """Plan 10 Task 10：拿 conversation 最近一条 CR（intent classifier 用它的 state）。"""
+        stmt = (
+            select(ChangeRequest)
+            .where(ChangeRequest.conversation_id == conversation_id)
+            .order_by(ChangeRequest.created_at.desc())
+            .limit(1)
+        )
+        return self._db.scalars(stmt).first()
+
     def list_non_terminal(self) -> list[ChangeRequest]:
         terminal_values = [s.value for s in TERMINAL]
         stmt = select(ChangeRequest).where(ChangeRequest.state.notin_(terminal_values))

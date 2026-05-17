@@ -34,7 +34,10 @@ from orchestrator.pipeline import Pipeline
 from orchestrator.quota import QuotaManager
 from orchestrator.repo_init import RepoInitializer, RepoInitStatus
 from orchestrator.repository import ChangeRequestRepository
-from orchestrator.schemas import AnswerIn, ChangeRequestOut, CreateChangeRequestIn
+from orchestrator.schemas import (
+    AnswerIn, ChangeRequestOut, CreateChangeRequestIn,
+    PostMessageIn, PostMessageOut,
+)
 from orchestrator.states import TERMINAL, State
 
 
@@ -55,6 +58,13 @@ class AppState:
         # 共用预览适配器：reaper / merge / discard / failed 都从这里拆容器，
         # 单例保证 used_ports 一致，避免容器泄漏。lifespan 装填。
         self.preview: PreviewAdapter | None = None
+        # Plan 10 Task 10：POST /messages 路由用的两个依赖。lifespan 装填真实实现，
+        # 测试场景 conftest 注入 fake。
+        self.intent_classifier = None
+        # chat_responder_factory(db) → ChatResponder 绑定那个 session 的 conv repo。
+        # 用 factory 是因为 ChatResponder 持有 ConversationRepository(db) 引用，
+        # 必须每请求一只新的。
+        self.chat_responder_factory = None
 
     def build_pipeline(self, db: Session) -> Pipeline:
         return self.pipeline_factory(db)
@@ -225,6 +235,19 @@ async def lifespan(app: FastAPI):
             interval_seconds=settings.reaper_interval_seconds,
         )
     )
+
+    # Plan 10 Task 10：装配 /messages 端点的两个依赖。共用一只 LLMClient 即可
+    # （内部 httpx 是请求级 client，跨调用 safe）。chat_responder 必须每请求一只
+    # 新的（绑定 session 的 ConversationRepository），所以暴露 factory。
+    from orchestrator.intent_classifier import IntentClassifier
+    from orchestrator.chat_responder import ChatResponder
+    shared_llm = LLMClient()
+    app_state.intent_classifier = IntentClassifier(shared_llm)
+
+    def _make_chat_responder(db: Session) -> ChatResponder:
+        return ChatResponder(shared_llm, ConversationRepository(db))
+    app_state.chat_responder_factory = _make_chat_responder
+
     yield
     reaper_task.cancel()
     try:
@@ -338,6 +361,153 @@ def get_change_request(
     if cr is None:
         raise HTTPException(status_code=404, detail="变更请求不存在")
     return ChangeRequestOut.from_model(cr)
+
+
+@app.post("/conversations/{conv_id}/messages", response_model=PostMessageOut)
+async def post_message(
+    conv_id: str, payload: PostMessageIn, db: Session = Depends(get_db)
+) -> PostMessageOut:
+    """Plan 10 Task 10：统一 message 入口。
+
+    业务员发的每条 message（chat / 截图改 / refine）都进这里：
+    1. 先 append user message 到 conversation（含 attachments）—— 永不丢历史
+    2. intent_classifier 判路由（new_cr / refine_cr / chat_only）
+    3. dispatch：起 pipeline 或调 ChatResponder
+    4. 返 message_id + mode + (cr_id | ai_message_id) + classifier 信心
+    """
+    conv_repo = ConversationRepository(db)
+    conv = conv_repo.get(conv_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail=f"conversation {conv_id} 不存在")
+
+    cr_repo = ChangeRequestRepository(db)
+
+    # 1) 把 user message 落库（永远先记历史，即使 dispatch 失败 conv 也有完整记录）
+    import uuid as _uuid
+    user_msg_id = _uuid.uuid4().hex
+    attachments_dump = (
+        [a.model_dump() for a in payload.attachments]
+        if payload.attachments else None
+    )
+    user_msg: dict = {
+        "id": user_msg_id,
+        "type": "user",
+        "ts": datetime.utcnow().isoformat(),
+        "content": payload.text,
+    }
+    if attachments_dump:
+        user_msg["attachments"] = attachments_dump
+    conv_repo.append_message(conv_id, user_msg)
+
+    # 2) 找 last CR 状态喂 classifier
+    last_cr = cr_repo.latest_in_conversation(conv_id)
+    last_cr_state = last_cr.state if last_cr else None
+
+    # 3) classify intent（fake 测试或缺失也能跑：缺 classifier → 兜底 new_cr 走老路径）
+    classifier = app_state.intent_classifier
+    if classifier is None:
+        # 没装 classifier（旧 lifespan 没就绪）→ 走 new_cr 保守路径
+        from orchestrator.intent_classifier import IntentDecision
+        decision = IntentDecision(mode="new_cr", confidence=0.5, reason="classifier 未装配")
+    else:
+        # 拉 conversation 历史给 classifier（messages 最近 6 条由 classifier 自己截）
+        history = list(conv.messages or [])
+        repo_doc = ""
+        if app_state.repo_initializer is not None:
+            try:
+                repo_doc = app_state.repo_initializer.doc_content() or ""
+            except Exception:  # noqa: BLE001
+                repo_doc = ""
+        decision = await classifier.classify(
+            message_text=payload.text,
+            conversation_messages=history,
+            last_cr_state=last_cr_state,
+            repo_doc=repo_doc,
+            override=payload.override_mode,
+        )
+
+    # 4) dispatch
+    if decision.mode == "chat_only":
+        if app_state.chat_responder_factory is None:
+            raise HTTPException(
+                status_code=503, detail="chat_responder_factory 未装配；先在 lifespan 装",
+            )
+        chat = app_state.chat_responder_factory(db)
+        await chat.respond(
+            conversation_id=conv_id,
+            user_message=payload.text,
+            repo_doc=repo_doc if classifier is not None else "",
+        )
+        # 找 chat append 进去的 ai message id（最后一条 ai 类型 message）
+        db.expire_all()
+        fresh = conv_repo.get(conv_id)
+        ai_msg_id = None
+        for m in reversed(list(fresh.messages or [])):
+            if m.get("type") == "ai":
+                ai_msg_id = m.get("id") or _uuid.uuid4().hex
+                break
+        return PostMessageOut(
+            message_id=user_msg_id,
+            mode="chat_only",
+            ai_message_id=ai_msg_id,
+            confidence=decision.confidence,
+            is_unsure=decision.is_unsure,
+            reason=decision.reason,
+        )
+
+    # new_cr / refine_cr：建 CR + spawn pipeline
+    # url / viewport / box 在 chat 入口路径上不强求，attachments 里若有 framed_region
+    # 才会带；老 single screenshot_b64 字段不再用。
+    primary_url = ""
+    primary_box: dict = {}
+    primary_viewport: dict = {}
+    if payload.attachments:
+        for a in payload.attachments:
+            if a.kind == "framed_region":
+                primary_url = a.url or ""
+                primary_box = a.box or {}
+                primary_viewport = a.viewport or {}
+                break
+    raw = RawRequest(
+        url=primary_url,
+        screenshot_b64="",  # 多图模式不用单字段
+        box_coords=primary_box,
+        viewport=primary_viewport,
+        request_text=payload.text,
+        attachments=[a.model_dump() for a in (payload.attachments or [])],
+    )
+    cr = cr_repo.create(raw, conversation_id=conv_id)
+    cr_repo.set_mode(cr.id, decision.mode)
+    if decision.mode == "refine_cr":
+        if last_cr is None:
+            raise HTTPException(
+                status_code=409,
+                detail="refine_cr 需要上一个 CR，但 conversation 还没有 CR",
+            )
+        cr_repo.set_refine_of(cr.id, last_cr.id)
+
+    # 反查 user message 关联到新 CR（方便 UI 把 message 跟 cr 关起来）
+    fresh = conv_repo.get(conv_id)
+    msgs = list(fresh.messages or [])
+    for i in range(len(msgs) - 1, -1, -1):
+        if msgs[i].get("id") == user_msg_id:
+            msgs[i]["cr_id"] = cr.id
+            msgs[i]["cr_mode"] = decision.mode
+            break
+    fresh.messages = msgs
+    db.commit()
+
+    pipeline = app_state.build_pipeline(db)
+    app_state.pipelines[cr.id] = pipeline
+    _spawn(pipeline.run(cr.id, mode=decision.mode))
+    return PostMessageOut(
+        message_id=user_msg_id,
+        mode=decision.mode,
+        cr_id=cr.id,
+        confidence=decision.confidence,
+        is_unsure=decision.is_unsure,
+        reason=decision.reason,
+    )
 
 
 @app.post("/change-requests/{request_id}/answer")
@@ -528,18 +698,6 @@ def list_conversations(archived: bool = False, db: Session = Depends(get_db)) ->
 def get_conversation(conv_id: str, db: Session = Depends(get_db)) -> dict:
     conv = ConversationRepository(db).get(conv_id)
     if conv is None:
-        raise HTTPException(status_code=404, detail="conversation 不存在")
-    return _conv_out(conv)
-
-
-@app.post("/conversations/{conv_id}/messages")
-def append_conversation_message(
-    conv_id: str, payload: dict, db: Session = Depends(get_db),
-) -> dict:
-    """append 一条 message。payload = {type: 'user'|'ai'|'summary', content: str, ...}"""
-    try:
-        conv = ConversationRepository(db).append_message(conv_id, payload)
-    except KeyError:
         raise HTTPException(status_code=404, detail="conversation 不存在")
     return _conv_out(conv)
 

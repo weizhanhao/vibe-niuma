@@ -92,6 +92,9 @@ def test_get_conversations_lists_active_only(client: TestClient):
     assert a["id"] not in ids
 
 
+@pytest.mark.skip(reason="[Plan 10 obsolete] 老的 raw-append 入口替换为 POST /messages "
+                         "({text, attachments?, override_mode?}) + 意图路由；端到端覆盖见 "
+                         "test_messages_api.py")
 def test_post_message_appends(client: TestClient):
     conv = client.post("/conversations", json={}).json()
     r = client.post(
