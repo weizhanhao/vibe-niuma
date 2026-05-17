@@ -92,6 +92,49 @@ class AppState:
 app_state = AppState()
 
 
+def _ensure_schema_migrations(engine_) -> None:
+    """Plan 8/9 加列的 idempotent migration —— ECS 上没跑 alembic，靠 lifespan 自适应。
+
+    Base.metadata.create_all 只建新表（conversation / system_config），既有的
+    change_requests 表多出来的列（Plan 8 加 repos JSON、Plan 9 加 conversation_id
+    VARCHAR(32)）它不会补。这里查 information_schema 看列是否存在，缺就 ALTER。
+    幂等：每次启动跑都安全。失败（无权限 / 不是 MySQL）只 warn 不阻塞。
+    """
+    import logging as _logging
+    from sqlalchemy import text
+    _log = _logging.getLogger(__name__)
+    # SQLite（测试）跳过 —— 测试用 conftest 重建表，不存在「老 schema」问题
+    if engine_.dialect.name != "mysql":
+        return
+    desired_cols: list[tuple[str, str, str]] = [
+        ("change_requests", "repos", "JSON NULL"),
+        ("change_requests", "conversation_id", "VARCHAR(32) NULL"),
+    ]
+    desired_indexes: list[tuple[str, str, str]] = [
+        ("change_requests", "idx_change_requests_conversation_id", "conversation_id"),
+    ]
+    try:
+        with engine_.begin() as conn:
+            for table, col, ddl in desired_cols:
+                exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = DATABASE() AND table_name = :t AND column_name = :c"
+                ), {"t": table, "c": col}).scalar()
+                if not exists:
+                    _log.warning("schema migration: ALTER TABLE %s ADD COLUMN %s %s", table, col, ddl)
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+            for table, idx, cols in desired_indexes:
+                exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.statistics "
+                    "WHERE table_schema = DATABASE() AND table_name = :t AND index_name = :i"
+                ), {"t": table, "i": idx}).scalar()
+                if not exists:
+                    _log.warning("schema migration: CREATE INDEX %s ON %s(%s)", idx, table, cols)
+                    conn.execute(text(f"ALTER TABLE {table} ADD INDEX {idx} ({cols})"))
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("schema migration 失败（不阻塞启动）：%s", exc)
+
+
 def _bucket_legacy_crs(db: Session) -> None:
     """Plan 9 Task 6：现存 conversation_id IS NULL 的 CR → bucket 到 Legacy。
     幂等：已有 Legacy + 已 bucket 完的 CR 跳过。"""
@@ -126,6 +169,7 @@ def _bucket_legacy_crs(db: Session) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    _ensure_schema_migrations(engine)
     from orchestrator.db import SessionLocal
     from orchestrator.reaper import run_reaper_loop
 
