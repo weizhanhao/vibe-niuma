@@ -22,7 +22,7 @@ import { ProjectSwitcher } from './components/ProjectSwitcher';
 import {
   createConversation, listConversations, type Conversation,
 } from '../lib/conversations';
-import type { Attachment } from '../lib/types';
+import type { Attachment, ConversationMessage } from '../lib/types';
 import { useActiveConversation } from './hooks/useActiveConversation';
 import { useMirrors } from './hooks/useMirrors';
 import { usePendingCapture } from './hooks/usePendingCapture';
@@ -225,6 +225,12 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // 发送成功后递增，触发 useActiveConversation 立即 refetch，业务员看到自己刚发的消息
   const [submitTick, setSubmitTick] = useState(0);
+  // 乐观 UI：点发送瞬间 push 一条「未确认 user 消息」到这里，ChatStream 拼到末尾。
+  // 服务器 refetch 把真实消息拉回来后清掉（dedupe by content + ts 窗口）。
+  // 按 convId 分桶，避免切 tab 串味。
+  const [optimisticSends, setOptimisticSends] = useState<
+    Record<string, ConversationMessage[]>
+  >({});
 
   // 拉一次完整 conversation list，用来给历史下拉 + tab 标题
   useEffect(() => {
@@ -245,7 +251,31 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   const refreshKey = `${mirrors.length}:${activeId ?? ''}:${
     state ? state.state : ''
   }:${submitTick}`;
-  const { messages } = useActiveConversation(activeConvId, refreshKey);
+  const { messages: serverMessages } = useActiveConversation(activeConvId, refreshKey);
+  // 合并 server messages + 当前 conv 的乐观消息，dedupe by content（server 拉回来后丢掉乐观）
+  const messages = (() => {
+    const optimistic = activeConvId ? (optimisticSends[activeConvId] ?? []) : [];
+    if (optimistic.length === 0) return serverMessages;
+    const serverContents = new Set(
+      serverMessages.filter((m) => m.type === 'user').map((m) => m.content),
+    );
+    const keepOptimistic = optimistic.filter((o) => !serverContents.has(o.content));
+    return [...serverMessages, ...keepOptimistic];
+  })();
+  // 服务器拉到了之后清理掉已确认的乐观条目
+  useEffect(() => {
+    if (!activeConvId) return;
+    setOptimisticSends((prev) => {
+      const cur = prev[activeConvId] ?? [];
+      if (cur.length === 0) return prev;
+      const serverContents = new Set(
+        serverMessages.filter((m) => m.type === 'user').map((m) => m.content),
+      );
+      const remaining = cur.filter((o) => !serverContents.has(o.content));
+      if (remaining.length === cur.length) return prev;
+      return { ...prev, [activeConvId]: remaining };
+    });
+  }, [activeConvId, serverMessages]);
 
   const handleNewConversation = async () => {
     try {
@@ -419,6 +449,20 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
             onAttachmentsChange={setAttachments}
             conversationId={activeConvId}
             onSubmitted={() => setSubmitTick((t) => t + 1)}
+            onOptimisticSend={(text, atts) => {
+              if (!activeConvId) return;
+              const optimistic: ConversationMessage = {
+                id: `opt-${Date.now()}`,
+                ts: new Date().toISOString(),
+                type: 'user',
+                content: text,
+                ...(atts.length > 0 ? { attachments: atts } : {}),
+              };
+              setOptimisticSends((prev) => ({
+                ...prev,
+                [activeConvId]: [...(prev[activeConvId] ?? []), optimistic],
+              }));
+            }}
           />
         )}
       </footer>

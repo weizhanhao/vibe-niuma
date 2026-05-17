@@ -32,6 +32,9 @@ interface Props {
   conversationId?: string | null;
   /** SUBMIT_MESSAGE 成功送达 SW 后回调。MainShell 用它 invalidate ChatStream cache 立即刷新。 */
   onSubmitted?: () => void;
+  /** 乐观 UI：点击发送的瞬间同步触发，MainShell 立刻渲染 user 气泡，
+   *  不等服务器分类返回（典型 1-3s）。 */
+  onOptimisticSend?: (text: string, attachments: Attachment[]) => void;
 }
 
 export function ChatInputBar({
@@ -40,6 +43,7 @@ export function ChatInputBar({
   initialText = '',
   conversationId = null,
   onSubmitted,
+  onOptimisticSend,
 }: Props = {}) {
   const [text, setText] = useState(initialText);
 
@@ -66,6 +70,8 @@ export function ChatInputBar({
     const sentAtt = attachments;
     setText('');
     onAttachmentsChange([]);
+    // 乐观 UI：点击瞬间通知 MainShell 渲染气泡，不等服务器
+    onOptimisticSend?.(sent, sentAtt);
     try {
       const reply = await send({
         type: MSG.SUBMIT_MESSAGE,

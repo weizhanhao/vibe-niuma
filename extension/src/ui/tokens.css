@@ -1732,6 +1732,15 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .inline-card__activity-line {
   white-space: pre-wrap; word-break: break-word;
 }
+.inline-card__activity-toggle {
+  align-self: flex-start;
+  appearance: none; border: none; background: transparent;
+  color: var(--ink-mute); font-size: 11px;
+  padding: 2px 6px; cursor: pointer; border-radius: var(--r-sm);
+}
+.inline-card__activity-toggle:hover {
+  color: var(--ink); background: var(--surface-2);
+}
 .inline-card__preview {
   align-self: flex-start;
   font-size: 12px; color: var(--accent); font-weight: 500;

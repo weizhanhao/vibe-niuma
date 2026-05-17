@@ -4,7 +4,7 @@
 // 卡里有「打开预览」按钮，业务员可以一边看 chat 一边看进度。
 // A2：跑中的 CR 显示**实时活动流**（最后 6 行 SSE log），有 spinner，
 // 业务员能看到 AI 在干活，不会以为程序卡死。
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { ChangeRequestState, IntentMode, RequestStateMirror } from '../../lib/types';
 
 interface Props {
@@ -31,7 +31,7 @@ const MODE_LABEL: Record<IntentMode, string> = {
   chat_only: '聊天',
 };
 
-// 跑中状态 —— 这些 state 显示活动流；终态收起。
+// 跑中状态 —— 这些 state 显示活动流（自动展开 + spinner）；终态收起为可展开的「查看运行日志」。
 const RUNNING_STATES: ReadonlySet<ChangeRequestState> = new Set([
   'created', 'clarifying', 'located', 'coding', 'building',
 ]);
@@ -40,7 +40,6 @@ const RUNNING_STATES: ReadonlySet<ChangeRequestState> = new Set([
 function humanize(line: string): string {
   return line
     .replace(/^\[[\d\s:.-]+\]\s*/, '')   // 去时间戳
-    .replace(/^\s*npm\s.*$/, '$&')        // 保留 npm 行原样
     .trim();
 }
 
@@ -48,15 +47,24 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
   const stateText = STATE_LABEL[mirror.state] ?? mirror.state;
   const modeBadge = MODE_LABEL[crMode] ?? crMode;
   const isRunning = RUNNING_STATES.has(mirror.state);
-  const tailLogs = isRunning ? mirror.logs.slice(-6) : [];
+  const hasLogs = mirror.logs.length > 0;
+  // 跑中默认展开；终态默认收起（业务员想查再点）
+  const [expanded, setExpanded] = useState(isRunning);
   const logRef = useRef<HTMLDivElement>(null);
+
+  // 跑中 → 跟随状态自动展开；终态 → 收起一次后业务员可以再点开
+  useEffect(() => {
+    if (isRunning) setExpanded(true);
+  }, [isRunning]);
 
   // 新 log 来了自动滚到底（cursor-like）
   useEffect(() => {
-    if (logRef.current) {
+    if (logRef.current && expanded) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [tailLogs.length]);
+  }, [mirror.logs.length, expanded]);
+
+  const tailLogs = mirror.logs.slice(-6);
 
   return (
     <div className={`inline-card inline-card--${mirror.state}${isRunning ? ' is-running' : ''}`}>
@@ -68,7 +76,8 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
         </span>
       </div>
 
-      {isRunning && tailLogs.length > 0 && (
+      {/* 跑中 + 已展开 + 有 logs → 显示流；跑中无 logs → 准备中占位 */}
+      {expanded && hasLogs && (
         <div ref={logRef} className="inline-card__activity" role="log" aria-live="polite">
           {tailLogs.map((entry, i) => (
             <div key={`${entry.ts}-${i}`} className="inline-card__activity-line">
@@ -77,11 +86,30 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
           ))}
         </div>
       )}
-
-      {isRunning && tailLogs.length === 0 && (
+      {isRunning && !hasLogs && (
         <div className="inline-card__activity inline-card__activity--placeholder">
           准备中...
         </div>
+      )}
+      {/* 终态 + 有 logs + 收起 → 显示「查看运行日志 ▾」按钮 */}
+      {!isRunning && hasLogs && !expanded && (
+        <button
+          type="button"
+          className="inline-card__activity-toggle"
+          onClick={() => setExpanded(true)}
+        >
+          查看运行日志（{mirror.logs.length} 行）▾
+        </button>
+      )}
+      {/* 终态 + 已展开 → 显示「收起 ▴」 */}
+      {!isRunning && hasLogs && expanded && (
+        <button
+          type="button"
+          className="inline-card__activity-toggle"
+          onClick={() => setExpanded(false)}
+        >
+          收起日志 ▴
+        </button>
       )}
 
       {mirror.failPhase && (
