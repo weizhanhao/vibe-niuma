@@ -2,7 +2,10 @@
 //
 // 业务员视角：「时钟代表选择历史回话，点击时钟可以有选择历史会话，
 // 用户选择后可以在这个对话中继续」。
-import React from 'react';
+//
+// 点外面 / Esc 都关闭（cursor-like 习惯）。点自身不关（避免 onPick 触发 onClose
+// 后立即又触发 outside-click 双 close）。
+import React, { useEffect, useRef } from 'react';
 import type { Conversation } from '../../lib/conversations';
 
 interface Props {
@@ -30,22 +33,48 @@ function relativeTime(iso: string | null): string {
 }
 
 export function HistoryDropdown({ items, onPick, onClose }: Props): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // 点外面 / Esc 关闭。mousedown 比 click 早一帧，能避免点 + 按钮触发 reopen 的循环。
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (ref.current && target && !ref.current.contains(target)) {
+        // 排除：点的是顶部「🕐 历史对话」按钮自身（它的 onClick 会再 toggle，
+        // 否则会出现「点按钮 → outside-close → 按钮 onClick 又开」抖动）
+        if (target instanceof HTMLElement && target.closest('[aria-label="历史对话"]')) {
+          return;
+        }
+        onClose();
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose]);
+
   if (items === null) {
     return (
-      <div className="history-dropdown" role="dialog" aria-label="历史对话">
+      <div ref={ref} className="history-dropdown" role="dialog" aria-label="历史对话">
         <div className="history-dropdown__hint">加载中...</div>
       </div>
     );
   }
   if (items.length === 0) {
     return (
-      <div className="history-dropdown" role="dialog" aria-label="历史对话">
+      <div ref={ref} className="history-dropdown" role="dialog" aria-label="历史对话">
         <div className="history-dropdown__hint">还没有历史对话</div>
       </div>
     );
   }
   return (
-    <div className="history-dropdown" role="dialog" aria-label="历史对话">
+    <div ref={ref} className="history-dropdown" role="dialog" aria-label="历史对话">
       <ul className="history-dropdown__list">
         {items.map((c) => {
           const title = (c.title || '').trim() || UNTITLED;

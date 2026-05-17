@@ -30,6 +30,50 @@ def test_create_branch_from_main(temp_repo):
     assert "cr/abc" in branches
 
 
+def test_create_branch_recovers_from_dirty_feature_branch(temp_repo):
+    """业务员的真实复现：上一个 CR pipeline 跑到一半被 orchestrator restart 打断，
+    工作区留着未提交改动 + 残留 untracked 文件，HEAD 还在 feature branch。
+    新 CR create_branch 应该自动 stash + 切回 main + 再开新 branch，
+    而不是 git-error。"""
+    gm = GitManager(str(temp_repo))
+    gm.create_branch("cr/old")
+    (temp_repo / "file.txt").write_text("dirty modify\n")
+    (temp_repo / "leftover.txt").write_text("untracked from old CR\n")
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=temp_repo, capture_output=True, text=True,
+    ).stdout
+    assert status.strip(), "前置：工作区必须是 dirty"
+
+    # 现在新 CR 进来 —— 应该不抛
+    gm.create_branch("cr/new")
+
+    # 验证：现在 HEAD 是 cr/new，工作区干净
+    head = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=temp_repo, capture_output=True, text=True,
+    ).stdout.strip()
+    assert head == "cr/new"
+    status2 = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=temp_repo, capture_output=True, text=True,
+    ).stdout
+    assert not status2.strip(), "新分支创建后工作区应干净"
+
+
+def test_create_branch_preserves_stash_for_recovery(temp_repo):
+    """defensive 清理产物存 stash，business 想找回还能找到。"""
+    gm = GitManager(str(temp_repo))
+    gm.create_branch("cr/old")
+    (temp_repo / "file.txt").write_text("important uncommitted\n")
+    gm.create_branch("cr/new")
+
+    stash_list = subprocess.run(
+        ["git", "stash", "list"], cwd=temp_repo, capture_output=True, text=True,
+    ).stdout
+    assert "doskill-autoclean-before-cr/new" in stash_list
+
+
 def test_commit_all_on_branch(temp_repo):
     gm = GitManager(str(temp_repo))
     gm.create_branch("cr/abc")

@@ -35,7 +35,26 @@ class GitManager:
         )
 
     def create_branch(self, branch: str) -> None:
-        """从 main 切一个新分支并切过去。"""
+        """从 main 切一个新分支并切过去。
+
+        防御：上一个 CR 的 pipeline 可能在 dev_runner 写完文件还没 commit 时
+        被 orchestrator restart / crash 打断，工作树留下未提交改动 + 留在
+        feature branch 上。直接 `git checkout main` 会被 git 拒绝（dirty work
+        tree）。这里先 stash + clean 把工作区强制回到 main 干净态再切。
+        stash 不丢，可以 `git stash list` 找回。
+        """
+        status = self._git("status", "--porcelain").stdout
+        if status.strip():
+            self._git(
+                "stash", "push", "--include-untracked",
+                "-m", f"doskill-autoclean-before-{branch}",
+                check=False,
+            )
+        # 仍然 dirty（stash 失败 / 有 submodule 未跟踪）→ 强制 reset + clean
+        residual = self._git("status", "--porcelain").stdout
+        if residual.strip():
+            self._git("reset", "--hard", "HEAD", check=False)
+            self._git("clean", "-fd", check=False)
         self._git("checkout", "main")
         self._git("checkout", "-b", branch)
 

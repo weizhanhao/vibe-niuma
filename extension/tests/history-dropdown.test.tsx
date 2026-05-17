@@ -76,4 +76,63 @@ describe('HistoryDropdown', () => {
     );
     expect(screen.getByText(/未命名/)).toBeInTheDocument();
   });
+
+  it('mousedown outside dropdown fires onClose', () => {
+    const onClose = vi.fn();
+    render(
+      <div>
+        <div data-testid="outside">somewhere else</div>
+        <HistoryDropdown
+          items={[mk('a', { title: 'A' })]}
+          onPick={() => {}}
+          onClose={onClose}
+        />
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByTestId('outside'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('mousedown inside dropdown does NOT fire onClose', () => {
+    const onClose = vi.fn();
+    render(
+      <HistoryDropdown
+        items={[mk('a', { title: 'A' })]}
+        onPick={() => {}}
+        onClose={onClose}
+      />,
+    );
+    fireEvent.mouseDown(screen.getByText('A'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('Escape key fires onClose', () => {
+    const onClose = vi.fn();
+    render(
+      <HistoryDropdown
+        items={[mk('a', { title: 'A' })]}
+        onPick={() => {}}
+        onClose={onClose}
+      />,
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('mousedown on the original 🕐 toggle button does NOT fire onClose', () => {
+    // 避免「点按钮 → outside-close → 按钮 onClick 又 open」抖动
+    const onClose = vi.fn();
+    render(
+      <div>
+        <button aria-label="历史对话" data-testid="toggle-btn">🕐</button>
+        <HistoryDropdown
+          items={[mk('a', { title: 'A' })]}
+          onPick={() => {}}
+          onClose={onClose}
+        />
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByTestId('toggle-btn'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
