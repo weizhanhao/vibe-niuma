@@ -131,6 +131,16 @@ export interface AnnotateCancelMsg {
   type: 'ANNOTATE_CANCEL';
 }
 
+/** content → SW：preview 页运行时 JS 出错（window.error / unhandledrejection）。
+ *  SW 查 previewUrlToCrId map → 转发 orchestrator 触发 self-heal。 */
+export interface RuntimeErrorReportMsg {
+  type: 'RUNTIME_ERROR_REPORT';
+  pageUrl: string;       // 出错所在页面 URL（http://x:51xx/...）
+  message: string;
+  stack?: string;
+  ts: string;            // ISO UTC（含 Z）
+}
+
 export type Message =
   | CaptureResultMsg | CaptureCancelMsg | StartCaptureMsg
   | UiStartCaptureMsg | SubmitAnswerMsg | MergeMsg | DiscardMsg | RetryMsg
@@ -139,7 +149,8 @@ export type Message =
   | ConfirmCaptureMsg | RetakeCaptureMsg | GetPendingCaptureMsg
   | PendingCaptureChangedMsg | SubmitTextOnlyMsg
   | SetConversationMsg | SubmitMessageMsg | CaptureAttachedMsg
-  | UiStartAnnotateMsg | StartAnnotateMsg | AnnotateResultMsg | AnnotateCancelMsg;
+  | UiStartAnnotateMsg | StartAnnotateMsg | AnnotateResultMsg | AnnotateCancelMsg
+  | RuntimeErrorReportMsg;
 
 export const MSG = {
   START_CAPTURE: 'START_CAPTURE' as const,
@@ -174,4 +185,6 @@ export const MSG = {
   START_ANNOTATE: 'START_ANNOTATE' as const,
   ANNOTATE_RESULT: 'ANNOTATE_RESULT' as const,
   ANNOTATE_CANCEL: 'ANNOTATE_CANCEL' as const,
+  // 浏览器侧运行时错误上报 → SW → orchestrator self-heal
+  RUNTIME_ERROR_REPORT: 'RUNTIME_ERROR_REPORT' as const,
 };

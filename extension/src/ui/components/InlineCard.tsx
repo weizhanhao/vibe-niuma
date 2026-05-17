@@ -87,7 +87,9 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
     return () => clearInterval(t);
   }, [isRunning]);
   const elapsed = (() => {
-    const startTs = mirror.logs[0]?.ts ?? mirror.lastActivity;
+    // 起点优先用 mirror.startedAt（独立于 logs FIFO trim 永不失真）；
+    // 老版本快照可能没这字段，退到 logs[0].ts → lastActivity 三段兜底。
+    const startTs = mirror.startedAt ?? mirror.logs[0]?.ts ?? mirror.lastActivity;
     if (!startTs) return 0;
     const start = parseTimestamp(startTs);
     if (Number.isNaN(start)) return 0;

@@ -82,6 +82,26 @@ function anyInFlight(mirrors: Record<string, RequestStateMirror>): boolean {
   return false;
 }
 
+/** 通过 pageUrl 的 origin（host:port）反查 mirror —— 容错末尾斜杠 / 子路径。
+ *  preview 容器 URL 通常 `http://x:5100`，业务员打开 `/orders` 子页面也算同一 CR。 */
+function findCrByPreviewOrigin(pageUrl: string): RequestStateMirror | null {
+  let pageOrigin: string;
+  try {
+    pageOrigin = new URL(pageUrl).origin;
+  } catch {
+    return null;
+  }
+  for (const m of Object.values(session.mirrors)) {
+    if (!m.previewUrl) continue;
+    try {
+      if (new URL(m.previewUrl).origin === pageOrigin) return m;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 function maintainKeepalive(mirrors: Record<string, RequestStateMirror>): void {
   if (!chrome.alarms) return; // jsdom 测试环境没 alarms
   if (anyInFlight(mirrors)) {
@@ -360,6 +380,30 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.ANNOTATE_CANCEL: {
       console.log('[doskill sw] ANNOTATE_CANCEL');
       return { ok: true };
+    }
+    case MSG.RUNTIME_ERROR_REPORT: {
+      // content script 在 preview 页捕到 window.error / unhandledrejection。
+      // 找回对应 CR id（通过 previewUrl origin 匹配），转发给 orchestrator。
+      const matched = findCrByPreviewOrigin(msg.pageUrl);
+      if (!matched) {
+        // 不是 doskill preview 页（业务员自己浏览的其他网站），忽略
+        return { ok: true, matched: false };
+      }
+      const client = await getOrchestratorClient();
+      if (!client) return { ok: false, error: 'no orchestrator client' };
+      try {
+        const resp = await client.postRuntimeErrors(matched.id, [{
+          message: msg.message,
+          stack: msg.stack,
+          ts: msg.ts,
+          pageUrl: msg.pageUrl,
+        }]);
+        console.log('[doskill sw] runtime error → orchestrator', matched.id, resp);
+        return { ok: true, matched: true, will_self_heal: resp.will_self_heal };
+      } catch (err) {
+        console.warn('[doskill sw] postRuntimeErrors failed', err);
+        return { ok: false, error: String(err) };
+      }
     }
     case MSG.CAPTURE_RESULT: {
       // Plan 10 fix：cursor-like 流。框选完截屏 + 压缩 → 直接广播给 UI 加到

@@ -39,6 +39,9 @@ export function initialState(cr: ChangeRequestOut): RequestStateMirror {
     pendingVariants: null,
     logs: [],
     lastActivity: nowIso(),
+    // server 返 created_at（ISO UTC）就用它；老 server 没返则兜底当下时间
+    startedAt: cr.created_at ?? nowIso(),
+    runtimeErrors: undefined,
   };
 }
 

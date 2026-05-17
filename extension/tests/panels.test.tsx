@@ -162,7 +162,7 @@ describe('PreviewPanel', () => {
 });
 
 describe('FailedPanel', () => {
-  it('shows phase + reason and retry button', () => {
+  it('shows translated phase + reason and retry button', () => {
     const sent: unknown[] = [];
     vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
       sent.push(m);
@@ -170,9 +170,19 @@ describe('FailedPanel', () => {
     });
     const state = { ...base, state: 'failed' as const, failPhase: 'coding', failReason: 'no-changes' };
     render(<FailedPanel state={state} />);
-    expect(screen.getByText(/coding/)).toBeInTheDocument();
+    // phase 用 PHASE_LABEL 翻译成中文（coding → 编码）
+    expect(screen.getByText(/编码/)).toBeInTheDocument();
+    expect(screen.getByText(/no-changes/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(sent[0]).toMatchObject({ type: 'RETRY' });
+  });
+
+  it('failPhase 空时显示「未知阶段失败」不显示 PHASE · ?', () => {
+    const state = { ...base, state: 'failed' as const, failPhase: null, failReason: null };
+    render(<FailedPanel state={state} />);
+    expect(screen.getByText(/未知阶段失败/)).toBeInTheDocument();
+    expect(screen.queryByText(/PHASE/)).toBeNull();
+    expect(screen.getByText(/未捕获到明确原因/)).toBeInTheDocument();
   });
 });
 

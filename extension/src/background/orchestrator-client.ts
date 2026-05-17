@@ -49,6 +49,14 @@ export interface OrchestratorClient {
    * - new_cr / refine_cr：response.cr_id 是新建 CR id，ai_message_id null
    */
   postMessage(convId: string, body: PostMessageBody): Promise<PostMessageResponse>;
+  /**
+   * 浏览器侧捕到的 React/JS 运行时错误回灌。服务器会触发 self-heal
+   * （重跑一次 dev_runner 把错误信息丢给模型修），最多 1 次。
+   */
+  postRuntimeErrors(
+    id: string,
+    errors: { message: string; stack?: string; ts: string; pageUrl: string }[],
+  ): Promise<{ status: string; will_self_heal: boolean }>;
   subscribeEvents(
     id: string,
     onEvent: (e: SSEEvent) => void,
@@ -95,6 +103,12 @@ export function createOrchestratorClient(baseUrl: string, _token?: string): Orch
     },
     async retry(id) {
       return request<ChangeRequestOut>(`/change-requests/${id}/retry`, { method: 'POST' });
+    },
+    async postRuntimeErrors(id, errors) {
+      return request<{ status: string; will_self_heal: boolean }>(
+        `/change-requests/${id}/runtime-errors`,
+        { method: 'POST', body: JSON.stringify({ errors }) },
+      );
     },
     async postMessage(convId, body) {
       return request<PostMessageResponse>(`/conversations/${convId}/messages`, {

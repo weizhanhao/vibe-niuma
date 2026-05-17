@@ -695,16 +695,40 @@ export function PreviewPanel({ state }: { state: RequestStateMirror }) {
 
 // ── FailedPanel ─────────────────────────────────────────────────────
 export function FailedPanel({ state }: { state: RequestStateMirror }) {
+  // 字段空值时绝不显示「?」——业务员看着像 AI 答错。直接显示「未知错误」+
+  // 让业务员展开日志看真相。phase 用 PHASE_LABEL 翻译成中文。
+  const phaseLabel = state.failPhase
+    ? (PHASE_LABEL[state.failPhase] ?? state.failPhase)
+    : null;
+  const reason = (state.failReason ?? '').trim();
+  const lastLogs = state.logs.slice(-5);
   return (
     <section>
       <div className="eyebrow">
-        <span className="ix">FAIL</span>
-        <span>halted</span>
+        <span>失败 · 已停止</span>
         <span className="rule" />
       </div>
       <div className="fail-card">
-        <div className="phase">PHASE · {state.failPhase ?? '?'}</div>
-        <div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>原因：{state.failReason ?? '?'}</div>
+        {phaseLabel ? (
+          <div className="phase">在「{phaseLabel}」阶段失败</div>
+        ) : (
+          <div className="phase">未知阶段失败</div>
+        )}
+        <div style={{ color: 'var(--ink-soft)', fontSize: 12, marginTop: 4 }}>
+          {reason || '未捕获到明确原因，看下方日志最后几行'}
+        </div>
+        {lastLogs.length > 0 && (
+          <details style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-mute)' }}>
+            <summary style={{ cursor: 'pointer' }}>最近 {lastLogs.length} 条日志</summary>
+            <pre style={{
+              margin: '6px 0 0', padding: '6px 8px',
+              background: 'var(--surface-2)', borderRadius: 4,
+              fontSize: 11, whiteSpace: 'pre-wrap',
+            }}>
+              {lastLogs.map((l) => l.line).join('\n')}
+            </pre>
+          </details>
+        )}
       </div>
       <div className="btn-row">
         <button className="btn btn-primary" onClick={() => send({ type: MSG.RETRY, requestId: state.id })}>

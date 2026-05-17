@@ -73,6 +73,31 @@ def _make_log_sink(event_bus: EventBus, request_id: str, phase: str):
     return _log
 
 
+async def _http_health_check(url: str, *, timeout: float = 10.0) -> tuple[bool, str]:
+    """对 preview URL 发一次 GET，验是否能服得起 HTML（vite 起来 + 编译过）。
+
+    返 (ok, detail)。ok=False 时 detail 是错误描述，调用方可以丢给业务员看
+    或喂给 self-heal 当 hint。**捕不到 React 运行时错** —— 那是浏览器侧
+    渲染时才发生，需要 content script 监听 window.error 上报。
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as cli:
+            resp = await cli.get(url)
+        if resp.status_code >= 500:
+            # vite 编译失败常返 500 + 错误 HTML
+            return False, f"HTTP {resp.status_code} {resp.text[:300]}"
+        if resp.status_code >= 400:
+            return False, f"HTTP {resp.status_code}"
+        # vite error overlay 失败时 200 也可能带 plugin:vite: 错误标记
+        body = resp.text[:2000]
+        if "[plugin:vite:" in body or "Internal server error" in body:
+            return False, f"vite error overlay 出现：{body[:300]}"
+        return True, "ok"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__}: {exc}"
+
+
 async def _with_heartbeat(
     awaitable,
     *,
@@ -391,6 +416,19 @@ class Pipeline:
                 raise _PhaseError(
                     "building", "container", "".join(traceback.format_exception(exc))
                 ) from exc
+
+            # 在标 preview-ready 前先 HTTP GET 验下 vite 服得起 HTML 壳。
+            # 只能捕到 server 端 build/compile 错（vite error overlay 返 500/HTML
+            # 显示错误），React 运行时错（OrderTable.formatDate 取空字段那种）
+            # 必须靠浏览器侧 content script 注 preview 页监听 window.error 上报。
+            await _phase_log("building", f"▸ HTTP 健康检查 {instance.url} ...")
+            health_ok, health_detail = await _http_health_check(instance.url, timeout=10.0)
+            if not health_ok:
+                await _phase_log(
+                    "building", f"⚠ HTTP 检查异常：{health_detail[:200]}",
+                )
+            else:
+                await _phase_log("building", f"✓ HTTP 200 {instance.url}")
 
             # building → preview-ready
             self.repository.set_preview(

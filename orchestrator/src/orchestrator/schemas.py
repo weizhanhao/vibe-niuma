@@ -90,6 +90,19 @@ class AnswerIn(BaseModel):
     answer: str
 
 
+class RuntimeErrorItem(BaseModel):
+    """浏览器 content script 捕到的一条 window.error / unhandledrejection。"""
+    message: str
+    stack: str | None = None
+    ts: str
+    pageUrl: str
+
+
+class RuntimeErrorsIn(BaseModel):
+    """POST /change-requests/{id}/runtime-errors 入参。"""
+    errors: list[RuntimeErrorItem]
+
+
 class PostMessageIn(BaseModel):
     """POST /conversations/{conv_id}/messages 入参。
 
@@ -164,9 +177,13 @@ class ChangeRequestOut(BaseModel):
     mode: str | None = None
     refine_of: str | None = None
     self_heal_attempts: int = 0
+    # 真实起跑时间 —— 客户端 InlineCard timer 用这个当锚点，
+    # 不依赖 SSE log[0].ts（log 受 FIFO trim 影响会失真）
+    created_at: str | None = None
 
     @classmethod
     def from_model(cls, cr) -> "ChangeRequestOut":
+        created = getattr(cr, "created_at", None)
         return cls(
             id=cr.id,
             state=cr.state,
@@ -182,4 +199,6 @@ class ChangeRequestOut(BaseModel):
             mode=getattr(cr, "mode", None),
             refine_of=getattr(cr, "refine_of", None),
             self_heal_attempts=getattr(cr, "self_heal_attempts", 0) or 0,
+            # 必须带 Z 后缀显式 UTC，client new Date() 否则按本地时区解析偏 8h
+            created_at=(created.isoformat() + "Z") if created else None,
         )

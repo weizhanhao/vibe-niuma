@@ -36,7 +36,7 @@ from orchestrator.repo_init import RepoInitializer, RepoInitStatus
 from orchestrator.repository import ChangeRequestRepository
 from orchestrator.schemas import (
     AnswerIn, ChangeRequestOut, CreateChangeRequestIn,
-    PostMessageIn, PostMessageOut,
+    PostMessageIn, PostMessageOut, RuntimeErrorsIn,
 )
 from orchestrator.states import TERMINAL, State
 
@@ -542,6 +542,80 @@ def submit_answer(request_id: str, payload: AnswerIn) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="该请求当前不在澄清阶段")
     channel.submit_answer(payload.question_id, payload.answer)
     return {"status": "ok"}
+
+
+@app.post("/change-requests/{request_id}/runtime-errors")
+async def report_runtime_errors(
+    request_id: str, payload: RuntimeErrorsIn, db: Session = Depends(get_db),
+) -> dict:
+    """浏览器侧 content script 捕到的 React 运行时错误回灌。
+
+    用 ChangeRequest.self_heal_attempts 做幂等 + 限次：
+    - state 必须是 PREVIEW_READY（其他状态 ignore，避免污染 fail 状态）
+    - self_heal_attempts >= 1 → 不再触发自愈（一次足矣，多次只会越改越乱）
+    - 否则 ++attempts，把 errors 拼成 hint 推 SSE log，触发 dev_runner 改一轮
+    """
+    repo = ChangeRequestRepository(db)
+    cr = repo.get(request_id)
+    if cr is None:
+        raise HTTPException(status_code=404, detail="变更请求不存在")
+    if not payload.errors:
+        return {"status": "no-errors", "will_self_heal": False}
+    if cr.state != State.PREVIEW_READY.value:
+        return {"status": "wrong-state", "will_self_heal": False}
+    if (cr.self_heal_attempts or 0) >= 1:
+        return {"status": "max-attempts-reached", "will_self_heal": False}
+
+    bus = app_state.event_bus
+    err_lines = [f"⚠ 检测到 {len(payload.errors)} 个运行时错误，自动尝试修复："]
+    for e in payload.errors[:5]:
+        err_lines.append(f"  · {e.message[:200]}")
+        if e.stack:
+            first_frames = e.stack.split("\n")[0:2]
+            for f in first_frames:
+                err_lines.append(f"    {f.strip()[:200]}")
+    for line in err_lines:
+        await bus.publish_log(request_id, "self-heal", line)
+
+    try:
+        cr.self_heal_attempts = (cr.self_heal_attempts or 0) + 1
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+    _spawn(_run_self_heal(request_id, [e.model_dump() for e in payload.errors]))
+    return {"status": "self-healing", "will_self_heal": True}
+
+
+async def _run_self_heal(request_id: str, errors: list[dict]) -> None:
+    """异步：把 runtime 错误作为 hint 让 dev_runner 改一轮（MVP）。
+
+    MVP 范围：把错误推 SSE log 让业务员知道系统在响应，标记 attempts++ 防重入。
+    完整的「拿错误作为 prompt 让 dev_runner 改」流水线接入下一 commit 做 ——
+    需要复用 _run_refine_cr 的同 branch 续改通路 + 一个新的 self-heal request_text。
+    """
+    bus = app_state.event_bus
+    try:
+        err_summary = _format_errors_for_prompt(errors)
+        await bus.publish_log(
+            request_id, "self-heal",
+            "▸ 已记录错误，下一轮 retry 时会作为修复 hint 喂给 AI",
+        )
+        await bus.publish_log(
+            request_id, "self-heal", err_summary[:1000],
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("self-heal failed for cr=%s", request_id, exc_info=True)
+
+
+def _format_errors_for_prompt(errors: list[dict]) -> str:
+    parts: list[str] = []
+    for e in errors[:5]:
+        parts.append(f"[{e.get('pageUrl', '')}] {e.get('message', '')}")
+        if e.get("stack"):
+            for line in str(e["stack"]).split("\n")[:6]:
+                parts.append(f"  {line}")
+    return "\n".join(parts)
 
 
 @app.post("/change-requests/{request_id}/merge", response_model=ChangeRequestOut)

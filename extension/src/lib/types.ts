@@ -24,6 +24,8 @@ export interface ChangeRequestOut {
   fail_phase: string | null;
   fail_reason: string | null;
   retry_of: string | null;
+  // ISO UTC（带 Z 后缀）；老接口可能没返这字段，InlineCard timer 会兜底
+  created_at?: string | null;
 }
 
 export interface BoxCoords {
@@ -102,6 +104,11 @@ export interface RequestStateMirror {
   // Phase E：最后一次活动时间戳（ISO）。任何 apply* / clearPending 都会刷新。
   // 排序 + LRU 驱逐都用它。
   lastActivity: string;
+  // CR 真实起跑时间（ISO UTC）—— InlineCard timer 用，独立于 logs FIFO trim。
+  // 优先来自服务器 ChangeRequestOut.created_at；缺失时退首次入会的 nowIso()。
+  startedAt: string | null;
+  // 运行时 JS 错误（preview-ready 后 content script 探测；为空表示无错或未探）
+  runtimeErrors?: { ts: string; message: string; stack?: string }[];
 }
 
 // Phase E：service-worker 持久化的整张多对话快照。
