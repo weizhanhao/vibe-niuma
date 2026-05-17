@@ -61,8 +61,18 @@ INIT_PROMPT: Final = """\
 - backend/.../models.py   ← 数据模型
 
 ## 数据模型
-按表/实体列出关键字段。例：
-- Order (id, customer_name, status, total_amount, created_at)
+按表/实体列出关键字段。**每个字段必须标注「在 UI 上业务员看到的标签是什么」**
+—— 后续 brainstorm AI 拿这份 doc 跟业务员对话时，必须用业务员看得见的字眼，
+不能用 DB schema 注释当 UI 标签（业务员根本不知道「订单总金额」是哪一列）。
+例（关键：每行末尾的 → `UI:「xxx」`）：
+- Order
+  - id (int, PK) → 列表页 `订单号`
+  - customer_name (varchar) → 列表页 `客户`
+  - status (enum) → 列表页 `状态` 列 + 顶部筛选 chip
+  - total_amount (numeric) → 列表页 `金额` 列 + 详情页 `订单合计`
+  - created_at (datetime) → 详情页 `下单时间`
+扫前端代码（`<th>` 文本、列定义、表单 label）拿真实 UI 标签，**不要照搬 DB
+字段中文注释当 UI 标签**。同一字段在不同页面叫法不同时全部列出。
 
 ## 业务约定
 - 订单状态枚举、显示规则、币种格式、命名习惯等
