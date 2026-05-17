@@ -1714,3 +1714,6 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   background: var(--surface-2);
 }
 .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* AgentTabBar 在 app-head 下方，HistoryDropdown 绝对定位锚点 */
+.agent-tab-bar-wrap { position: relative; }

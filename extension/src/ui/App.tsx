@@ -13,13 +13,21 @@ import { isConfigSufficient, loadConfig, type Config } from '../lib/config';
 import {
   loadActiveProject, loadProjects, migrateLegacyConfig, type Project,
 } from '../lib/projects';
+import { AgentTabBar, type AgentTab } from './components/AgentTabBar';
 import { ChatInputBar } from './components/ChatInputBar';
-import { ConversationList } from './components/ConversationList';
+import { ChatStream } from './components/ChatStream';
+import { HistoryDropdown } from './components/HistoryDropdown';
 import { PreviewDock } from './components/PreviewDock';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
+import {
+  createConversation, listConversations, type Conversation,
+} from '../lib/conversations';
+import type { Attachment } from '../lib/types';
+import { useActiveConversation } from './hooks/useActiveConversation';
 import { useMirrors } from './hooks/useMirrors';
 import { usePendingCapture } from './hooks/usePendingCapture';
 import { useRequestState } from './hooks/useRequestState';
+import { useTabs } from './hooks/useTabs';
 import {
   ClarifyPanel, FailedPanel, ReviewCapturePanel,
   StatusPanel, VariantsPanel,
@@ -207,6 +215,72 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   // 关闭窗口再开浮卡又会回来 —— 业务员还想看就再切；不想看就持续 ×（轻量决策）。
   const [closedDockIds, setClosedDockIds] = useState<Set<string>>(() => new Set());
 
+  // ── Plan 10 Task 17: cursor-like tabs + chat stream + attachments ──
+  const { state: tabsState, open: openTab, close: closeTab, activate: activateTab } = useTabs();
+  // 拉历史 conversations 喂 HistoryDropdown；conv 标题 → AgentTabBar 显示。
+  const [convCache, setConvCache] = useState<Record<string, Conversation>>({});
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState<Conversation[] | null>(null);
+  // ChatInputBar attachments tray —— state lifted 到 MainShell
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  // 拉一次完整 conversation list，用来给历史下拉 + tab 标题
+  useEffect(() => {
+    void listConversations()
+      .then((items) => {
+        const cache: Record<string, Conversation> = {};
+        for (const c of items) cache[c.id] = c;
+        setConvCache(cache);
+      })
+      .catch(() => { /* offline / 未配 orchestrator */ });
+  }, []);
+
+  // 切 tab 时给 SW 发 SET_CONVERSATION（已经由 useTabs 自动做了），同时
+  // 拉 active conversation messages 给 ChatStream
+  const activeConvId = tabsState.activeTabId;
+  // refreshKey: mirrors 数 + 当前 active mirror state 变化 → 重新拉 messages
+  // （server 在 pipeline 推进 / refine / chat_only 时会写 ai message 到 conv）
+  const refreshKey = `${mirrors.length}:${activeId ?? ''}:${
+    state ? state.state : ''
+  }`;
+  const { messages } = useActiveConversation(activeConvId, refreshKey);
+
+  const handleNewConversation = async () => {
+    try {
+      const conv = await createConversation('');
+      setConvCache((prev) => ({ ...prev, [conv.id]: conv }));
+      await openTab(conv.id);
+    } catch (err) {
+      console.warn('[doskill ui] createConversation failed', err);
+    }
+  };
+
+  const handleShowHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryItems(null);
+    try {
+      const items = await listConversations();
+      setHistoryItems(items);
+      const cache: Record<string, Conversation> = {};
+      for (const c of items) cache[c.id] = c;
+      setConvCache(cache);
+    } catch {
+      setHistoryItems([]);
+    }
+  };
+
+  const handlePickHistory = async (convId: string) => {
+    await openTab(convId);  // open + activate
+    setHistoryOpen(false);
+  };
+
+  const agentTabs: AgentTab[] = tabsState.openTabIds.map((id) => ({
+    id,
+    title: convCache[id]?.title ?? '',
+  }));
+  // mirrors 转成 dict 喂 ChatStream
+  const mirrorDict = Object.fromEntries(mirrors.map((m) => [m.id, m]));
+
   if (showSettings) {
     return (
       <div className="app">
@@ -238,29 +312,23 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     );
   }
 
-  // Cursor 风格：body 只放需要业务员看 / 决策的「状态内容」；输入栏一直在底部 footer。
-  // preview-ready / merged / discarded 时 body 是空白（浮卡 + 输入栏在 footer 都已就位）。
+  // Cursor 风格：body 默认是 ChatStream；只有「澄清 / 变体选择 / Review」
+  // 这类需要业务员强决策的面板会临时覆盖。pipeline 进行中（coding/building）
+  // 的状态由 InlineCard 在 stream 里显示，body 不再需要专门 StatusPanel。
   let body: React.ReactNode = null;
   if (pendingCapture) {
-    // Phase G：优先级最高——业务员刚框完，必须先确认；ReviewCapturePanel 自带提交按钮。
     body = <ReviewCapturePanel pendingCapture={pendingCapture} />;
-  } else if (!state) {
-    body = <IdleHint />;
-  } else if (state.pendingVariants) {
+  } else if (state?.pendingVariants) {
     body = <VariantsPanel state={state} />;
-  } else if (state.pendingQuestion) {
+  } else if (state?.pendingQuestion) {
     body = <ClarifyPanel state={state} />;
-  } else if (state.state === 'failed' || state.state === 'expired') {
-    // failed 也保留 body 显示原因 + 重试按钮，输入栏照样在底部可继续聊新需求
+  } else if (state && (state.state === 'failed' || state.state === 'expired')) {
+    // failed 仍保留专门面板（重试按钮 + 错误详情）
     body = <FailedPanel state={state} />;
-  } else if (
-    state.state === 'preview-ready' ||
-    state.state === 'merged' ||
-    state.state === 'discarded'
-  ) {
-    body = null;
+  } else if (activeConvId) {
+    body = <ChatStream messages={messages} mirrors={mirrorDict} />;
   } else {
-    body = <StatusPanel state={state} />;
+    body = <IdleHint />;
   }
 
   // PreviewDock 数据源：conversation 里**最近一条带 preview_url 且没被业务员关掉的 CR**。
@@ -301,11 +369,32 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
           ><GearIcon /></button>
         </div>
       </header>
-      <ConversationList mirrors={mirrors} activeId={activeId} />
+      <div className="agent-tab-bar-wrap">
+        <AgentTabBar
+          tabs={agentTabs}
+          activeTabId={activeConvId}
+          onActivate={(id) => { void activateTab(id); }}
+          onClose={(id) => { void closeTab(id); }}
+          onNew={() => { void handleNewConversation(); }}
+          onShowHistory={() => { void handleShowHistory(); }}
+        />
+        {historyOpen && (
+          <HistoryDropdown
+            items={historyItems}
+            onPick={(id) => { void handlePickHistory(id); }}
+            onClose={() => setHistoryOpen(false)}
+          />
+        )}
+      </div>
       <div className="app-body">{body}</div>
       <footer className="app-footer">
         <PreviewDock state={dockMirror} onClose={closeDock} />
-        {showInputBar && <ChatInputBar />}
+        {showInputBar && (
+          <ChatInputBar
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+          />
+        )}
       </footer>
     </div>
   );
