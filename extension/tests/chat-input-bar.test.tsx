@@ -51,17 +51,18 @@ describe('ChatInputBar attachments + mode', () => {
     expect(onChange).toHaveBeenCalledWith([mkAtt('A'), mkAtt('C')]);
   });
 
-  it('mode badge 已移除（用户视觉自由度优先，不展示「新需求/续改」label）', () => {
+  it('commander footer 显示「项目 · 模式」chip', () => {
     render(
       <ChatInputBar
         attachments={[]}
         onAttachmentsChange={() => {}}
         initialText="加搜索"
+        projectName="默认项目"
       />,
     );
-    // 旧版有的 mode-badge / 不确定 chips 都不应再渲染
-    expect(screen.queryByText(/新需求/)).toBeNull();
-    expect(screen.queryByText(/不确定/)).toBeNull();
+    // 新设计：底部 commander 面板里有「项目 · 模式」状态 chip
+    expect(screen.getByText('默认项目')).toBeInTheDocument();
+    expect(screen.getByText('新需求')).toBeInTheDocument();
   });
 
   it('sending text dispatches SUBMIT_MESSAGE with attachments + convId', async () => {

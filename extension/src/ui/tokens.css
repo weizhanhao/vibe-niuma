@@ -1,123 +1,130 @@
-/* doskill 扩展侧栏 · workbench 视觉。
-   设计来源：Claude Design 「doskill 侧栏 · 工作台版」（2026-05-16）。
-   - JetBrains Mono 打 UI 骨架（labels / ids / numbers / 按钮）
-   - Inter 打标题与说明文
-   - 暗色优先 + 淡网格背景；浅色由 body.theme-light 覆盖 */
+/* doskill 扩展侧栏 · Linear × Raycast 视觉。
+   2026-05-17 重做：从「工作台 + 工程网格」收敛到「安静的 AI 工作台」。
+   - 字体统一 Inter；mono 仅用于真正的代码/数字/id，不再当 UI 骨架
+   - 暗色 canvas 走暖中性（neutral），不带蓝；accent mint/sage（chroma ≤0.10）
+   - 去网格背景、去角标、去 cornermark —— 在 400px 窄侧栏里都是噪点 */
 
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 :root {
-  /* default = LIGHT workbench palette
-     —— design 里 body.theme-light 那一套；做了点局部 tune（line 加深一点提升对比）。 */
-  --canvas:       oklch(97% 0.004 250);
-  --canvas-grid:  oklch(93% 0.005 250);
+  /* default = LIGHT —— paper / 中性灰，accent 偏 sage 不刺眼 */
+  --canvas:       oklch(98.5% 0.002 270);
   --surface:      oklch(100% 0 0);
-  --surface-2:    oklch(98% 0.003 250);
-  --surface-3:    oklch(95% 0.005 250);
-  --line:         oklch(88% 0.008 250);
-  --line-soft:    oklch(92% 0.006 250);
-  --line-hard:    oklch(78% 0.012 250);
+  --surface-2:    oklch(97% 0.002 270);
+  --surface-3:    oklch(94% 0.003 270);
+  --line:         oklch(89% 0.004 270);
+  --line-soft:    oklch(93% 0.003 270);
+  --line-hard:    oklch(80% 0.006 270);
 
-  --ink:          oklch(20% 0.02 250);
-  --ink-soft:     oklch(40% 0.02 250);
-  --ink-mute:     oklch(58% 0.015 250);
-  --ink-faint:    oklch(70% 0.012 250);
+  --ink:          oklch(22% 0.008 270);
+  --ink-soft:     oklch(42% 0.008 270);
+  --ink-mute:     oklch(60% 0.006 270);
+  --ink-faint:    oklch(72% 0.005 270);
 
-  --accent:       oklch(58% 0.16 200);
-  --accent-ink:   oklch(98% 0.01 200);
-  --accent-dim:   oklch(70% 0.12 200);
-  --accent-glow:  oklch(58% 0.16 200 / 0.18);
-  --accent-soft:  oklch(58% 0.16 200 / 0.10);
+  /* mint/sage accent —— 比原来的青绿 oklch 200 更柔和、更内敛 */
+  --accent:       oklch(60% 0.10 165);
+  --accent-ink:   oklch(99% 0.01 165);
+  --accent-dim:   oklch(74% 0.08 165);
+  --accent-glow:  oklch(60% 0.10 165 / 0.16);
+  --accent-soft:  oklch(60% 0.10 165 / 0.08);
 
-  --success:      oklch(55% 0.16 150);
-  --success-dim:  oklch(78% 0.10 150);
-  --success-soft: oklch(55% 0.16 150 / 0.10);
-  --warning:      oklch(68% 0.16 75);
-  --warning-dim:  oklch(82% 0.10 75);
-  --warning-soft: oklch(68% 0.16 75 / 0.10);
-  --danger:       oklch(58% 0.20 25);
-  --danger-dim:   oklch(80% 0.10 25);
-  --danger-soft:  oklch(58% 0.20 25 / 0.10);
+  --success:      oklch(58% 0.12 155);
+  --success-dim:  oklch(80% 0.08 155);
+  --success-soft: oklch(58% 0.12 155 / 0.08);
+  --warning:      oklch(70% 0.13 75);
+  --warning-dim:  oklch(84% 0.08 75);
+  --warning-soft: oklch(70% 0.13 75 / 0.10);
+  --danger:       oklch(60% 0.18 25);
+  --danger-dim:   oklch(82% 0.08 25);
+  --danger-soft:  oklch(60% 0.18 25 / 0.10);
 
-  --log-bg:       oklch(96% 0.005 250);
+  --log-bg:       oklch(96.5% 0.003 270);
 
-  /* type */
+  /* type —— Inter 是主，mono 仅用于代码/id/数字 */
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   --sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Segoe UI", "Noto Sans CJK SC", sans-serif;
 
-  --r-xs: 2px;
-  --r-sm: 4px;
-  --r-md: 6px;
+  /* 圆角：commander 面板 14px，常规组件 8/6/4 */
+  --r-xs: 3px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 14px;
 
   --t-fast:   140ms;
   --t-normal: 240ms;
   --ease:     cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* ── Plan 10 B: backfill missing tokens cursor-like UI 用 ── */
-  /* alias：组件用了这些名字但 design 里没声明，统一回退到 base */
+  /* alias */
   --surface-0:    var(--surface);
   --surface-1:    var(--canvas);
   --ink-strong:   var(--ink);
-  --shadow-lg:    0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-sm:    0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md:    0 2px 8px oklch(0% 0 0 / 0.06), 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-lg:    0 8px 24px oklch(0% 0 0 / 0.10), 0 2px 6px oklch(0% 0 0 / 0.04);
   --tone-danger:  var(--danger);
   --tone-accent:  var(--accent);
 
-  /* user 气泡专用：light 下要可读（accent 实色背景 + 深字） */
-  --bubble-user-bg:   var(--accent);
-  --bubble-user-ink:  oklch(99% 0.005 200);
-  --bubble-ai-bg:     var(--surface-2);
+  /* user 气泡：浅灰底 + 实墨字 + 细描边，不再用 accent 实色（避免视觉抢戏） */
+  --bubble-user-bg:   oklch(96.5% 0.003 270);
+  --bubble-user-ink:  var(--ink);
+  --bubble-user-line: var(--line);
+  --bubble-ai-bg:     transparent;
   --bubble-ai-ink:    var(--ink);
 
-  /* mode badge —— light 下需要 contrast */
-  --badge-new-bg:    oklch(92% 0.06 200);
-  --badge-new-ink:   oklch(32% 0.12 200);
-  --badge-refine-bg: oklch(93% 0.08 75);
-  --badge-refine-ink: oklch(35% 0.12 75);
+  /* mode badge —— 内敛配色 */
+  --badge-new-bg:    oklch(94% 0.04 165);
+  --badge-new-ink:   oklch(34% 0.08 165);
+  --badge-refine-bg: oklch(94% 0.05 75);
+  --badge-refine-ink: oklch(38% 0.10 75);
 }
 
-/* DARK workbench palette —— body.theme-dark 时切换。design 默认就是这一套。 */
+/* DARK —— 暖 neutral 而非冷蓝灰；accent 同样收 chroma 防止灼伤 */
 body.theme-dark {
-  --canvas:       oklch(13% 0.005 250);
-  --canvas-grid:  oklch(18% 0.006 250);
-  --surface:      oklch(16% 0.006 250);
-  --surface-2:    oklch(19% 0.008 250);
-  --surface-3:    oklch(23% 0.009 250);
-  --line:         oklch(28% 0.010 250);
-  --line-soft:    oklch(23% 0.008 250);
-  --line-hard:    oklch(36% 0.012 250);
+  --canvas:       oklch(14% 0.003 270);
+  --surface:      oklch(17% 0.004 270);
+  --surface-2:    oklch(20% 0.005 270);
+  --surface-3:    oklch(24% 0.006 270);
+  --line:         oklch(28% 0.006 270);
+  --line-soft:    oklch(23% 0.005 270);
+  --line-hard:    oklch(36% 0.008 270);
 
-  --ink:          oklch(94% 0.005 250);
-  --ink-soft:     oklch(74% 0.010 250);
-  --ink-mute:     oklch(54% 0.012 250);
-  --ink-faint:    oklch(40% 0.012 250);
+  --ink:          oklch(94% 0.004 270);
+  --ink-soft:     oklch(75% 0.005 270);
+  --ink-mute:     oklch(56% 0.006 270);
+  --ink-faint:    oklch(42% 0.006 270);
 
-  --accent:       oklch(78% 0.13 195);
-  --accent-ink:   oklch(18% 0.04 195);
-  --accent-dim:   oklch(40% 0.09 195);
-  --accent-glow:  oklch(78% 0.13 195 / 0.18);
-  --accent-soft:  oklch(78% 0.13 195 / 0.10);
+  --accent:       oklch(76% 0.09 165);
+  --accent-ink:   oklch(16% 0.04 165);
+  --accent-dim:   oklch(42% 0.07 165);
+  --accent-glow:  oklch(76% 0.09 165 / 0.18);
+  --accent-soft:  oklch(76% 0.09 165 / 0.10);
 
-  --success:      oklch(74% 0.14 150);
-  --success-dim:  oklch(36% 0.08 150);
-  --success-soft: oklch(74% 0.14 150 / 0.10);
-  --warning:      oklch(80% 0.14 75);
-  --warning-dim:  oklch(38% 0.09 75);
-  --warning-soft: oklch(80% 0.14 75 / 0.10);
-  --danger:       oklch(70% 0.17 25);
-  --danger-dim:   oklch(35% 0.10 25);
-  --danger-soft:  oklch(70% 0.17 25 / 0.10);
+  --success:      oklch(75% 0.10 155);
+  --success-dim:  oklch(38% 0.06 155);
+  --success-soft: oklch(75% 0.10 155 / 0.10);
+  --warning:      oklch(80% 0.12 75);
+  --warning-dim:  oklch(40% 0.08 75);
+  --warning-soft: oklch(80% 0.12 75 / 0.10);
+  --danger:       oklch(72% 0.16 25);
+  --danger-dim:   oklch(38% 0.10 25);
+  --danger-soft:  oklch(72% 0.16 25 / 0.10);
 
-  --log-bg:       oklch(11% 0.004 250);
+  --log-bg:       oklch(13% 0.003 270);
 
-  /* Plan 10 B: dark 覆盖 bubble / badge —— dark 下气泡和 badge 颜色要重平衡 */
-  --bubble-user-bg:   var(--accent);
-  --bubble-user-ink:  oklch(15% 0.04 200);
-  --bubble-ai-bg:     var(--surface-2);
+  --shadow-sm:    0 1px 2px oklch(0% 0 0 / 0.30);
+  --shadow-md:    0 2px 8px oklch(0% 0 0 / 0.35), 0 1px 2px oklch(0% 0 0 / 0.25);
+  --shadow-lg:    0 12px 32px oklch(0% 0 0 / 0.45), 0 4px 10px oklch(0% 0 0 / 0.30);
+
+  --bubble-user-bg:   oklch(23% 0.005 270);
+  --bubble-user-ink:  var(--ink);
+  --bubble-user-line: oklch(32% 0.006 270);
+  --bubble-ai-bg:     transparent;
   --bubble-ai-ink:    var(--ink);
-  --badge-new-bg:     oklch(38% 0.10 200);
-  --badge-new-ink:    oklch(95% 0.02 200);
-  --badge-refine-bg:  oklch(40% 0.10 75);
-  --badge-refine-ink: oklch(96% 0.02 75);
+  --badge-new-bg:     oklch(34% 0.06 165);
+  --badge-new-ink:    oklch(92% 0.04 165);
+  --badge-refine-bg:  oklch(34% 0.07 75);
+  --badge-refine-ink: oklch(94% 0.04 75);
 }
 
 * { box-sizing: border-box; }
@@ -125,113 +132,61 @@ html, body, #root { margin: 0; padding: 0; height: 100%; }
 body {
   font-family: var(--sans);
   color: var(--ink);
-  background:
-    radial-gradient(800px 480px at 15% -10%, var(--bg-glow-a), transparent 60%),
-    radial-gradient(900px 600px at 110% 0%,  var(--bg-glow-b), transparent 60%),
-    var(--canvas);
-  background-attachment: fixed;
+  background: var(--canvas);
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
-:root {
-  --bg-glow-a: oklch(70% 0.10 200 / 0.10);
-  --bg-glow-b: oklch(70% 0.10 280 / 0.08);
-}
-body.theme-dark {
-  --bg-glow-a: oklch(22% 0.04 200 / 0.35);
-  --bg-glow-b: oklch(18% 0.03 280 / 0.30);
-}
-/* 极淡的工程网格 —— 侧栏窄，单元缩到 32px */
-body::before {
-  content: "";
-  position: fixed; inset: 0;
-  background-image:
-    linear-gradient(to right,  var(--canvas-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--canvas-grid) 1px, transparent 1px);
-  background-size: 32px 32px;
-  background-position: -1px -1px;
-  opacity: 0.45;
-  pointer-events: none;
-  z-index: 0;
-}
 button { font: inherit; cursor: pointer; }
 code { font-family: var(--mono); font-size: 0.9em; }
 
-/* ── sidebar frame ──────────────────────────────────────────────── */
+/* ── sidebar frame —— 安静、无装饰 ────────────────────────────── */
 .app {
   position: relative;
   height: 100%;
   display: flex; flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--line);
-  z-index: 1;
   overflow: hidden;
-  box-shadow:
-    0 1px 0 oklch(40% 0.01 250 / 0.05) inset,
-    0 30px 80px -30px oklch(0% 0 0 / 0.6);
 }
-/* 角标线 —— 工作台味 */
-.app::before,
-.app::after {
-  content: "";
-  position: absolute;
-  width: 10px; height: 10px;
-  border: 1px solid var(--ink-faint);
-  pointer-events: none;
-  z-index: 2;
-}
-.app::before { top: -1px; left: -1px;   border-right: 0; border-bottom: 0; }
-.app::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
 
-/* ── head: logo + brand + status + gear ─────────────────────────── */
+/* ── head: logo + project + status + tools ────────────────────── */
 .app-head {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
-  background: linear-gradient(to bottom, var(--surface-2), var(--surface));
+  background: var(--surface);
 }
 .app-logo {
-  width: 28px; height: 28px;
-  border-radius: var(--r-md);
+  width: 26px; height: 26px;
+  border-radius: var(--r-sm);
   background: var(--ink);
-  color: var(--canvas);
+  color: var(--surface);
   display: grid; place-items: center;
-  font-family: var(--mono);
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: -0.04em;
-  position: relative;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.02em;
   font-style: normal;
-}
-.app-logo::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  border: 1px solid oklch(60% 0.01 250 / 0.35);
-  border-radius: 3px;
-  pointer-events: none;
 }
 .app-title {
   display: grid;
   gap: 1px;
-  font-family: var(--mono);
+  font-family: var(--sans);
   font-weight: 600;
   font-size: 13px;
-  letter-spacing: 0.04em;
   color: var(--ink);
 }
 .app-title em { font-style: normal; color: var(--accent); }
 .app-title .muted {
-  font-family: var(--mono);
-  font-size: 10px;
+  font-family: var(--sans);
+  font-size: 10.5px;
   color: var(--ink-faint);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  font-weight: 400;
+  font-weight: 500;
   margin: 0;
 }
 
@@ -239,38 +194,37 @@ code { font-family: var(--mono); font-size: 0.9em; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px 3px 7px;
-  border: 1px solid var(--line);
+  padding: 3px 9px 3px 8px;
   border-radius: 999px;
-  font-family: var(--mono);
-  font-size: 10px;
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 500;
   color: var(--ink-soft);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 .app-status .pulse {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 0 2px oklch(74% 0.14 150 / 0.2);
 }
-.app-status.tone-running .pulse { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); animation: pulse 1.6s var(--ease) infinite; }
-.app-status.tone-warn    .pulse { background: var(--warning); box-shadow: 0 0 0 2px oklch(80% 0.14 75 / 0.2); }
-.app-status.tone-merged  .pulse { background: var(--ink-soft); box-shadow: none; }
-.app-status.tone-fail    .pulse { background: var(--danger); box-shadow: 0 0 0 2px oklch(70% 0.17 25 / 0.2); }
+.app-status.tone-running .pulse { background: var(--accent); animation: pulse 1.6s var(--ease) infinite; }
+.app-status.tone-warn    .pulse { background: var(--warning); }
+.app-status.tone-merged  .pulse { background: var(--ink-mute); }
+.app-status.tone-fail    .pulse { background: var(--danger); }
 
 .app-gear {
   background: transparent;
   border: 1px solid transparent;
   color: var(--ink-mute);
-  width: 26px; height: 26px;
+  width: 28px; height: 28px;
   border-radius: var(--r-sm);
   display: grid; place-items: center;
   cursor: pointer;
-  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+  transition: color var(--t-fast), background var(--t-fast);
   padding: 0;
 }
-.app-gear:hover { color: var(--ink); border-color: var(--line); background: var(--surface-2); }
-.app-head-actions { display: inline-flex; gap: 4px; align-items: center; }
+.app-gear:hover { color: var(--ink); background: var(--surface-2); }
+.app-head-actions { display: inline-flex; gap: 2px; align-items: center; }
 
 /* ── body / scroll ─────────────────────────────────────────────── */
 .app-body {
@@ -1553,52 +1507,155 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .preview-dock-close:hover { background: var(--surface-3); color: var(--ink); }
 
-/* ── Cursor 风格 footer：浮卡 + 输入栏 sticky 底部 ────────────────── */
+/* ── Footer + Commander panel —— 一整块圆角面板 ──────────────── */
 .app-footer {
-  border-top: 1px solid var(--line-soft);
-  background: var(--surface);
+  background: transparent;
   display: flex;
   flex-direction: column;
+  padding: 10px 12px 14px;
+  gap: 8px;
 }
 .chat-input-bar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px 12px;
   background: var(--surface);
-  border-top: 1px solid var(--line);
-}
-.chat-input-row {
-  display: flex; gap: 8px; align-items: end;
-}
-.chat-input-textarea {
-  flex: 1; min-width: 0;
-  resize: none;
-  min-height: 48px;
-  max-height: 140px;
-  padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.chat-input-bar:focus-within {
+  border-color: var(--accent-dim);
+  box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-glow);
+}
+
+/* attachments tray —— commander 顶部，左对齐缩略图 */
+.chat-input-bar .attachment-tray {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 10px 12px 4px;
+}
+
+/* commander 内部三层：tools / textarea / footer-row */
+.chat-input-textarea {
+  width: 100%;
+  resize: none;
+  min-height: 44px;
+  max-height: 160px;
+  padding: 10px 14px 4px;
+  border: none;
+  background: transparent;
   color: var(--ink) !important;
   font: inherit;
-  font-size: 12.5px;
-  line-height: 1.4;
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 .chat-input-textarea::placeholder { color: var(--ink-faint); }
-.chat-input-textarea:focus {
-  outline: none;
-  border-color: var(--accent-dim);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+.chat-input-textarea:focus { outline: none; }
+
+/* 底部 footer 行：左 toolbar 按钮 + 中 status meta + 右 send */
+.chat-input-footer {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 8px 8px;
 }
-.chat-input-actions {
-  display: flex; flex-direction: column; gap: 6px;
+.chat-input-toolbar {
+  display: inline-flex; align-items: center; gap: 2px;
+}
+.chat-input-tool {
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.chat-input-tool:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.chat-input-tool:disabled {
+  opacity: 0.4; cursor: not-allowed;
+}
+
+/* 项目 · 模式 chip —— 安静地告诉业务员「现在在哪、下一条会怎么提交」 */
+.chat-input-meta {
+  display: inline-flex; align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-mute);
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 0;
+}
+.chat-input-meta__project {
+  max-width: 100px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.chat-input-meta__sep {
+  color: var(--ink-faint);
+}
+.chat-input-meta__mode {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--ink-soft);
+}
+.chat-input-meta__mode-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent);
+}
+.chat-input-meta__mode--refine .chat-input-meta__mode-dot { background: var(--warning); }
+.chat-input-meta__mode--chat .chat-input-meta__mode-dot { background: var(--ink-mute); }
+
+.chat-input-footer__spacer { flex: 1; }
+
+/* 发送按钮：方圆 chip 风，跟 toolbar 同高，不再圆形浮岛 */
+.chat-input-send {
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: 15px; font-weight: 700; line-height: 1;
+  transition: background var(--t-fast), transform var(--t-fast), opacity var(--t-fast);
+}
+.chat-input-send:hover:not(:disabled) {
+  background: var(--accent-dim);
+  transform: translateY(-1px);
+}
+.chat-input-send:disabled {
+  background: var(--surface-3);
+  color: var(--ink-faint);
+  cursor: not-allowed;
 }
 
 /* idle hint：还没起 CR 时主体一行欢迎语 */
-.idle-hint { padding: 8px 4px; }
-.idle-hint .title { margin: 0 0 6px; font-size: 18px; }
-.idle-hint .help { margin: 0; color: var(--ink-soft); font-size: 12.5px; line-height: 1.55; }
+.idle-hint {
+  padding: 28px 16px 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: 360px;
+}
+.idle-hint .title {
+  margin: 0;
+  font-size: 22px; font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.idle-hint .help {
+  margin: 0; color: var(--ink-soft);
+  font-size: 13px; line-height: 1.55;
+}
 
 /* ── compacted range notice (Plan 9 Task 11) ───────────────────── */
 .compacted-range {
@@ -1638,65 +1695,66 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   gap: 6px;
 }
 
-/* ── Plan 10 Task 14: AgentTabBar + HistoryDropdown ─────────── */
+/* ── AgentTabBar —— chip-style, no folder visual ──────────────── */
 .agent-tab-bar {
-  display: flex; align-items: stretch;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-1);
+  display: flex; align-items: center;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
   min-height: 36px;
-  padding: 0 6px;
-  gap: 4px;
+  padding: 6px 10px;
+  gap: 6px;
   overflow: hidden;
 }
 .agent-tab-bar__tabs {
-  display: flex; align-items: stretch;
-  gap: 2px; flex: 1; overflow-x: auto; min-width: 0;
+  display: flex; align-items: center;
+  gap: 4px; flex: 1; overflow-x: auto; min-width: 0;
 }
 .agent-tab-bar__empty {
   display: flex; align-items: center;
-  color: var(--ink-mute); font-size: 11.5px; padding: 0 8px;
+  color: var(--ink-mute); font-size: 11.5px; padding: 0 4px;
 }
 .agent-tab {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 6px 10px;
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
   font-size: 12px; color: var(--ink-soft);
   cursor: pointer; user-select: none;
-  border: 1px solid transparent; border-bottom: none;
+  border: 1px solid transparent;
+  background: transparent;
   max-width: 180px;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
 }
 .agent-tab:hover { background: var(--surface-2); color: var(--ink); }
 .agent-tab.is-active {
-  background: var(--surface);
+  background: var(--accent-soft);
   color: var(--ink);
-  border-color: var(--line-hard);
+  border-color: var(--accent-dim);
   font-weight: 600;
-  position: relative;
-}
-.agent-tab.is-active::after {
-  /* 把下边「叠」过 agent-tab-bar 的 border 让 active tab 真的「贴上去」 */
-  content: ''; position: absolute; left: 0; right: 0; bottom: -1px;
-  height: 1px; background: var(--surface);
 }
 .agent-tab__title {
   flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .agent-tab__close {
   appearance: none; border: none; background: transparent;
-  color: var(--ink-mute); font-size: 14px; line-height: 1;
-  padding: 0 4px; cursor: pointer; border-radius: 3px;
+  color: var(--ink-mute); font-size: 13px; line-height: 1;
+  padding: 1px 3px; cursor: pointer; border-radius: 999px;
+  width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .agent-tab__close:hover { background: var(--surface-3); color: var(--ink-strong); }
 .agent-tab-bar__actions {
-  display: flex; align-items: center; gap: 2px; padding: 0 2px;
+  display: flex; align-items: center; gap: 2px; padding: 0 0 0 4px;
+  border-left: 1px solid var(--line-soft);
 }
 .agent-tab-bar__icon-btn {
   appearance: none; border: 1px solid transparent; background: transparent;
-  color: var(--ink-soft); font-size: 14px; line-height: 1;
-  width: 28px; height: 28px; border-radius: var(--r-sm); cursor: pointer;
+  color: var(--ink-mute); font-size: 14px; line-height: 1;
+  width: 26px; height: 26px; border-radius: var(--r-sm); cursor: pointer;
+  margin-left: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .agent-tab-bar__icon-btn:hover {
-  background: var(--surface-2); color: var(--ink-strong); border-color: var(--line);
+  background: var(--surface-2); color: var(--ink);
 }
 
 .history-dropdown {
@@ -1729,30 +1787,48 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   flex-shrink: 0; color: var(--ink-mute); font-size: 11px; font-family: var(--mono);
 }
 
-/* ── Plan 10 Task 15: ChatStream + InlineCard ────────────────── */
+/* ── ChatStream —— quiet, no heavy bubbles ───────────────────── */
 .chat-stream {
-  display: flex; flex-direction: column; gap: 12px;
-  padding: 12px 12px 24px; overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 16px 14px 24px; overflow-y: auto; flex: 1;
 }
 .chat-stream--empty {
   align-items: center; justify-content: center;
   color: var(--ink-mute); font-size: 12.5px; text-align: center;
 }
-.chat-stream__msg { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+.chat-stream__msg { display: flex; flex-direction: column; gap: 8px; max-width: 100%; }
 .chat-stream__msg--user { align-self: flex-end; align-items: flex-end; }
-.chat-stream__msg--ai { align-self: flex-start; align-items: flex-start; }
+.chat-stream__msg--ai { align-self: flex-start; align-items: flex-start; width: 100%; }
 .chat-stream__bubble {
-  padding: 8px 12px; border-radius: var(--r-md);
+  padding: 9px 13px; border-radius: var(--r-lg);
   background: var(--bubble-ai-bg);
   color: var(--bubble-ai-ink);
   font-size: 13px; line-height: 1.55; white-space: pre-wrap;
-  max-width: 88%;
+  max-width: 92%;
   border: 1px solid var(--line-soft);
 }
 .chat-stream__msg--user .chat-stream__bubble {
   background: var(--bubble-user-bg);
   color: var(--bubble-user-ink);
+  border-color: var(--bubble-user-line);
+  border-radius: var(--r-lg) var(--r-lg) var(--r-xs) var(--r-lg);
+  max-width: 88%;
+}
+.chat-stream__msg--ai .chat-stream__bubble {
+  background: transparent;
   border-color: transparent;
+  padding: 0;
+  color: var(--ink-soft);
+  max-width: 100%;
+}
+/* AI 「成功 footer」 (改完了 → preview ready ...) —— 弱化为 inline 脚注，
+   不再当独立 bubble；ChatStream 通过 data-footer-style="success" 标记 */
+.chat-stream__msg--ai .chat-stream__bubble[data-footer-style="success"] {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  padding: 0 2px;
+  margin-top: -2px;
 }
 .chat-stream__attachments {
   display: flex; flex-wrap: wrap; gap: 6px;
@@ -1760,20 +1836,18 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .chat-stream__att-img {
   max-width: 200px; max-height: 140px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
   display: block;
-  background: rgba(0, 0, 0, 0.15);
-}
-.chat-stream__msg--ai .chat-stream__att-img {
-  border-color: var(--line-soft);
   background: var(--surface-2);
 }
 .chat-stream__att--file {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 8px; border-radius: 6px;
-  background: rgba(255, 255, 255, 0.15);
+  padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
   font-size: 11px;
+  color: var(--ink-soft);
 }
 .chat-stream__summary {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1781,17 +1855,19 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   padding: 4px 10px;
   font-size: 11px; color: var(--ink-mute);
   border: 1px dashed var(--line); border-radius: 999px;
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 .chat-stream__summary-icon { font-size: 10px; opacity: 0.7; }
 
 .inline-card {
-  border: 1px solid var(--line-hard); border-radius: var(--r-md);
-  background: var(--surface); padding: 10px 12px;
-  display: flex; flex-direction: column; gap: 8px;
-  width: 320px; max-width: 92%;
-  font-size: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  width: 100%; max-width: 100%;
+  font-size: 12.5px;
+  box-shadow: var(--shadow-sm);
 }
 .inline-card__head { display: flex; gap: 8px; align-items: center; }
 .inline-card__elapsed {
@@ -1805,12 +1881,13 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   padding: 2px 8px; border-radius: 999px;
   background: var(--badge-new-bg);
   color: var(--badge-new-ink);
-  font-size: 10.5px; font-weight: 500;
-  letter-spacing: 0.02em;
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0;
 }
 .inline-card__state {
   display: inline-flex; align-items: center; gap: 6px;
   color: var(--ink); font-weight: 600;
+  font-size: 12.5px;
 }
 .inline-card__spinner {
   width: 10px; height: 10px;
@@ -1820,19 +1897,19 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 @keyframes doskill-spin { to { transform: rotate(360deg); } }
 .inline-card.is-running { border-color: var(--accent-dim); }
-.inline-card--failed { border-color: var(--danger); }
-.inline-card--preview-ready { border-color: var(--success); }
+.inline-card--failed { border-color: var(--danger-dim); }
+.inline-card--preview-ready { border-color: var(--success-dim); }
 .inline-card__fail {
   color: var(--danger); font-size: 11.5px;
-  padding: 6px 8px; background: var(--danger-soft); border-radius: var(--r-sm);
+  padding: 6px 10px; background: var(--danger-soft); border-radius: var(--r-sm);
 }
 .inline-card__activity {
-  max-height: 110px; overflow-y: auto;
+  max-height: 120px; overflow-y: auto;
   font-family: var(--mono); font-size: 11px;
   color: var(--ink-soft);
   background: var(--log-bg);
   border: 1px solid var(--line-soft); border-radius: var(--r-sm);
-  padding: 6px 8px;
+  padding: 8px 10px;
   display: flex; flex-direction: column; gap: 2px;
 }
 .inline-card__activity--placeholder {
@@ -1852,70 +1929,24 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .inline-card__preview {
   align-self: flex-start;
-  font-size: 12px; color: var(--accent); font-weight: 500;
-  text-decoration: none; padding: 6px 12px; border-radius: var(--r-sm);
-  border: 1px solid var(--accent-dim);
-  background: var(--accent-soft);
-}
-.inline-card__preview:hover {
-  background: var(--accent); color: white;
-  border-color: var(--accent);
-}
-
-/* ── Plan 10 Task 16: ChatInputBar attachments tray + mode badge ── */
-.chat-input-meta {
-  display: flex; gap: 6px; align-items: center;
-  padding: 0 8px 4px; font-size: 11px;
-}
-
-/* 输入框上沿工具条：仅 ✂ 截图按钮 —— 提示文案已去掉，给用户视觉自由度 */
-.chat-input-tools {
-  display: flex; align-items: center;
-  padding: 4px 8px 0;
-}
-.chat-input-tool {
-  appearance: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--ink-soft);
-  cursor: pointer;
-  font-size: 14px;
-  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
-}
-.chat-input-tool:hover {
-  background: var(--surface-3);
-  border-color: var(--line-hard);
-  color: var(--ink);
-}
-
-/* 发送按钮：圆形 icon，跟输入框高度协调，不占太多视觉空间 */
-.chat-input-send {
-  appearance: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px;
-  border: none; border-radius: 50%;
-  background: var(--accent); color: white;
-  cursor: pointer;
-  font-size: 16px; font-weight: 600; line-height: 1;
+  font-size: 12px; color: var(--accent-ink); font-weight: 600;
+  text-decoration: none; padding: 7px 14px; border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: var(--accent);
   transition: background var(--t-fast), transform var(--t-fast);
 }
-.chat-input-send:hover:not(:disabled) {
-  background: var(--accent-hover, var(--accent));
+.inline-card__preview:hover {
+  background: var(--accent-dim);
   transform: translateY(-1px);
 }
-.chat-input-send:disabled {
-  background: var(--surface-3);
-  color: var(--ink-mute);
-  cursor: not-allowed;
-}
+
+/* ── Plan 10 Task 16: attachments tray (commander 内嵌) + mode badge ── */
+/* （chat-input-tools / chat-input-tool / chat-input-send / chat-input-meta
+    新版定义在上面 commander panel 段。） */
 .mode-badge {
   padding: 3px 10px; border-radius: 999px;
   background: var(--surface-2); color: var(--ink-soft);
   font-size: 11px; font-weight: 500;
-  letter-spacing: 0.02em;
 }
 .mode-badge.mode-new_cr { background: var(--badge-new-bg); color: var(--badge-new-ink); }
 .mode-badge.mode-refine_cr { background: var(--badge-refine-bg); color: var(--badge-refine-ink); }
@@ -1989,9 +2020,6 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .attachment-chip__close:hover { background: var(--surface-3); color: var(--ink-strong); }
 
-.chat-input-row {
-  display: flex; gap: 6px; align-items: stretch;
-}
 .btn-ghost {
   background: transparent; border: 1px dashed var(--line);
   color: var(--ink-soft); padding: 4px 8px;

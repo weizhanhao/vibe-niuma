@@ -49,6 +49,8 @@ interface Props {
   initialText?: string;
   /** 当前 active conversation id。UI 显式带，SW 不依赖 session 状态。 */
   conversationId?: string | null;
+  /** 当前项目名 —— 显示在 commander footer 让业务员一眼看到「在哪个项目上提交」 */
+  projectName?: string;
   /** SUBMIT_MESSAGE 成功送达 SW 后回调。带 cr_id/mode 让 MainShell 把
    *  cr_id patch 到最后那条乐观 user 消息上，InlineCard 早早 mount 看到流式日志。 */
   onSubmitted?: (info: SubmittedInfo) => void;
@@ -62,6 +64,7 @@ export function ChatInputBar({
   onAttachmentsChange = () => {},
   initialText = '',
   conversationId = null,
+  projectName,
   onSubmitted,
   onOptimisticSend,
 }: Props = {}) {
@@ -163,6 +166,15 @@ export function ChatInputBar({
     onAttachmentsChange(attachments.filter((_, i) => i !== idx));
   };
 
+  // mode chip 文案 + 颜色：根据 classifier 即时显示，给业务员心理预期
+  const modeKey = decision.mode;
+  const modeText = MODE_LABEL[modeKey] ?? modeKey;
+  const modeClass = modeKey === 'refine_cr'
+    ? 'chat-input-meta__mode chat-input-meta__mode--refine'
+    : modeKey === 'chat_only'
+    ? 'chat-input-meta__mode chat-input-meta__mode--chat'
+    : 'chat-input-meta__mode';
+
   return (
     <div className="chat-input-bar">
       {attachments.length > 0 && (
@@ -201,43 +213,61 @@ export function ChatInputBar({
           })}
         </div>
       )}
-      {/* 输入框上沿：只剩截图按钮，hover 时浮 tooltip 提示快捷键 */}
-      <div className="chat-input-tools">
-        <button
-          type="button"
-          className="chat-input-tool"
-          onClick={startAnnotate}
-          aria-label="截图标注"
-          title="截图标注（也可 ⌘V 粘贴图）"
-        >
-          <span aria-hidden="true">✂</span>
-        </button>
-      </div>
-      <div className="chat-input-row">
-        <textarea
-          aria-label="输入需求"
-          className="chat-input-textarea"
-          rows={2}
-          placeholder="想改哪里？"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          maxLength={500}
-        />
-        <div className="chat-input-actions">
+
+      <textarea
+        aria-label="输入需求"
+        className="chat-input-textarea"
+        rows={2}
+        placeholder="想改哪里？"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        maxLength={500}
+      />
+
+      <div className="chat-input-footer">
+        <div className="chat-input-toolbar">
           <button
             type="button"
-            className="chat-input-send"
-            onClick={submit}
-            disabled={disabled}
-            aria-label="发送"
-            title="发送"
+            className="chat-input-tool"
+            onClick={startAnnotate}
+            aria-label="截图标注"
+            title="截图标注（也可 ⌘V 粘贴图）"
           >
-            <span aria-hidden="true">↑</span>
+            <span aria-hidden="true">✂</span>
           </button>
         </div>
+
+        {(projectName || modeText) && (
+          <span className="chat-input-meta">
+            {projectName && (
+              <>
+                <span className="chat-input-meta__project" title={projectName}>{projectName}</span>
+                <span className="chat-input-meta__sep">·</span>
+              </>
+            )}
+            <span className={modeClass} title={`下一条会作为「${modeText}」提交`}>
+              <span className="chat-input-meta__mode-dot" aria-hidden="true" />
+              {modeText}
+            </span>
+          </span>
+        )}
+
+        <span className="chat-input-footer__spacer" />
+
+        <button
+          type="button"
+          className="chat-input-send"
+          onClick={submit}
+          disabled={disabled}
+          aria-label="发送"
+          title="发送（回车）"
+        >
+          <span aria-hidden="true">↑</span>
+        </button>
       </div>
+
       {lightboxAtt && (
         <div
           className="attachment-lightbox"

@@ -68,9 +68,19 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
         }
         const mirror = m.cr_id ? mirrors[m.cr_id] : undefined;
         const atts = m.attachments ?? [];
+        // 后端 pipeline 在 preview-ready 时往 conversation append 一条形如
+        //   「改完了 → 预览就绪 http://... \n 分支 cr/... commit abcdef」
+        // 的 ai 消息。它和上面的 InlineCard 信息完全重复 —— 视觉上降级成 inline 脚注，
+        // 不再当独立 bubble 漂在 InlineCard 下面（用户反馈：「布局有些违和」）。
+        const isCrSuccessFootnote = m.type === 'ai'
+          && typeof m.content === 'string'
+          && m.content.startsWith('改完了 → 预览就绪');
         return (
           <div key={m.id} className={`chat-stream__msg chat-stream__msg--${m.type}`}>
-            <div className="chat-stream__bubble">
+            <div
+              className="chat-stream__bubble"
+              {...(isCrSuccessFootnote ? { 'data-footer-style': 'success' } : {})}
+            >
               {atts.length > 0 && (
                 <div className="chat-stream__attachments">
                   {atts.map((a, i) => {

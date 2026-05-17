@@ -458,6 +458,7 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
             attachments={attachments}
             onAttachmentsChange={setAttachments}
             conversationId={activeConvId}
+            projectName={project.name}
             onSubmitted={({ cr_id, mode }) => {
               setSubmitTick((t) => t + 1);
               // 把 cr_id 贴到最后那条乐观 user 消息上 → ChatStream 立即给它
