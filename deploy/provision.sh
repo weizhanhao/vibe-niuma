@@ -52,6 +52,32 @@ fi
 sudo systemctl is-active docker >/dev/null || sudo systemctl start docker
 log "docker 就绪：$(docker --version)"
 
+# ── docker compose plugin（yum 系不带；apt 的 docker-compose-plugin 也可能损坏）──
+# 校验 `docker compose version` 能跑；不能跑就从官方下载完整二进制覆盖。
+# 历史踩坑：阿里云 ECS 上 cli-plugins/docker-compose 是 2MB 截断文件，
+# ELF section header 偏移指向 36MB → 一执行就 'compose is not a docker command'。
+COMPOSE_VER="${COMPOSE_VER:-v2.29.7}"
+if ! docker compose version >/dev/null 2>&1; then
+  log "docker compose 不可用，下载 $COMPOSE_VER（国内 ECS 优先用 gh-proxy 镜像）"
+  sudo mkdir -p /usr/local/lib/docker/cli-plugins
+  ARCH="$(uname -m)"
+  REL_PATH="docker/compose/releases/download/${COMPOSE_VER}/docker-compose-linux-${ARCH}"
+  # 多源 fallback：gh-proxy（国内快） → 官方 GitHub（兜底）
+  for SRC in "https://gh-proxy.com/https://github.com/${REL_PATH}" \
+             "https://github.com/${REL_PATH}"; do
+    log "  尝试 $SRC"
+    if sudo curl -fsSL --max-time 90 --retry 2 "$SRC" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose; then
+      sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+      if docker compose version >/dev/null 2>&1; then
+        log "  ✓ compose 就绪：$(docker compose version)"
+        break
+      fi
+    fi
+    sudo rm -f /usr/local/lib/docker/cli-plugins/docker-compose
+  done
+fi
+
 # ── docker registry 镜像加速（国内 ECS 拉不到 Docker Hub）────────
 USE_DOCKER_MIRROR="${USE_DOCKER_MIRROR:-1}"
 if [ "$USE_DOCKER_MIRROR" = "1" ]; then
