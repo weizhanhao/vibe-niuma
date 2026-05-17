@@ -1601,3 +1601,62 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .history-dropdown__time {
   flex-shrink: 0; color: var(--ink-mute); font-size: 11px; font-family: var(--mono);
 }
+
+/* ── Plan 10 Task 15: ChatStream + InlineCard ────────────────── */
+.chat-stream {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 12px 12px 24px; overflow-y: auto; flex: 1;
+}
+.chat-stream--empty {
+  align-items: center; justify-content: center;
+  color: var(--ink-mute); font-size: 12.5px; text-align: center;
+}
+.chat-stream__msg { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+.chat-stream__msg--user { align-self: flex-end; align-items: flex-end; }
+.chat-stream__msg--ai { align-self: flex-start; align-items: flex-start; }
+.chat-stream__bubble {
+  padding: 8px 12px; border-radius: var(--r-md);
+  background: var(--surface-2); color: var(--ink-strong);
+  font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+  max-width: 88%;
+}
+.chat-stream__msg--user .chat-stream__bubble {
+  background: var(--accent-soft, var(--accent-dim));
+  color: var(--accent-ink, var(--ink-strong));
+}
+.chat-stream__summary {
+  display: inline-flex; align-items: center; gap: 6px;
+  align-self: center;
+  padding: 4px 10px;
+  font-size: 11px; color: var(--ink-mute);
+  border: 1px dashed var(--line); border-radius: 999px;
+  background: var(--surface-1);
+}
+.chat-stream__summary-icon { font-size: 10px; opacity: 0.7; }
+
+.inline-card {
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-1); padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  width: 280px; max-width: 88%;
+  font-size: 12px;
+}
+.inline-card__head { display: flex; gap: 8px; align-items: center; }
+.inline-card__mode {
+  padding: 2px 6px; border-radius: 999px;
+  background: var(--surface-3); color: var(--ink-soft);
+  font-size: 10.5px;
+}
+.inline-card__state {
+  color: var(--ink-strong); font-weight: 500;
+}
+.inline-card--failed { border-color: var(--tone-danger, #d33); }
+.inline-card--preview-ready { border-color: var(--tone-accent, var(--accent-dim)); }
+.inline-card__fail { color: var(--tone-danger, #d33); font-size: 11.5px; }
+.inline-card__preview {
+  align-self: flex-start;
+  font-size: 11.5px; color: var(--accent-ink, var(--accent-dim));
+  text-decoration: none; padding: 4px 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+}
+.inline-card__preview:hover { background: var(--surface-2); }
