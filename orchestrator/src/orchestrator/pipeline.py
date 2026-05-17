@@ -523,17 +523,16 @@ class Pipeline:
                     f"base CR 不存在或没 branch：{cr.refine_of}",
                 )
 
-            # 走完 FSM 路径：created → clarifying → located → coding（每步几乎不耗时）
-            # 保持审计 trail；refine 跳过的是「实际工作」不是「状态机」。
-            await self._set_state(request_id, State.CLARIFYING)
-            await self._set_state(request_id, State.LOCATED)
-            await self._set_state(request_id, State.CODING)
-            await _phase_log("coding", f"▸ refine 模式：续改 base branch {base.branch}")
-
-            # 沿用 base 的 entry_files；不重 locate
+            # 业务员视角：refine 不只是「闭眼跟改」—— 模糊需求（「好看点」「丑」
+            # 「更好」）也要 brainstorm。借鉴 superpowers brainstorming：一次一问 +
+            # 选项 + 自己描述兜底。BrainstormingSkill 内部 LLM 判断 done=true 就直接过。
             from orchestrator.adapters.types import (
                 LocateResult, RawRequest, RequestBrief,
             )
+            await self._set_state(request_id, State.CLARIFYING)
+            await _phase_log("clarifying", "▸ refine 模式：先确认下需求是否清晰...")
+            channel = SSEInteractionChannel(request_id, self.event_bus, phase="clarifying")
+            self._channels[request_id] = channel
             raw = RawRequest(
                 url=cr.url,
                 screenshot_b64=cr.screenshot_b64,
@@ -542,11 +541,17 @@ class Pipeline:
                 request_text=cr.request_text,
                 attachments=list(cr.attachments or []),
             )
-            brief = RequestBrief(
-                original_text=cr.request_text,
-                clarifications=[],
-                selected_mockup=None,
+            clarify_log = _make_log_sink(bus, request_id, "clarifying")
+            brief = await _with_heartbeat(
+                self.interaction_skill.clarify(raw, channel),
+                log=clarify_log, label="评估需求中",
             )
+            await _phase_log("clarifying", "✓ 需求确认完成")
+
+            await self._set_state(request_id, State.LOCATED)
+            await self._set_state(request_id, State.CODING)
+            await _phase_log("coding", f"▸ refine 模式：续改 base branch {base.branch}")
+
             # 假定 base 已 locate 过；refine 重新 locate 拿同样 entry_files
             locate_result = await self.stack_adapter.locate(raw.url)
             ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)

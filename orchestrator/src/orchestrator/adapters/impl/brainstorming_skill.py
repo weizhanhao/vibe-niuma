@@ -268,8 +268,12 @@ class BrainstormingSkill:
             '  "variants": [{"id":"v1","title":"...","html":"<style+html>"}]  // 仅 heavy\n'
             '}\n\n'
             "**判定原则（严格）**：\n"
-            "- **文案/颜色/单字段微调** → weight=light, done=true，**不问任何问题**。\n"
-            "- **业务语义有真歧义** → weight=light, done=false, 给 1 个最关键的问题 + 2-4 个 options。\n"
+            "- **含主观审美词**（「好看」「好看点」「丑」「不好看」「更好」「漂亮」「精致」\n"
+            "  「现代」「单调」「无聊」「乱」）→ 必须 done=false 至少问一题。因为业务员\n"
+            "  心里有具体期望但没说出来，AI 凭空猜会瞎改 —— 你要主动问。\n"
+            "- **文案/颜色/单字段微调，且业务员已经明示了目标值** → done=true，不问。\n"
+            "  （例：「按钮改成蓝色」「字号 14px」「标题改成 订单管理」）\n"
+            "- **业务语义有真歧义** → done=false, 给 1 个最关键的问题 + 2-4 个 options。\n"
             "- **每答完一轮你再判断**：如果已答信息足够开工 → done=true；还有真歧义 → 再给一个 question。\n"
             "- **信息架构变化** → weight=heavy, variants=2-3 套独立 HTML mockup。\n\n"
             "**问题的形式**：\n"

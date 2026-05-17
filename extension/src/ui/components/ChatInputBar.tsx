@@ -52,6 +52,8 @@ export function ChatInputBar({
   onOptimisticSend,
 }: Props = {}) {
   const [text, setText] = useState(initialText);
+  // 同界面 lightbox：点缩略图弹层看原图（chrome extension 不让 data: URL 开新标签）
+  const [lightboxAtt, setLightboxAtt] = useState<Attachment | null>(null);
 
   const decision = useMemo(
     () => classifyIntent({
@@ -136,15 +138,14 @@ export function ChatInputBar({
               <span key={i} className={`attachment-chip${isImage ? ' is-image' : ''}`}
                     title={a.name ?? a.kind}>
                 {isImage ? (
-                  <a
-                    href={dataUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
+                  <button
+                    type="button"
                     className="attachment-chip__thumb"
                     aria-label={`查看附件 ${i + 1} 原图`}
+                    onClick={() => setLightboxAtt(a)}
                   >
                     <img src={dataUrl} alt="" />
-                  </a>
+                  </button>
                 ) : (
                   <span className="attachment-chip__icon" aria-hidden="true">📎</span>
                 )}
@@ -206,6 +207,28 @@ export function ChatInputBar({
           </button>
         </div>
       </div>
+      {lightboxAtt && (
+        <div
+          className="attachment-lightbox"
+          role="dialog"
+          aria-label="附件原图"
+          onClick={() => setLightboxAtt(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setLightboxAtt(null); }}
+          tabIndex={-1}
+        >
+          <button
+            type="button"
+            className="attachment-lightbox__close"
+            aria-label="关闭"
+            onClick={(e) => { e.stopPropagation(); setLightboxAtt(null); }}
+          >×</button>
+          <img
+            src={`data:${lightboxAtt.mime};base64,${lightboxAtt.b64}`}
+            alt={lightboxAtt.name ?? '附件原图'}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
