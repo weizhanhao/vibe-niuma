@@ -588,34 +588,29 @@ async def report_runtime_errors(
 
 
 async def _run_self_heal(request_id: str, errors: list[dict]) -> None:
-    """异步：把 runtime 错误作为 hint 让 dev_runner 改一轮（MVP）。
+    """Self-heal v2：把 runtime 错误作为 hint，让 dev_runner 在同 branch 续改一轮。
 
-    MVP 范围：把错误推 SSE log 让业务员知道系统在响应，标记 attempts++ 防重入。
-    完整的「拿错误作为 prompt 让 dev_runner 改」流水线接入下一 commit 做 ——
-    需要复用 _run_refine_cr 的同 branch 续改通路 + 一个新的 self-heal request_text。
+    交给 pipeline.run_self_heal 做实际工作（locate + context_pack + dev_runner.run
+    + refresh_files）；这里只负责拿一只 fresh DB session 给 build_pipeline 用，
+    以及做表层异常兜底（self-heal 失败绝不影响业务员既有的 preview）。
     """
     bus = app_state.event_bus
+    from orchestrator.db import SessionLocal
+    session_factory = app_state.session_factory or SessionLocal
+    db = session_factory()
     try:
-        err_summary = _format_errors_for_prompt(errors)
-        await bus.publish_log(
-            request_id, "self-heal",
-            "▸ 已记录错误，下一轮 retry 时会作为修复 hint 喂给 AI",
-        )
-        await bus.publish_log(
-            request_id, "self-heal", err_summary[:1000],
-        )
+        pipeline = app_state.build_pipeline(db)
+        await pipeline.run_self_heal(request_id, errors)
     except Exception:  # noqa: BLE001
         logger.warning("self-heal failed for cr=%s", request_id, exc_info=True)
-
-
-def _format_errors_for_prompt(errors: list[dict]) -> str:
-    parts: list[str] = []
-    for e in errors[:5]:
-        parts.append(f"[{e.get('pageUrl', '')}] {e.get('message', '')}")
-        if e.get("stack"):
-            for line in str(e["stack"]).split("\n")[:6]:
-                parts.append(f"  {line}")
-    return "\n".join(parts)
+        try:
+            await bus.publish_log(
+                request_id, "self-heal", "⚠ self-heal 异常（不影响现有 preview）",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    finally:
+        db.close()
 
 
 @app.post("/change-requests/{request_id}/merge", response_model=ChangeRequestOut)

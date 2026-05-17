@@ -137,6 +137,26 @@ async def _with_heartbeat(
             pass
 
 
+def _format_self_heal_errors(errors: list[dict]) -> str:
+    """把浏览器侧 RuntimeErrorItem dump 成 dev_runner 能消化的多行 hint。
+
+    取前 5 条；每条带 message + 前 6 行 stack。Stack 是 React 编译过的源码栈，
+    模型自己能定位文件。
+    """
+    parts: list[str] = []
+    for e in errors[:5]:
+        msg = (e.get("message") or "").strip()
+        page = (e.get("pageUrl") or "").strip()
+        parts.append(f"- {msg}（页面 {page}）")
+        stack = e.get("stack") or ""
+        if stack:
+            for line in str(stack).split("\n")[:6]:
+                line = line.strip()
+                if line:
+                    parts.append(f"    {line}")
+    return "\n".join(parts) if parts else "（未捕到具体错误内容）"
+
+
 class _PhaseError(Exception):
     """流水线某一步失败 —— 携带 phase / reason / log。"""
 
@@ -696,6 +716,86 @@ class Pipeline:
                     "fail_reason": "unexpected",
                 }),
             )
+
+    # ── Self-heal v2：runtime 错误 → 静默 retry 一轮 ───────────────────
+
+    async def run_self_heal(self, request_id: str, errors: list[dict]) -> None:
+        """收到 preview 页运行时错误后，把错误当成 hint，在同 branch 上让 dev_runner
+        改一轮 → 再 refresh_files 进既有容器。
+
+        与 refine_cr 的区别：
+        - 不切状态（CR 仍 preview-ready，业务员视角是「自动修了一下」）
+        - 不走 clarify（错误堆栈本身就是 brief）
+        - 失败兜底：不 mark_failed，只在 self-heal phase 写一条 log；业务员
+          原本的 preview 仍可用，不能因为 heal 失败把整个 CR 拉进 failed
+        - self_heal_attempts 已由调用方 +1，这里不再动 DB
+        """
+        bus = self.event_bus
+
+        async def _heal_log(line: str) -> None:
+            await bus.publish_log(request_id, "self-heal", line)
+
+        try:
+            cr = self.repository.get(request_id)
+            if cr is None or not cr.branch:
+                await _heal_log("⚠ self-heal 跳过：CR 不存在或无 branch")
+                return
+            if not cr.preview_handle:
+                await _heal_log("⚠ self-heal 跳过：CR 无 preview_handle")
+                return
+
+            from orchestrator.adapters.types import RawRequest, RequestBrief
+
+            err_text = _format_self_heal_errors(errors)
+            await _heal_log("▸ 用错误堆栈做 hint，在同 branch 上让 AI 改一轮...")
+
+            raw = RawRequest(
+                url=cr.url,
+                screenshot_b64=cr.screenshot_b64 or "",
+                box_coords=cr.box_coords or {},
+                viewport=cr.viewport or {},
+                request_text=cr.request_text,
+                attachments=list(cr.attachments or []),
+            )
+            brief = RequestBrief(
+                original_text=cr.request_text,
+                clarifications=[{
+                    "question": "页面打开后浏览器报了运行时错误",
+                    "answer": err_text,
+                }],
+            )
+
+            locate_result = await self.stack_adapter.locate(raw.url)
+            ctx = await self.stack_adapter.context_pack(locate_result, raw, brief)
+            ctx.log = _heal_log
+            ctx.mode = "refine"
+            ctx.base_branch = cr.branch
+            await self._maybe_compact_history(request_id, ctx, log=lambda _p, l: _heal_log(l))
+
+            run_result = await self.dev_runner.run(self.repo_path, cr.branch, ctx)
+            if not run_result.changed:
+                await _heal_log("⚠ self-heal 结束：AI 未产出代码改动")
+                return
+
+            # 把 host 的新源码 docker cp 进既有容器，Vite HMR 接住。
+            try:
+                refresh = getattr(self.preview_adapter, "refresh_files", None)
+                if callable(refresh):
+                    await refresh(cr.preview_handle, self.repo_path, log=_heal_log)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "self-heal refresh_files 失败 cr=%s（不阻塞）",
+                    request_id, exc_info=True,
+                )
+                await _heal_log("⚠ refresh 容器源码失败，业务员手动 hard refresh 即可")
+
+            await _heal_log("✓ self-heal 完成，已 commit + 同步进容器，刷新页面试试")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("self-heal 失败 cr=%s（不影响 preview）", request_id, exc_info=True)
+            try:
+                await _heal_log(f"⚠ self-heal 失败（不影响现有 preview）：{type(exc).__name__}: {exc}")
+            except Exception:  # noqa: BLE001
+                pass
 
     # ── Plan 10 Task 5: chat_only 路径 ──────────────────────────────
 
