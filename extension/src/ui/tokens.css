@@ -1118,35 +1118,18 @@ code { font-family: var(--mono); font-size: 0.9em; }
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--surface-2);
-  padding: 0;
-  overflow: hidden;
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 10px;
 }
-.settings-group > summary {
-  cursor: pointer;
-  padding: 10px 12px;
+.settings-group-title {
+  margin: 0 0 2px;
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.1em;
   color: var(--ink);
   text-transform: uppercase;
-  background: var(--surface-2);
-  list-style: none;
-  display: flex; align-items: center; gap: 8px;
-  user-select: none;
-}
-.settings-group > summary::-webkit-details-marker { display: none; }
-.settings-group > summary::before {
-  content: "▸";
-  color: var(--ink-faint);
-  font-size: 10px;
-  transition: transform var(--t-fast);
-}
-.settings-group[open] > summary::before { transform: rotate(90deg); }
-.settings-group > .settings-group-body {
-  padding: 12px;
-  display: grid;
-  gap: 10px;
-  border-top: 1px solid var(--line-soft);
+  font-weight: 500;
 }
 
 /* light 主题下 fail-card 文字色调亮一档（容易读） */

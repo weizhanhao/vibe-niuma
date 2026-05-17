@@ -410,9 +410,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         <p className="wizard-error" role="alert">{loadError}</p>
       )}
 
-      {/* 分组 1：服务器连接 */}
-      <details open className="settings-group">
-        <summary>服务器连接</summary>
+      {/* 分组 1：服务器连接（Plan 9 起：分组永久展开，外层 .app-body 一个滚动条统一滚） */}
+      <section className="settings-group">
+        <h4 className="settings-group-title">服务器连接</h4>
         <div className="field">
           <div className="field-label-row">
             <span className="field-label">Orchestrator URL</span>
@@ -437,11 +437,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) => update('adminToken', e.target.value)}
           />
         </div>
-      </details>
+      </section>
 
-      {/* 分组 2：AI 模型（默认折叠） */}
-      <details className="settings-group">
-        <summary>AI 模型</summary>
+      {/* 分组 2：AI 模型 */}
+      <section className="settings-group">
+        <h4 className="settings-group-title">AI 模型</h4>
         <div className="field">
           <div className="field-label-row">
             <span className="field-label">Dev Runner</span>
@@ -480,11 +480,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) => update('visionModel', e.target.value)}
           />
         </div>
-      </details>
+      </section>
 
       {/* 分组 3：API key */}
-      <details className="settings-group">
-        <summary>API Key</summary>
+      <section className="settings-group">
+        <h4 className="settings-group-title">API Key</h4>
         <ApiKeyField
           label="DeepSeek API Key"
           ariaLabel="DeepSeek API Key"
@@ -517,11 +517,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         />
         {/* TODO(plan6 后续)：让用户主动清空已设置的 key（PUT null）。
             MVP 暂不支持，避免与「未输入 = 保持现状」语义冲突。 */}
-      </details>
+      </section>
 
       {/* 分组 4：项目路径 */}
-      <details className="settings-group">
-        <summary>项目路径</summary>
+      <section className="settings-group">
+        <h4 className="settings-group-title">项目路径</h4>
         <div className="field">
           <div className="field-label-row">
             <span className="field-label">Demo Repo Path</span>
@@ -546,7 +546,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) => update('previewBackendUrl', e.target.value)}
           />
         </div>
-      </details>
+      </section>
 
       {/* 同步状态文案 */}
       {saveStatus.kind === 'pending' && (
