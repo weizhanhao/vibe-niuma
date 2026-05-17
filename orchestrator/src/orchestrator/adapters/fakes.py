@@ -119,3 +119,12 @@ class FakePreviewAdapter:
 
     async def teardown(self, instance: PreviewInstance) -> None:
         self.live_handles.discard(instance.handle)
+
+    async def refresh_files(
+        self, handle: str, repo_path: str, *, log=None,
+    ) -> None:
+        """Plan 10：refine_cr 把 host frontend/src 同步进容器（Vite HMR）。
+        fake 只记录被调用的 handle，不做真正同步。"""
+        if not hasattr(self, "refreshed_handles"):
+            self.refreshed_handles: list[tuple[str, str]] = []
+        self.refreshed_handles.append((handle, repo_path))

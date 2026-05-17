@@ -561,8 +561,23 @@ class Pipeline:
                 raise _PhaseError("coding", "no-changes", run_result.log or "")
             self.repository.set_branch(request_id, base.branch)
 
-            # 走 FSM building → preview-ready；实际不调 preview_adapter（容器热重载）
+            # 走 FSM building → preview-ready
             await self._set_state(request_id, State.BUILDING)
+            # 关键：把 host 的新源码 docker cp 进 base 容器，Vite HMR 才能接住。
+            # 容器没 bind-mount → 不同步看不到改动。失败不阻塞（业务员 hard refresh 也行）。
+            if base.preview_handle:
+                try:
+                    refresh = getattr(self.preview_adapter, "refresh_files", None)
+                    if callable(refresh):
+                        await refresh(
+                            base.preview_handle, self.repo_path,
+                            log=_make_log_sink(bus, request_id, "building"),
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "refine refresh_files 失败 cr=%s（不阻塞，业务员可 hard refresh）",
+                        request_id, exc_info=True,
+                    )
             self.repository.set_preview(
                 request_id,
                 url=base.preview_url or "",

@@ -177,6 +177,41 @@ class DockerPreviewAdapter:
             raise RuntimeError(f"compose 预览在 {_HEALTH_TIMEOUT}s 内未变 healthy: {url}")
         return PreviewInstance(preview_id=preview_id, url=url, handle=project_name)
 
+    # ── refine：把 host frontend/src/ 同步进容器，让 Vite HMR 接住 ──────
+    async def refresh_files(
+        self, handle: str, repo_path: str, *, log: LogSink | None = None,
+    ) -> None:
+        """refine_cr 路径：dev_runner 改了 host 上的源文件后调一次，
+        用 `docker cp` 把更新的 frontend/src/ 同步进运行中的容器，
+        Vite dev server 的 file watcher 会触发 HMR。
+
+        约定（demo 项目）：容器把前端代码放在 /app/src（Dockerfile 里
+        `COPY frontend/ /app/`），主机源码在 `<repo>/frontend/src/`。
+        不存在 frontend/src 就 noop（多仓 / 非前端项目）。
+
+        compose 模式：handle 是 project_name，找容器名要查；这里只支持单 Dockerfile
+        模式（handle = container 名）。compose 模式留后续做。
+        """
+        if handle.startswith(_COMPOSE_HANDLE_PREFIX):
+            if log is not None:
+                await log("▸ refresh_files: compose 模式暂未支持，跳过")
+            return
+        src = Path(repo_path) / "frontend" / "src"
+        if not src.exists():
+            if log is not None:
+                await log("▸ refresh_files: 仓库无 frontend/src，跳过")
+            return
+        if log is not None:
+            await log(f"▸ docker cp frontend/src → {handle}:/app/src ...")
+        rc, out = await self._run_streaming(
+            ["docker", "cp", f"{src}/.", f"{handle}:/app/src/"],
+            cwd=None, timeout=60, log=log,
+        )
+        if rc != 0:
+            # 同步失败不致命 —— 业务员 hard refresh 也能看到。但要 warn。
+            if log is not None:
+                await log(f"⚠ docker cp 失败 rc={rc}：{out[-200:]}")
+
     # ── teardown ────────────────────────────────────────────────────
     async def teardown(self, instance: PreviewInstance) -> None:
         handle = instance.handle

@@ -232,7 +232,9 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     Record<string, ConversationMessage[]>
   >({});
 
-  // 拉一次完整 conversation list，用来给历史下拉 + tab 标题
+  // 拉完整 conversation list（首次 + submitTick 变化时 = 发完一条 message 后），
+  // 用来给历史下拉 + tab 标题。server 会在首条 user message 时自动写 title，
+  // 这里 refresh 让 tab 从「(未命名)」变成真实标题。
   useEffect(() => {
     void listConversations()
       .then((items) => {
@@ -241,7 +243,7 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
         setConvCache(cache);
       })
       .catch(() => { /* offline / 未配 orchestrator */ });
-  }, []);
+  }, [submitTick]);
 
   // 听 SW 推过来的「框选截屏完成」广播，把 attachment 加到输入栏 chip
   useEffect(() => {
