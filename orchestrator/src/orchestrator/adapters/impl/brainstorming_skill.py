@@ -52,6 +52,90 @@ MAX_SOFT_ROUNDS = 8
 STOP_CLARIFY_SENTINEL = "__STOP_CLARIFY__"
 
 
+# ── 服务器侧硬编码 precheck ──────────────────────────────────────────
+# 实测发现 qwen-vl-plus 经常忽略 prompt 里「必须问 X 才能开干」的约束，
+# 直接 done=true 跳过澄清。这里加一道**关键词触发器**：业务员说「不喜欢 X /
+# 改掉 X / 好看点」这类主观或缺目标的需求 → 直接构造 done=false 的硬编码
+# 问题+选项，**跳过 LLM 调用**，省 1-3s + 拿到稳定输出。
+#
+# 只在第一轮（prev_answers 为空）生效；第二轮往后让 LLM 接管，因为它能拿到
+# 上一轮答案做精细判断。
+_VAGUE_SUBJECTIVE_WORDS: tuple[str, ...] = (
+    "好看", "不好看", "丑", "更精致", "精致", "太单调", "单调",
+    "更现代", "现代化", "更优雅", "优雅", "不舒服", "看着难受",
+    "看着不舒服", "审美", "美观", "有点 low", "low 了",
+)
+
+_REMOVE_INTENT_WORDS: tuple[str, ...] = (
+    "不喜欢", "不想要", "不想看", "去掉", "删掉", "删了", "改掉",
+    "换掉", "替换掉", "去除", "拿掉", "不要这",
+)
+
+# 出现这些「明确目标」关键词 → 视为业务员已经说清楚，**跳过 precheck**
+# 让 LLM 正常判断（可能直接 done=true 进入实施）。
+_EXPLICIT_TARGET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"#[0-9a-fA-F]{3,8}"),                # 色值 #1890ff
+    re.compile(r"\d+\s*(?:px|pt|em|rem|%)"),         # 字号/尺寸 16px
+    re.compile(r"换成[^\s,，。！？]{1,20}"),          # 「换成 横排按钮」
+    re.compile(r"改成[^\s,，。！？]{1,20}"),          # 「改成 蓝色」
+    re.compile(r"用[^\s,，。！？]{1,20}代替"),        # 「用 tab 代替」
+    re.compile(r"改为[^\s,，。！？]{1,20}"),          # 「改为 ...」
+    re.compile(r"做成[^\s,，。！？]{1,20}"),          # 「做成 卡片样式」
+)
+
+
+def _deterministic_precheck(text: str) -> dict | None:
+    """关键词 precheck：覆盖 LLM 经常漏判的 vague pattern。
+
+    返回硬编码 plan dict 或 None（None = 走 LLM 路径）。
+
+    匹配规则：
+    - 业务员已给明确目标（色值 / 尺寸 / 「换成 X」）→ 返 None，让 LLM 自由判
+    - 主观词「好看 / 丑 / 单调」 → 强制问「想往哪个方向调」
+    - 移除/替换词「不喜欢 / 改掉 / 去掉」+ 没目标 → 强制问「想换成什么」
+    - 其他 → None
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+
+    # 业务员已经说了具体目标 → 不 precheck，让 LLM 决定
+    if any(p.search(t) for p in _EXPLICIT_TARGET_PATTERNS):
+        return None
+
+    has_remove = any(w in t for w in _REMOVE_INTENT_WORDS)
+    has_vague = any(w in t for w in _VAGUE_SUBJECTIVE_WORDS)
+
+    # 既有「改掉」又有主观词（「改掉这个不好看的下拉框」）→ 优先问「想换成什么」
+    if has_remove:
+        return {
+            "weight": "light",
+            "done": False,
+            "question": "想换成什么样的？或者直接去掉？",
+            "options": [
+                "换成横排按钮组（一排可点的选项）",
+                "换成顶部 tab 切换",
+                "完全去掉这块",
+                "我自己描述",
+            ],
+        }
+
+    if has_vague:
+        return {
+            "weight": "light",
+            "done": False,
+            "question": "具体哪里不满意？想往哪个方向调？",
+            "options": [
+                "颜色搭配（配色 / 对比 / 主色调）",
+                "布局留白（间距 / 信息密度 / 区块排布）",
+                "字体字号（字号大小 / 粗细 / 行高）",
+                "我自己描述",
+            ],
+        }
+
+    return None
+
+
 class BrainstormingSkill:
     """实现 InteractionSkill Protocol。"""
 
@@ -171,8 +255,20 @@ class BrainstormingSkill:
         channel: InteractionChannel | None = None,
         prev_answers: list[dict] | None = None,
     ) -> dict:
-        prompt = self._build_plan_prompt(raw, repo_doc, prev_answers=prev_answers or [])
+        prev_answers = prev_answers or []
         log = getattr(channel, "log", None) if channel is not None else None
+
+        # 第一轮硬编码 precheck：vague/缺目标的需求直接返硬编码问题，跳过 LLM
+        # （LLM 在这类 case 上经常违反 prompt 约束直接 done=true）。
+        # 第二轮后让 LLM 接管，因为它能看到累计的 prev_answers。
+        if not prev_answers:
+            deterministic = _deterministic_precheck(raw.request_text)
+            if deterministic is not None:
+                if callable(log):
+                    await log("✓ 触发硬编码澄清规则（跳过 LLM）")
+                return deterministic
+
+        prompt = self._build_plan_prompt(raw, repo_doc, prev_answers=prev_answers)
 
         # Plan 10 Task 9：多图（>1）走 complete_vision_multi；单图走原 single 接口
         # （保留旧测试 + 老 client 路径不变）。raw.images() 已统一兜底逻辑。

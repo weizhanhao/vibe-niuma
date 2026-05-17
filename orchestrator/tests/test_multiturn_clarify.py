@@ -190,6 +190,85 @@ async def test_clarify_first_round_done_true_no_ask():
     assert brief.clarifications == []
 
 
+# ── 服务器侧硬编码 precheck（绕开 LLM 不听话）─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_precheck_remove_intent_forces_ask_without_llm_first_round():
+    """业务员说「不喜欢 X」「改掉 X」但没说换成什么 → 第一轮硬编码问「想换成
+    什么」，**不调 LLM**。业务员 STOP 后 loop 结束，LLM 始终未被触发。"""
+    llm = _ScriptedLLM([_plan_round(True)])  # 这条永远不应被消费
+    channel = _ScriptedChannel(answers=[STOP_CLARIFY_SENTINEL])
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+
+    brief = await skill.clarify(
+        _raw("我觉得订单状态的搜索我不喜欢下拉框，感觉不好看"), channel,
+    )
+
+    # 第一轮 precheck 命中 → LLM 完全没被调
+    assert llm.call_count == 0
+    # channel.ask 被调一次，options 来自硬编码
+    assert len(channel.ask_calls) == 1
+    q, options = channel.ask_calls[0]
+    assert "换成" in q or "去掉" in q
+    assert options is not None and len(options) >= 2
+    assert options[-1] == "我自己描述"
+    # 业务员选 STOP → 没产生 clarifications
+    assert brief.clarifications == []
+
+
+@pytest.mark.asyncio
+async def test_precheck_vague_aesthetic_forces_ask_without_llm_first_round():
+    """业务员说「好看点 / 太单调」纯主观词 → 第一轮硬编码问「具体哪里不满意」，
+    不调 LLM。"""
+    llm = _ScriptedLLM([_plan_round(True)])
+    channel = _ScriptedChannel(answers=[STOP_CLARIFY_SENTINEL])
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+
+    await skill.clarify(_raw("整体改好看点，现在太单调了"), channel)
+
+    assert llm.call_count == 0
+    assert len(channel.ask_calls) == 1
+    q, options = channel.ask_calls[0]
+    assert "哪里" in q or "方向" in q
+    assert options is not None and options[-1] == "我自己描述"
+
+
+@pytest.mark.asyncio
+async def test_precheck_explicit_target_skips_precheck_uses_llm():
+    """业务员给了明确目标（色值 / 「换成 X」）→ 不 precheck，让 LLM 决定。"""
+    llm = _ScriptedLLM([_plan_round(True)])  # LLM 说直接干
+    channel = _ScriptedChannel()
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+
+    brief = await skill.clarify(_raw("按钮背景色改成 #1890ff"), channel)
+
+    # LLM 被调用了（precheck 没拦）
+    assert llm.call_count == 1
+    # LLM 说 done=true → 没问业务员
+    assert len(channel.ask_calls) == 0
+    assert brief.clarifications == []
+
+
+@pytest.mark.asyncio
+async def test_precheck_only_fires_first_round_llm_takes_over_after():
+    """precheck 只第一轮生效。业务员答完后，第二轮起 LLM 接管。"""
+    # LLM 第二轮（业务员答了第一题之后）说 done=true
+    llm = _ScriptedLLM([_plan_round(True)])
+    channel = _ScriptedChannel(answers=["换成顶部 tab 切换"])
+    skill = BrainstormingSkill(llm=llm, repo_initializer=None)
+
+    brief = await skill.clarify(_raw("把下拉框改掉"), channel)
+
+    # 第一轮 precheck（LLM 没调），第二轮 LLM 调一次返 done=true
+    assert llm.call_count == 1
+    assert len(channel.ask_calls) == 1  # 只有 precheck 那一问
+    assert len(brief.clarifications) == 1
+    assert brief.clarifications[0]["answer"] == "换成顶部 tab 切换"
+    # 第二轮 LLM 的 prompt 应带上第一轮的 Q&A
+    assert "换成顶部 tab" in llm.prompts[0]
+
+
 # ── heavy 路径仍走 variants 不进 loop ─────────────────────────────
 
 
