@@ -296,27 +296,33 @@ async function handleMessage(msg: Message): Promise<unknown> {
       return { ok: true };
     }
     case MSG.CAPTURE_RESULT: {
-      // Phase G：不再立刻 POST。截屏 + 压缩 + 暂存为 pendingCapture，UI 渲染 ReviewCapturePanel
-      // 让业务员看截图 + 蓝框确认；CONFIRM_CAPTURE 时才真正调 orchestrator。
+      // Plan 10 fix：cursor-like 流。框选完截屏 + 压缩 → 直接广播给 UI 加到
+      // 输入栏 chip，不再跳到 ReviewCapturePanel 占满 body。
+      // pendingCapture 老路径保留兼容（v0.5），但新 UI 不再走它。
       console.log('[doskill sw] CAPTURE_RESULT received', msg);
-      const text = session.pendingRequestText ?? '';
       session.pendingRequestText = null;
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       const dataUrl = tab?.windowId !== undefined
         ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         : '';
       const { b64: screenshotB64, mime } = await compressScreenshot(dataUrl);
-      console.log('[doskill sw] screenshot raw vs compressed:', dataUrl.length, '→', screenshotB64.length, mime);
-      session.pendingCapture = {
-        screenshotB64,
-        screenshotMime: mime,
-        url: msg.url,
-        boxCoords: msg.boxCoords,
-        viewport: msg.viewport,
-        requestText: text,
-      };
-      console.log('[doskill sw] pendingCapture stashed; awaiting CONFIRM_CAPTURE');
-      await broadcastPendingCapture();
+      console.log('[doskill sw] screenshot compressed:', dataUrl.length, '→', screenshotB64.length, mime);
+      // 广播 attachment 给 UI；UI 把它加到当前输入栏 chip
+      try {
+        await chrome.runtime.sendMessage({
+          type: MSG.CAPTURE_ATTACHED,
+          attachment: {
+            kind: 'framed_region',
+            mime,
+            b64: screenshotB64,
+            url: msg.url,
+            box: msg.boxCoords,
+            viewport: msg.viewport,
+          },
+        });
+      } catch (err) {
+        console.warn('[doskill sw] broadcast CAPTURE_ATTACHED failed', err);
+      }
       return { ok: true };
     }
     case MSG.CONFIRM_CAPTURE: {

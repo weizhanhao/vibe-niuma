@@ -101,7 +101,10 @@ afterEach(() => {
   // 不动 vi.restoreAllMocks() —— 会撤销顶层 vi.mock；保留 mock 模块。
 });
 
-describe('service-worker Phase G review flow', () => {
+// [Plan 10 obsolete] Phase G 的 review-then-confirm 流被 cursor-like 的
+// 「框选 → 直接进输入栏 chip → SUBMIT_MESSAGE」替代。pendingCapture 路径在 SW
+// 里还存在（向后兼容 v0.5），但 UI 不再触发它。新流程覆盖见 service-worker-messages.test.ts.
+describe.skip('service-worker Phase G review flow', () => {
   it('CAPTURE_RESULT does NOT POST orchestrator; stashes pendingCapture', async () => {
     await importServiceWorker();
     await send({ type: 'UI_START_CAPTURE', requestText: '改红色' });

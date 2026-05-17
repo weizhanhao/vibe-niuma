@@ -100,6 +100,13 @@ export interface SubmitMessageMsg {
   conversation_id?: string;
 }
 
+/** SW → UI：框选完截屏 + 压缩好，作为 attachment 推给 UI 加到输入栏 chip。
+ *  替代老的 PENDING_CAPTURE_CHANGED → ReviewCapturePanel 流程。 */
+export interface CaptureAttachedMsg {
+  type: 'CAPTURE_ATTACHED';
+  attachment: Attachment;
+}
+
 export type Message =
   | CaptureResultMsg | CaptureCancelMsg | StartCaptureMsg
   | UiStartCaptureMsg | SubmitAnswerMsg | MergeMsg | DiscardMsg | RetryMsg
@@ -107,7 +114,7 @@ export type Message =
   | RequestStateChangedMsg | MirrorsChangedMsg | RequestStateQueryMsg
   | ConfirmCaptureMsg | RetakeCaptureMsg | GetPendingCaptureMsg
   | PendingCaptureChangedMsg | SubmitTextOnlyMsg
-  | SetConversationMsg | SubmitMessageMsg;
+  | SetConversationMsg | SubmitMessageMsg | CaptureAttachedMsg;
 
 export const MSG = {
   START_CAPTURE: 'START_CAPTURE' as const,
@@ -135,4 +142,6 @@ export const MSG = {
   // Plan 10 Task 13：多轮 message ingress 走 POST /messages
   SET_CONVERSATION: 'SET_CONVERSATION' as const,
   SUBMIT_MESSAGE: 'SUBMIT_MESSAGE' as const,
+  // 框选完直接推 Attachment 给 UI（替代 ReviewCapturePanel 接管 body）
+  CAPTURE_ATTACHED: 'CAPTURE_ATTACHED' as const,
 };

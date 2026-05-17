@@ -129,24 +129,39 @@ export function ChatInputBar({
       </div>
       {attachments.length > 0 && (
         <div className="attachment-tray">
-          {attachments.map((a, i) => (
-            <span key={i} className="attachment-chip" title={a.name ?? a.kind}>
-              <span className="attachment-chip__icon" aria-hidden="true">
-                {a.kind === 'attached_file' ? '📎' : '🖼'}
+          {attachments.map((a, i) => {
+            const isImage = a.mime.startsWith('image/');
+            const dataUrl = `data:${a.mime};base64,${a.b64}`;
+            return (
+              <span key={i} className={`attachment-chip${isImage ? ' is-image' : ''}`}
+                    title={a.name ?? a.kind}>
+                {isImage ? (
+                  <a
+                    href={dataUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="attachment-chip__thumb"
+                    aria-label={`查看附件 ${i + 1} 原图`}
+                  >
+                    <img src={dataUrl} alt="" />
+                  </a>
+                ) : (
+                  <span className="attachment-chip__icon" aria-hidden="true">📎</span>
+                )}
+                <span className="attachment-chip__name">
+                  {a.name ?? (isImage ? '截图' : a.kind)}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`移除附件 ${i + 1}`}
+                  onClick={() => removeAttachment(i)}
+                  className="attachment-chip__close"
+                >
+                  ×
+                </button>
               </span>
-              <span className="attachment-chip__name">
-                {a.name ?? a.kind}
-              </span>
-              <button
-                type="button"
-                aria-label={`移除附件 ${i + 1}`}
-                onClick={() => removeAttachment(i)}
-                className="attachment-chip__close"
-              >
-                ×
-              </button>
-            </span>
-          ))}
+            );
+          })}
         </div>
       )}
       <div className="chat-input-row">

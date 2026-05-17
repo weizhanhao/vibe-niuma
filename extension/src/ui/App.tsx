@@ -243,6 +243,21 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
       .catch(() => { /* offline / 未配 orchestrator */ });
   }, []);
 
+  // 听 SW 推过来的「框选截屏完成」广播，把 attachment 加到输入栏 chip
+  useEffect(() => {
+    const listener = (msg: unknown) => {
+      const m = msg as { type?: string; attachment?: Attachment } | undefined;
+      if (m?.type === 'CAPTURE_ATTACHED' && m.attachment) {
+        setAttachments((prev) => {
+          if (prev.length >= 3) return prev;  // 业务上限
+          return [...prev, m.attachment!];
+        });
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener as (msg: unknown) => void);
+    return () => chrome.runtime.onMessage.removeListener(listener as (msg: unknown) => void);
+  }, []);
+
   // 切 tab 时给 SW 发 SET_CONVERSATION（已经由 useTabs 自动做了），同时
   // 拉 active conversation messages 给 ChatStream
   const activeConvId = tabsState.activeTabId;
@@ -353,10 +368,9 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   // 的状态由 InlineCard 在 stream 里显示，body 不再需要专门 StatusPanel。
   // FIX A1：判断 panel 用 tabState（当前 tab 的 CR），不用 SW 全局 state，
   // 避免「切 tab body 还卡在上一个 CR 的 FailedPanel」。
+  // Plan 10 fix：框选截屏走 CAPTURE_ATTACHED → 输入栏 chip，不再跳 ReviewCapturePanel。
   let body: React.ReactNode = null;
-  if (pendingCapture) {
-    body = <ReviewCapturePanel pendingCapture={pendingCapture} />;
-  } else if (tabState?.pendingVariants) {
+  if (tabState?.pendingVariants) {
     body = <VariantsPanel state={tabState} />;
   } else if (tabState?.pendingQuestion) {
     body = <ClarifyPanel state={tabState} />;
@@ -384,10 +398,11 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     : undefined;
 
   // pill 也按 tabState（当前 tab 的 CR），切 tab 时 pill 跟着切
-  const pill = statusPillFromState(tabState ? tabState.state : null, !!pendingCapture);
+  // Plan 10 fix：framing 不再阻塞 body，pill 也不再显 SELECTING（cursor 心智下框选只是加 chip）
+  const pill = statusPillFromState(tabState ? tabState.state : null, false);
 
-  // ReviewCapturePanel 自有输入框，再放底部 ChatInputBar 是噪音；其他都显示。
-  const showInputBar = !pendingCapture;
+  // 输入栏始终显示（框选已经走 chip 路径，不再有 ReviewCapturePanel 接管 body）
+  const showInputBar = true;
 
   return (
     <div className="app">
