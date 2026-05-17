@@ -68,14 +68,11 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
   const modeBadge = MODE_LABEL[crMode] ?? crMode;
   const isRunning = RUNNING_STATES.has(mirror.state);
   const hasLogs = mirror.logs.length > 0;
-  // 跑中默认展开；终态默认收起（业务员想查再点）
-  const [expanded, setExpanded] = useState(isRunning);
+  // 业务员视角：默认看「在做什么」（state 标签 + 计时器 + preview 按钮），
+  // 详细 SSE 日志一律收进「思考过程 ▾」可折叠，避免主流被噪音淹没。
+  // 跑中 / 终态都默认收起 —— 业务员需要排查时点开。
+  const [expanded, setExpanded] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-
-  // 跑中 → 跟随状态自动展开；终态 → 收起一次后业务员可以再点开
-  useEffect(() => {
-    if (isRunning) setExpanded(true);
-  }, [isRunning]);
 
   // ── 运行时间 ──
   // 起点：首条 log 时间戳（CR 第一次出活动）；没 log 用 lastActivity 兜底
@@ -128,7 +125,24 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
         )}
       </div>
 
-      {/* 跑中 + 已展开 + 有 logs → 显示流；跑中无 logs → 准备中占位 */}
+      {/* 「思考过程 ▾」可折叠 —— 跑中 / 终态都默认收起，业务员需要排查时点开 */}
+      {hasLogs && (
+        <button
+          type="button"
+          className="inline-card__activity-toggle"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+        >
+          <span className="inline-card__activity-toggle-icon" aria-hidden="true">
+            {expanded ? '▾' : '▸'}
+          </span>
+          思考过程
+          {isRunning && <span className="inline-card__activity-toggle-count">· 进行中</span>}
+          {!isRunning && (
+            <span className="inline-card__activity-toggle-count">· {mirror.logs.length} 行</span>
+          )}
+        </button>
+      )}
       {expanded && hasLogs && (
         <div ref={logRef} className="inline-card__activity" role="log" aria-live="polite">
           {tailLogs.map((entry, i) => (
@@ -140,28 +154,8 @@ export function InlineCard({ mirror, crMode }: Props): React.ReactElement {
       )}
       {isRunning && !hasLogs && (
         <div className="inline-card__activity inline-card__activity--placeholder">
-          准备中...
+          AI 正在准备...
         </div>
-      )}
-      {/* 终态 + 有 logs + 收起 → 显示「查看运行日志 ▾」按钮 */}
-      {!isRunning && hasLogs && !expanded && (
-        <button
-          type="button"
-          className="inline-card__activity-toggle"
-          onClick={() => setExpanded(true)}
-        >
-          查看运行日志（{mirror.logs.length} 行）▾
-        </button>
-      )}
-      {/* 终态 + 已展开 → 显示「收起 ▴」 */}
-      {!isRunning && hasLogs && expanded && (
-        <button
-          type="button"
-          className="inline-card__activity-toggle"
-          onClick={() => setExpanded(false)}
-        >
-          收起日志 ▴
-        </button>
       )}
 
       {mirror.failPhase && (

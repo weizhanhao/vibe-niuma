@@ -1832,14 +1832,26 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .chat-stream__attachments {
   display: flex; flex-wrap: wrap; gap: 6px;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
+/* 截图缩略图：窄侧栏（≤400px）下原图常常撑爆气泡。统一缩到 chip 风格
+   ≤ 50% 气泡宽 + 高 60px + cover；ChatStream 给 img 加 onClick 弹原图。 */
 .chat-stream__att-img {
-  max-width: 200px; max-height: 140px;
+  width: 96px; height: 60px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
   display: block;
   background: var(--surface-2);
+  object-fit: cover;
+  cursor: zoom-in;
+  transition: border-color var(--t-fast), transform var(--t-fast);
+}
+.chat-stream__att-img:hover {
+  border-color: var(--accent-dim);
+  transform: scale(1.02);
+}
+.chat-stream__msg--user .chat-stream__att-img {
+  border-color: var(--bubble-user-line);
 }
 .chat-stream__att--file {
   display: inline-flex; align-items: center; gap: 4px;
@@ -1921,11 +1933,24 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .inline-card__activity-toggle {
   align-self: flex-start;
   appearance: none; border: none; background: transparent;
-  color: var(--ink-mute); font-size: 11px;
-  padding: 2px 6px; cursor: pointer; border-radius: var(--r-sm);
+  color: var(--ink-mute); font-size: 11.5px;
+  padding: 4px 8px 4px 4px; cursor: pointer; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 500;
+  transition: color var(--t-fast), background var(--t-fast);
 }
 .inline-card__activity-toggle:hover {
   color: var(--ink); background: var(--surface-2);
+}
+.inline-card__activity-toggle-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; font-size: 10px;
+  color: var(--ink-faint);
+}
+.inline-card__activity-toggle-count {
+  color: var(--ink-faint);
+  font-size: 11px;
+  margin-left: 2px;
 }
 .inline-card__preview {
   align-self: flex-start;

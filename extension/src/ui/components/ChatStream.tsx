@@ -3,8 +3,8 @@
 // 业务员视角：所有 message（user / ai / summary）按时间倒序铺在主体；
 // user message 若关联了 CR（user 发完 send → 后端起 pipeline → cr_id 写回），
 // 在该 user message 下面挂一张 InlineCard 显示该 CR 的实时状态 + preview link。
-import React, { useEffect, useRef } from 'react';
-import type { ConversationMessage, RequestStateMirror } from '../../lib/types';
+import React, { useEffect, useRef, useState } from 'react';
+import type { Attachment, ConversationMessage, RequestStateMirror } from '../../lib/types';
 import { InlineCard } from './InlineCard';
 
 interface Props {
@@ -13,6 +13,9 @@ interface Props {
 }
 
 export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
+  // 同界面 lightbox —— Chrome 扩展不让 data: URL 开新标签，所以做 in-panel modal
+  // （和 ChatInputBar 的 lightbox 同款，UX 一致）
+  const [lightboxAtt, setLightboxAtt] = useState<Attachment | null>(null);
   // 实际 scroll 容器是 .app-body（父级），不是 ChatStream 自己。用 bottom
   // sentinel + scrollIntoView 不依赖具体哪一层滚动，永远把哨兵推到可视区。
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -99,6 +102,7 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
                         src={`data:${a.mime};base64,${a.b64}`}
                         alt={a.name ?? '截图'}
                         loading="lazy"
+                        onClick={() => setLightboxAtt(a)}
                       />
                     );
                   })}
@@ -113,6 +117,29 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
         );
       })}
       <div ref={bottomRef} />
+
+      {lightboxAtt && (
+        <div
+          className="attachment-lightbox"
+          role="dialog"
+          aria-label="附件原图"
+          onClick={() => setLightboxAtt(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setLightboxAtt(null); }}
+          tabIndex={-1}
+        >
+          <button
+            type="button"
+            className="attachment-lightbox__close"
+            aria-label="关闭"
+            onClick={(e) => { e.stopPropagation(); setLightboxAtt(null); }}
+          >×</button>
+          <img
+            src={`data:${lightboxAtt.mime};base64,${lightboxAtt.b64}`}
+            alt={lightboxAtt.name ?? '附件原图'}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
