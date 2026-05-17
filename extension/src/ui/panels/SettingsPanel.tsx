@@ -386,8 +386,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       <div className="eyebrow">设置</div>
       <h3 className="title">配置 doskill</h3>
 
-      {/* 顶部状态栏 */}
-      <div className="settings-status-bar card">
+      {/* 顶部状态栏（不能用 .card —— .card 有 overflow:hidden 会裁内容） */}
+      <div className="settings-status-bar">
         <div>
           <div style={{ fontSize: '0.78rem', color: 'var(--ink-mute)' }}>上次同步</div>
           <div>{formatSyncTime(lastSyncedAt)}</div>

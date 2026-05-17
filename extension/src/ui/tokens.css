@@ -1093,13 +1093,16 @@ code { font-family: var(--mono); font-size: 0.9em; }
 /* ── settings panel ────────────────────────────────────────────── */
 .settings-panel { display: grid; gap: 12px; }
 .settings-status-bar {
-  /* 3 child（上次同步 / 服务端版本 / 重置按钮）：用 flex-wrap 让窄屏自动换行，
-     避免按钮被父 card 顶/底裁掉的 bug。 */
+  /* 自己声明 border/background，不用 .card —— .card 自带 overflow:hidden 会裁
+     子内容（上次同步 / 服务端版本 / 重置按钮）。flex-wrap 让窄屏按钮自动换行。 */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 16px;
   padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-soft);
