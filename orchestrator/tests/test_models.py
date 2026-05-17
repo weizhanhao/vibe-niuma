@@ -25,6 +25,11 @@ def test_change_request_has_expected_columns():
         # Plan 9 Task 1：所属 conversation 外键
         "repos",
         "conversation_id",
+        # Plan 10：多附件 + 三 mode 路径 + 失败自愈
+        "attachments",
+        "mode",
+        "refine_of",
+        "self_heal_attempts",
     }
 
 

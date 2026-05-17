@@ -107,8 +107,14 @@ def _ensure_schema_migrations(engine_) -> None:
     if engine_.dialect.name != "mysql":
         return
     desired_cols: list[tuple[str, str, str]] = [
+        # Plan 8/9 列
         ("change_requests", "repos", "JSON NULL"),
         ("change_requests", "conversation_id", "VARCHAR(32) NULL"),
+        # Plan 10 列
+        ("change_requests", "attachments", "JSON NULL"),
+        ("change_requests", "mode", "VARCHAR(16) NULL"),
+        ("change_requests", "refine_of", "VARCHAR(36) NULL"),
+        ("change_requests", "self_heal_attempts", "INT NOT NULL DEFAULT 0"),
     ]
     desired_indexes: list[tuple[str, str, str]] = [
         ("change_requests", "idx_change_requests_conversation_id", "conversation_id"),

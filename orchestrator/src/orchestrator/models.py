@@ -77,6 +77,16 @@ class ChangeRequest(Base):
     conversation_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("conversation.id"), nullable=True, index=True,
     )
+    # Plan 10：多附件（图 / PDF）的 JSON 数组；老 single screenshot_b64 字段保留兼容
+    attachments: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Plan 10：CR 走的路径模式；None 表示老 CR（一律视为 new_cr）。
+    # 'new_cr' = 完整 pipeline；'refine_cr' = 续上一 CR branch
+    # （'chat_only' 不产生 CR 不会写到这里）
+    mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Plan 10：refine_cr 关联的上一 CR id；non-refine 留 None
+    refine_of: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Plan 10 self_heal：CR 失败后 AI 自动 retry 的次数（≤ MAX_SELF_HEAL_ATTEMPTS=2）
+    self_heal_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
