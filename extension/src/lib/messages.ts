@@ -79,13 +79,32 @@ export interface SubmitTextOnlyMsg {
   requestText: string;
 }
 
+// Plan 10 Task 13：cursor-like 多轮 message ingress。SW 拿当前 active conversation_id
+// 调 POST /messages，后端意图分类后路由到 new_cr / refine_cr / chat_only。
+// 与老的 SUBMIT_TEXT_ONLY / CONFIRM_CAPTURE 并存（v0.5 兼容）；MainShell（Task 17）
+// 改造完后会切到 SUBMIT_MESSAGE。
+import type { Attachment, IntentMode } from './types';
+
+export interface SetConversationMsg {
+  type: 'SET_CONVERSATION';
+  id: string | null;
+}
+
+export interface SubmitMessageMsg {
+  type: 'SUBMIT_MESSAGE';
+  text: string;
+  attachments?: Attachment[];
+  override_mode?: IntentMode;
+}
+
 export type Message =
   | CaptureResultMsg | CaptureCancelMsg | StartCaptureMsg
   | UiStartCaptureMsg | SubmitAnswerMsg | MergeMsg | DiscardMsg | RetryMsg
   | SetActiveMsg | DeleteConversationMsg | NewConversationMsg | GetMirrorsMsg
   | RequestStateChangedMsg | MirrorsChangedMsg | RequestStateQueryMsg
   | ConfirmCaptureMsg | RetakeCaptureMsg | GetPendingCaptureMsg
-  | PendingCaptureChangedMsg | SubmitTextOnlyMsg;
+  | PendingCaptureChangedMsg | SubmitTextOnlyMsg
+  | SetConversationMsg | SubmitMessageMsg;
 
 export const MSG = {
   START_CAPTURE: 'START_CAPTURE' as const,
@@ -110,4 +129,7 @@ export const MSG = {
   PENDING_CAPTURE_CHANGED: 'PENDING_CAPTURE_CHANGED' as const,
   // Phase G+：直接提交（不框选）；SW 截当前页 + 空 box，走 Review。
   SUBMIT_TEXT_ONLY: 'SUBMIT_TEXT_ONLY' as const,
+  // Plan 10 Task 13：多轮 message ingress 走 POST /messages
+  SET_CONVERSATION: 'SET_CONVERSATION' as const,
+  SUBMIT_MESSAGE: 'SUBMIT_MESSAGE' as const,
 };

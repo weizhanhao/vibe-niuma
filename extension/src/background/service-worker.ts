@@ -57,6 +57,9 @@ interface SessionState {
   unsubscribe: (() => void) | null;
   // 当前已订阅的 mirror.id —— 避免 active 未变时重复 attach。
   subscribedId: string | null;
+  // Plan 10 Task 13：当前 active conversation。SUBMIT_MESSAGE 用它做
+  // POST /messages 的 convId。内存态：SW 死了 UI 必须重发 SET_CONVERSATION。
+  activeConversationId: string | null;
 }
 
 const session: SessionState = {
@@ -66,6 +69,7 @@ const session: SessionState = {
   activeId: null,
   unsubscribe: null,
   subscribedId: null,
+  activeConversationId: null,
 };
 
 // MV3 service worker 30s 闲置即被 Chrome kill。多轮澄清等用户答题时 SW 必死。
@@ -469,6 +473,52 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.GET_REQUEST_STATE: {
       const active = session.activeId ? session.mirrors[session.activeId] ?? null : null;
       return active;
+    }
+    // ── Plan 10 Task 13: cursor-like 多轮 message ingress ──────────
+    case MSG.SET_CONVERSATION: {
+      session.activeConversationId = msg.id;
+      return { ok: true };
+    }
+    case MSG.SUBMIT_MESSAGE: {
+      if (!session.activeConversationId) {
+        return { ok: false, error: '请先设置 active conversation（SET_CONVERSATION）' };
+      }
+      const client = await getOrchestratorClient();
+      if (!client) {
+        return { ok: false, error: '请先在设置里配置 orchestrator URL' };
+      }
+      let resp;
+      try {
+        resp = await client.postMessage(session.activeConversationId, {
+          text: msg.text,
+          ...(msg.attachments ? { attachments: msg.attachments } : {}),
+          ...(msg.override_mode ? { override_mode: msg.override_mode } : {}),
+        });
+      } catch (err) {
+        console.error('[doskill sw] SUBMIT_MESSAGE failed', err);
+        return { ok: false, error: String(err) };
+      }
+      // chat_only：server 已经写入 ai message；UI 拉 GET /conversations 自己刷
+      if (resp.mode === 'chat_only' || !resp.cr_id) {
+        return { ok: true, mode: resp.mode, message_id: resp.message_id,
+                 ai_message_id: resp.ai_message_id ?? null };
+      }
+      // new_cr / refine_cr：拉 CR snapshot 起 mirror + 订阅 SSE
+      try {
+        const cr = await client.getChangeRequest(resp.cr_id);
+        const next = initialState(cr);
+        session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
+        session.activeId = next.id;
+        detach();
+        await attachSubscription(next.id);
+        maintainKeepalive(session.mirrors);
+        await persist();
+        await broadcastActive();
+        await broadcastList();
+      } catch (err) {
+        console.warn('[doskill sw] SUBMIT_MESSAGE post-create snapshot failed', err);
+      }
+      return { ok: true, mode: resp.mode, cr_id: resp.cr_id, message_id: resp.message_id };
     }
     default:
       return undefined;

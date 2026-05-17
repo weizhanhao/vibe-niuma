@@ -7,12 +7,31 @@
 //
 // /change-requests/* 是用户面 API，不要求 admin token；token 参数留着是为以后 SSE 需要
 // 鉴权时不破坏 API 形状，目前不附带 header。
-import type { ChangeRequestOut, RawRequestPayload, SSEEvent } from '../lib/types';
+import type {
+  Attachment, ChangeRequestOut, IntentMode, RawRequestPayload, SSEEvent,
+} from '../lib/types';
 
 export class HttpError extends Error {
   constructor(public status: number, public body: string) {
     super(`HTTP ${status}: ${body.slice(0, 200)}`);
   }
+}
+
+// Plan 10 Task 13：POST /conversations/{conv_id}/messages 入参/出参契约
+export interface PostMessageBody {
+  text: string;
+  attachments?: Attachment[];
+  override_mode?: IntentMode;
+}
+
+export interface PostMessageResponse {
+  message_id: string;
+  mode: IntentMode;
+  cr_id?: string | null;
+  ai_message_id?: string | null;
+  confidence: number;
+  is_unsure: boolean;
+  reason: string;
 }
 
 export interface OrchestratorClient {
@@ -23,6 +42,13 @@ export interface OrchestratorClient {
   merge(id: string): Promise<ChangeRequestOut>;
   discard(id: string): Promise<ChangeRequestOut>;
   retry(id: string): Promise<ChangeRequestOut>;
+  /**
+   * Plan 10 Task 13：统一 message ingress。
+   * 后端意图分类后路由到 new_cr / refine_cr / chat_only。
+   * - chat_only：response.cr_id 为 null，ai_message_id 是 AI 回复 message id
+   * - new_cr / refine_cr：response.cr_id 是新建 CR id，ai_message_id null
+   */
+  postMessage(convId: string, body: PostMessageBody): Promise<PostMessageResponse>;
   subscribeEvents(
     id: string,
     onEvent: (e: SSEEvent) => void,
@@ -69,6 +95,12 @@ export function createOrchestratorClient(baseUrl: string, _token?: string): Orch
     },
     async retry(id) {
       return request<ChangeRequestOut>(`/change-requests/${id}/retry`, { method: 'POST' });
+    },
+    async postMessage(convId, body) {
+      return request<PostMessageResponse>(`/conversations/${convId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
     },
 
     /**
