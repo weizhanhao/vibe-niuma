@@ -42,7 +42,11 @@ class LLMClient:
     base_url: str = ""
     api_key: str = ""
     default_model: str = ""
-    timeout: float = 60.0
+    # 60s 对 deepseek-v4-pro 跑 brainstorm prompt（~2k token）经常踩边：
+    # round 1 50s 通过，round 2 prompt 加 prev_answers 后 >60s 超时。
+    # 提到 180s + 内部 brainstorm 主路径走 stream（连接保持活跃 + cursor-like
+    # 体验，业务员能看 AI 边想边写）。
+    timeout: float = 180.0
 
     def __post_init__(self) -> None:
         self.base_url = (self.base_url or settings.anthropic_base_url).rstrip("/")
@@ -55,6 +59,19 @@ class LLMClient:
             "messages": [{"role": "user", "content": prompt}],
         }
         return await self._post_chat(body)
+
+    async def complete_stream(
+        self, prompt: str, on_token: OnTokenCallback,
+        *, model: str | None = None,
+    ) -> str:
+        """text-only 流式补全。BrainstormingSkill _plan 用这个走主路径 ——
+        token 边出边推 SSE 给业务员，连接保持活跃绕开 60s 超时窗口。"""
+        body = {
+            "model": model or self.default_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": True,
+        }
+        return await self._stream_chat(body, on_token)
 
     async def complete_vision(
         self, prompt: str, image_b64: str, *, model: str | None = None,

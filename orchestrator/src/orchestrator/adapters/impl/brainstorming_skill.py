@@ -411,12 +411,34 @@ class BrainstormingSkill:
             prev_answers=prev_answers,
         )
 
-        # 主路径：text-only model（deepseek-v4-pro，跟 dev_runner 同款）
-        # 失败重试 1 次，避免偶发抖动直接进兜底误导业务员
+        # 主路径：text-only stream（deepseek-v4-pro）。
+        # 用 stream 而不是 complete()：长 prompt（round 2+ 累积 prev_answers）
+        # 经常 >60s 完成，httpx 一次性 timeout 会切断；stream 每 token 续约
+        # 连接 + 给业务员 cursor-like 体验。失败重试 1 次防偶发抖动。
         last_text_exc: Exception | None = None
         for attempt in (1, 2):
             try:
-                text = await self._llm.complete(prompt)
+                # token 流不直接 publish（太碎），累一行再推；与 _describe_screen
+                # 共享同款 buf flush 节奏，扩展 UI 不会卡。
+                buf: list[str] = []
+
+                async def _on_token(tok: str) -> None:
+                    if not callable(log):
+                        return
+                    buf.append(tok)
+                    joined = "".join(buf)
+                    if "\n" in tok or len(joined) >= 48:
+                        try:
+                            await log(joined.replace("\n", " ").strip())
+                        except Exception:
+                            pass
+                        buf.clear()
+
+                if callable(log):
+                    text = await self._llm.complete_stream(prompt, on_token=_on_token)
+                else:
+                    # 没 channel.log 就退非流式（测试/直接 API 调用场景）
+                    text = await self._llm.complete(prompt)
                 parsed = _parse_unknowns(text)
                 if callable(log):
                     n = len(parsed.get("unknowns") or [])
