@@ -42,12 +42,15 @@ class FakeChannel:
 
 
 def _stub_llm(monkeypatch, response: str) -> LLMClient:
-    """造一个 LLMClient 实例，并把它的 complete_vision 替换成返回固定字符串的 stub。"""
+    """造一个 LLMClient 实例，把 complete (text) + complete_vision 都 stub 成返
+    固定字符串。新设计先调 complete，失败才降级 vision —— 不 stub complete 会
+    打真实网络。"""
     client = LLMClient(base_url="http://x", api_key="k", default_model="m")
 
     async def _stub(*a, **kw):
         return response
 
+    monkeypatch.setattr(client, "complete", _stub)
     monkeypatch.setattr(client, "complete_vision", _stub)
     return client
 
@@ -146,9 +149,11 @@ async def test_clarify_falls_back_when_llm_raises(monkeypatch):
     async def _bad(*a, **kw):
         raise RuntimeError("upstream down")
 
+    # 两个接口都挂 → 走兜底开放问题路径；channel 不答任何 → 循环到硬上限 break
+    monkeypatch.setattr(client, "complete", _bad)
     monkeypatch.setattr(client, "complete_vision", _bad)
     skill = BrainstormingSkill(client)
     chan = FakeChannel()
     brief = await skill.clarify(_raw(), chan)
     assert brief.original_text == "把保存按钮改蓝"
-    assert brief.clarifications == []
+    assert brief.clarifications == []  # channel 没答 → 没记录

@@ -1,17 +1,19 @@
-"""BrainstormingSkill —— 自适应澄清：轻路径文字问答；重路径 HTML 方案选择。
+"""BrainstormingSkill —— LLM 自评式澄清：unknowns 列表驱动多轮提问。
 
-设计文档 §4.3 / §4.6：
-- 轻改动：一次一问，最多 max_questions（默认 3），可跳过。
-- 重改动：生成 2-3 套独立 HTML mockup（一次性意图锚点，不是真实构建产物），
-  让业务员挑一套或全否。
-- prompt 层硬编码「只问业务结果，不涉及任何技术」约束 —— 是契约级约定。
+设计原则（业务员反馈直接定的）：
+- **不靠关键词补丁**：keyword precheck 永远穷举不完，业务员说话千变万化。
+- **靠 LLM 自己证明它懂了**：每轮让 LLM 列出「还要知道哪些事 才能写代码」。
+  unknowns 是空列表 ⇒ 真懂了 ⇒ done。unknowns 非空 ⇒ 必须再问。
+- **不在乎几轮**：业务员的需求重要，token 不重要。轮数硬上限只是防 LLM 死循环
+  的安全网，不是设计约束。业务员主动按「✓ 够了直接干」（STOP_CLARIFY_SENTINEL）
+  随时退出。
+- **两段式 LLM 调用**：
+    1. 第一轮 vision 模型描述截图（业务员指什么）→ 缓存为 screen_context
+    2. 每轮 text 模型读 screen_context + request + prev_answers → 出 unknowns
+  vision 模型只调一次，省成本；判断逻辑放 text 模型，对长指令服从度更高。
+- **heavy 路径不变**：信息架构变化（重新设计页面）走 HTML mockup 选择。
 
-Phase A 升级：
-- 接 RepoInitializer，clarify 开始前 await /init 完成；把 AGENTS.md 内容塞 prompt。
-- prompt 收紧：基于项目知识判断，只在真有歧义时问；简单改动 0 问题。
-
-LLM 一次给出计划：{"weight": "light"|"heavy", "questions": [...], "variants": [...]}。
-JSON 解析失败时降级走轻路径 + 跳过。
+JSON 解析失败 → 兜底**绝不默认 done**，问一个开放问题让业务员补充。
 """
 from __future__ import annotations
 
@@ -36,104 +38,103 @@ TECH_CONSTRAINT = (
 )
 
 # 等 /init 完成的最长时间。超时则降级为纯凭截图 + 需求文本判断。
-# 120s 太长 —— 业务员会以为卡死。30s 内不就绪就走降级路径（无 AGENTS.md），
-# init 失败时 wait_ready 立即 False 也不会等满。
 _INIT_WAIT_SECONDS = 30.0
 
 # AGENTS.md 截断长度（喂 prompt 的 token 预算约束）
 _REPO_DOC_MAX_CHARS = 6000
 
-# Plan 10 Task 8：真多轮澄清。LLM 每轮重新评估「done? 下一题是什么? 选项」，
-# 软上限 8 轮防贪心（业务员被狂问 8 题已经体感很差，再多就强制 break）。
-MAX_SOFT_ROUNDS = 8
-
 # 业务员主动「✓ 够了直接干」按钮发的特殊 answer 字符串。channel.ask 收到这个
 # 立刻 break loop 进 located（业务员决定权 > LLM 想多问）。
 STOP_CLARIFY_SENTINEL = "__STOP_CLARIFY__"
 
+# 安全上限：LLM 进入 unknowns 永不收敛的退化状态时强制 break。业务员正常
+# 应该用 STOP_CLARIFY_SENTINEL 提前结束；这只是死循环保险丝。
+_HARD_ROUND_CAP = 12
 
-# ── 服务器侧硬编码 precheck ──────────────────────────────────────────
-# 实测发现 qwen-vl-plus 经常忽略 prompt 里「必须问 X 才能开干」的约束，
-# 直接 done=true 跳过澄清。这里加一道**关键词触发器**：业务员说「不喜欢 X /
-# 改掉 X / 好看点」这类主观或缺目标的需求 → 直接构造 done=false 的硬编码
-# 问题+选项，**跳过 LLM 调用**，省 1-3s + 拿到稳定输出。
-#
-# 只在第一轮（prev_answers 为空）生效；第二轮往后让 LLM 接管，因为它能拿到
-# 上一轮答案做精细判断。
-_VAGUE_SUBJECTIVE_WORDS: tuple[str, ...] = (
-    "好看", "不好看", "丑", "更精致", "精致", "太单调", "单调",
-    "更现代", "现代化", "更优雅", "优雅", "不舒服", "看着难受",
-    "看着不舒服", "审美", "美观", "有点 low", "low 了",
-)
+# 截图描述的字符上限（喂下游 text 模型时控制 prompt 长度）
+_SCREEN_CONTEXT_MAX_CHARS = 600
 
-_REMOVE_INTENT_WORDS: tuple[str, ...] = (
-    "不喜欢", "不想要", "不想看", "去掉", "删掉", "删了", "改掉",
-    "换掉", "替换掉", "去除", "拿掉", "不要这",
-)
-
-# 出现这些「明确目标」关键词 → 视为业务员已经说清楚，**跳过 precheck**
-# 让 LLM 正常判断（可能直接 done=true 进入实施）。
-_EXPLICIT_TARGET_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"#[0-9a-fA-F]{3,8}"),                # 色值 #1890ff
-    re.compile(r"\d+\s*(?:px|pt|em|rem|%)"),         # 字号/尺寸 16px
-    re.compile(r"换成[^\s,，。！？]{1,20}"),          # 「换成 横排按钮」
-    re.compile(r"改成[^\s,，。！？]{1,20}"),          # 「改成 蓝色」
-    re.compile(r"用[^\s,，。！？]{1,20}代替"),        # 「用 tab 代替」
-    re.compile(r"改为[^\s,，。！？]{1,20}"),          # 「改为 ...」
-    re.compile(r"做成[^\s,，。！？]{1,20}"),          # 「做成 卡片样式」
+# describe screen 用的 vision prompt：让模型只描述「业务员可能指向的元素」，
+# 不要长篇大论整个页面。
+_DESCRIBE_SCREEN_PROMPT = (
+    "用 80 字以内描述这张网页截图里业务员**可能在指向**的元素：\n"
+    "- 是什么（表格 / 卡片 / 下拉 / 按钮 / 输入框 / 区块 ...）\n"
+    "- 周围相关元素\n"
+    "- 当前状态（有没有数据、是默认态还是选中态）\n"
+    "只描述客观看到的，不要猜业务意图。"
 )
 
 
-def _deterministic_precheck(text: str) -> dict | None:
-    """关键词 precheck：覆盖 LLM 经常漏判的 vague pattern。
+# 主 prompt：让 LLM 列「还要知道哪些事才能写代码」。
+UNKNOWNS_PROMPT_TEMPLATE = """\
+你是 doskill 的需求澄清助手。业务员对一个网页提了改造需求，你要 **用代码精确实现它**。
+在你能写下第一行代码之前，把所有 **业务层未知** 列出来。
 
-    返回硬编码 plan dict 或 None（None = 走 LLM 路径）。
+# 核心原则
 
-    匹配规则：
-    - 业务员已给明确目标（色值 / 尺寸 / 「换成 X」）→ 返 None，让 LLM 自由判
-    - 主观词「好看 / 丑 / 单调」 → 强制问「想往哪个方向调」
-    - 移除/替换词「不喜欢 / 改掉 / 去掉」+ 没目标 → 强制问「想换成什么」
-    - 其他 → None
-    """
-    t = (text or "").strip()
-    if not t:
-        return None
+**宁可多问也别瞎改。** 业务员凭感觉说话（「好看点」「换一种」「不喜欢」），
+代码却必须精确（哪个 UI 组件、哪些值、保留哪些选项）。每条「不知道」都要变成
+一个具体问题。
 
-    # 业务员已经说了具体目标 → 不 precheck，让 LLM 决定
-    if any(p.search(t) for p in _EXPLICIT_TARGET_PATTERNS):
-        return None
+**判 unknowns 为空（done）的硬标准**：业务员的话能直接对应一段具体代码改动 ——
+每个字段名 / 取值 / 组件类型 / 数据流都明确。**如果你脑子里要「猜」任何一处 → 那处
+就是 unknown。**「我觉得用 segmented 控件比较合适」「我猜业务员想要 ...」都是错的。
 
-    has_remove = any(w in t for w in _REMOVE_INTENT_WORDS)
-    has_vague = any(w in t for w in _VAGUE_SUBJECTIVE_WORDS)
+技术细节不算 unknown：「改哪个文件」「用 useState 还是 useReducer」「class 还是 css
+module」「动画时长」「文件路径」—— 这些是技术决策，不是业务问题，**不要问，不要列**。
 
-    # 既有「改掉」又有主观词（「改掉这个不好看的下拉框」）→ 优先问「想换成什么」
-    if has_remove:
-        return {
-            "weight": "light",
-            "done": False,
-            "question": "想换成什么样的？或者直接去掉？",
-            "options": [
-                "换成横排按钮组（一排可点的选项）",
-                "换成顶部 tab 切换",
-                "完全去掉这块",
-                "我自己描述",
-            ],
-        }
+# 输入
 
-    if has_vague:
-        return {
-            "weight": "light",
-            "done": False,
-            "question": "具体哪里不满意？想往哪个方向调？",
-            "options": [
-                "颜色搭配（配色 / 对比 / 主色调）",
-                "布局留白（间距 / 信息密度 / 区块排布）",
-                "字体字号（字号大小 / 粗细 / 行高）",
-                "我自己描述",
-            ],
-        }
+## 截图里看到的元素
+{screen_context}
 
-    return None
+## 项目知识（如有）
+{repo_doc}
+
+## 业务员原始需求
+{request}
+
+## 已经问过的轮次（最新在最下）
+{prev_qa}
+
+# 输出格式（严格 JSON，不要任何额外文字）
+
+```
+{{
+  "weight": "light",
+  "unknowns": ["...", "..."],
+  "question": "下一个最该问的业务问题",
+  "options": ["选项1（具体方案）", "选项2", "选项3", "我自己描述"]
+}}
+```
+
+- `weight`: 一般是 `"light"`；如果业务员要的是**重新设计整个页面**（信息架构大改），
+  用 `"heavy"` 并给 `variants` 字段：`[{{"id":"v1","title":"...","html":"<完整 HTML 草稿>"}}]`，
+  2-3 套独立 mockup，不再走 unknowns 路径。
+- `unknowns`: 列具体到字段/元素/取值的未知点。**空数组 ⇒ done，直接写代码。**
+- `question`: unknowns 非空时必填。问下一个最重要的那一个。
+- `options`: unknowns 非空时必填 2-4 个具体可选项，**最后一个固定「我自己描述」**。
+
+# unknowns 的好例子（具体、可问）
+
+- "业务员说『不喜欢下拉框』但没说换成什么 UI 控件（按钮组 / tab / segmented / chip）"
+- "业务员没说要保留哪些状态值（全部/已支付/待支付？按订单流程分？）"
+- "业务员说『好看点』但没指出是配色/布局/字号问题"
+- "业务员说『加个图标』但没说放哪个位置（左边/右边/独立按钮）"
+
+# unknowns 为空的正确例子（清晰、可写）
+
+- 「按钮背景色改成 #1890ff」→ 元素=按钮背景 取值=#1890ff，**没有 unknown**
+- 「placeholder 改成『按客户名搜索』」→ 元素=placeholder 取值=具体文本，**没有 unknown**
+- 「字号 14px 改成 16px」→ 元素+取值都有，**没有 unknown**
+- 「下拉框换成 segmented 控件，状态保留 全部/已支付/待支付」→ 控件+数据全有，**没有 unknown**
+
+# question / options 形式约束
+
+- options 必须是业务员能直接选的**具体方案**（写出关键参数），不是「方向 A / 方向 B」这种空泛词
+- 不能问技术（组件名、文件、API、CSS 属性）
+- 不能问业务员答不了的（「用户是不是没下过单」「这字段什么时候添加的」）
+"""
 
 
 class BrainstormingSkill:
@@ -143,25 +144,27 @@ class BrainstormingSkill:
         self,
         llm: LLMClient,
         *,
-        max_questions: int = 3,
+        max_questions: int = 3,  # 历史参数，新设计不用；保留兼容签名
         repo_initializer: "RepoInitializer | None" = None,
     ):
         self._llm = llm
         self._max_questions = max_questions
         self._repo_initializer = repo_initializer
+        # 单次 clarify 内缓存的截图描述（vision 调用结果）
+        self._screen_context_cache: dict[str, str] = {}
 
     async def clarify(
         self, raw: RawRequest, channel: InteractionChannel
     ) -> RequestBrief:
-        """Plan 10 Task 8：真多轮澄清 loop。
+        """多轮 unknowns 驱动澄清。
 
-        - 第一轮 plan：判 weight (light / heavy)
-        - heavy → present_variants 让业务员选方案（单次，不进 loop）
-        - light → for round_i in range(MAX_SOFT_ROUNDS):
-            - plan 返 done=True → break
-            - 拿 question + options，channel.ask(q, options)
-            - answer == STOP_CLARIFY_SENTINEL → break
-            - 否则 append clarification，进下一轮
+        每轮：
+        - 调 LLM 出 plan = {unknowns, question, options}
+        - unknowns 空 → break
+        - 否则 channel.ask(question, options)
+        - 业务员答 STOP_CLARIFY_SENTINEL → break
+        - append clarifications，进下一轮
+        - 安全网：_HARD_ROUND_CAP 轮防 LLM 死循环
         """
         log = getattr(channel, "log", None)
         if callable(log):
@@ -171,15 +174,23 @@ class BrainstormingSkill:
             if repo_doc:
                 await log(f"✓ AGENTS.md 已加载 {len(repo_doc)} 字符")
             else:
-                await log("⚠ AGENTS.md 不可用，降级为纯截图判断")
+                await log("⚠ AGENTS.md 不可用，纯凭截图 + 描述判")
+
+        # 第一轮的 vision 描述（缓存复用，多轮不重复调）
+        if callable(log):
+            await log("▸ 视觉模型描述截图里的元素...")
+        screen_context = await self._describe_screen(raw, log=log)
 
         if callable(log):
-            await log("▸ 调用视觉模型评估意图...")
-        plan = await self._plan(raw, repo_doc, channel=channel, prev_answers=[])
+            await log("▸ 文本模型评估「需求清楚了吗」...")
+        plan = await self._plan(
+            raw, repo_doc, screen_context=screen_context,
+            channel=channel, prev_answers=[],
+        )
         clarifications: list[dict] = []
         selected_mockup: HtmlMockup | None = None
 
-        # heavy 路径：variants 选择，不进 loop
+        # heavy 路径：variants 选择，不进 unknowns loop
         if plan.get("weight") == "heavy" and plan.get("variants"):
             mockups = [
                 HtmlMockup(
@@ -200,15 +211,27 @@ class BrainstormingSkill:
                 selected_mockup=selected_mockup,
             )
 
-        # light 路径：真多轮 loop
+        # light 路径：unknowns 驱动多轮
         current_plan = plan
-        for round_i in range(MAX_SOFT_ROUNDS):
-            if current_plan.get("done") is True:
+        round_i = 0
+        while True:
+            unknowns = current_plan.get("unknowns")
+            if isinstance(unknowns, list) and len(unknowns) == 0:
+                if callable(log):
+                    await log("✓ LLM 报告 unknowns=[] —— 需求已清晰")
                 break
+
             question = (current_plan.get("question") or "").strip()
             if not question:
-                # LLM 没给 question 也没说 done → 视为 done
+                # 没 question 又 unknowns 非空 → 退化场景，break 防卡死
+                if callable(log):
+                    await log("⚠ LLM 没给 question 也没说 done，break")
                 break
+
+            if isinstance(unknowns, list) and unknowns and callable(log):
+                await log(f"还有 {len(unknowns)} 个未知项：")
+                for u in unknowns[:5]:
+                    await log(f"  · {u}")
 
             options = current_plan.get("options") or []
             if not isinstance(options, list):
@@ -219,20 +242,21 @@ class BrainstormingSkill:
                 break
             answer = answer.strip()
             if answer == STOP_CLARIFY_SENTINEL:
-                # 业务员主动按「✓ 够了直接干」
                 if callable(log):
                     await log("✓ 业务员主动结束澄清，进入定位...")
                 break
-            if answer and answer != "跳过":
+            if answer:
                 clarifications.append({"question": question, "answer": answer})
 
-            # 还没到上限就再问 LLM 评估下一题
-            if round_i + 1 >= MAX_SOFT_ROUNDS:
+            round_i += 1
+            if round_i >= _HARD_ROUND_CAP:
                 if callable(log):
-                    await log(f"⚠ 已达软上限 {MAX_SOFT_ROUNDS} 轮，强制进入定位...")
+                    await log(f"⚠ 已达硬上限 {_HARD_ROUND_CAP} 轮（LLM 可能死循环），break")
                 break
+
             current_plan = await self._plan(
-                raw, repo_doc, channel=channel, prev_answers=clarifications,
+                raw, repo_doc, screen_context=screen_context,
+                channel=channel, prev_answers=clarifications,
             )
 
         return RequestBrief(
@@ -247,182 +271,191 @@ class BrainstormingSkill:
             return ""
         ok = await self._repo_initializer.wait_ready(timeout=_INIT_WAIT_SECONDS)
         if not ok:
-            return ""  # 超时降级
+            return ""
         return self._repo_initializer.doc_content()[:_REPO_DOC_MAX_CHARS]
+
+    async def _describe_screen(
+        self, raw: RawRequest, *, log=None,
+    ) -> str:
+        """第一轮 vision 调用：让 qwen-vl-plus 描述截图里能看到什么。
+
+        缓存于 self._screen_context_cache —— 同一截图 b64 多轮 clarify 复用。
+        失败/无截图 → 返空串，下游 text 模型仍能基于需求 + 历史判断。
+        """
+        key = (raw.screenshot_b64 or "")[:64]
+        if key in self._screen_context_cache:
+            return self._screen_context_cache[key]
+
+        images = raw.images()
+        if not images and not raw.screenshot_b64:
+            self._screen_context_cache[key] = ""
+            return ""
+
+        try:
+            if len(images) > 1:
+                text = await self._llm.complete_vision_multi(
+                    _DESCRIBE_SCREEN_PROMPT, images,
+                )
+            else:
+                text = await self._llm.complete_vision(
+                    _DESCRIBE_SCREEN_PROMPT, raw.screenshot_b64,
+                )
+        except Exception:  # noqa: BLE001
+            if callable(log):
+                try:
+                    await log("⚠ 视觉描述失败，brainstorm 将无截图上下文")
+                except Exception:
+                    pass
+            self._screen_context_cache[key] = ""
+            return ""
+
+        cleaned = (text or "").strip()[:_SCREEN_CONTEXT_MAX_CHARS]
+        self._screen_context_cache[key] = cleaned
+        if callable(log) and cleaned:
+            try:
+                await log(f"✓ 截图描述：{cleaned[:120]}{'...' if len(cleaned) > 120 else ''}")
+            except Exception:
+                pass
+        return cleaned
 
     async def _plan(
         self, raw: RawRequest, repo_doc: str, *,
+        screen_context: str = "",
         channel: InteractionChannel | None = None,
         prev_answers: list[dict] | None = None,
     ) -> dict:
+        """每轮判断：返 {weight, unknowns, question, options} 或 heavy 的 variants。
+
+        优先用 text-only 模型（complete）—— 对长指令服从度高。失败时降级 vision。
+        """
         prev_answers = prev_answers or []
         log = getattr(channel, "log", None) if channel is not None else None
 
-        # 第一轮硬编码 precheck：vague/缺目标的需求直接返硬编码问题，跳过 LLM
-        # （LLM 在这类 case 上经常违反 prompt 约束直接 done=true）。
-        # 第二轮后让 LLM 接管，因为它能看到累计的 prev_answers。
-        if not prev_answers:
-            deterministic = _deterministic_precheck(raw.request_text)
-            if deterministic is not None:
-                if callable(log):
-                    await log("✓ 触发硬编码澄清规则（跳过 LLM）")
-                return deterministic
+        prompt = self._build_unknowns_prompt(
+            raw, repo_doc, screen_context=screen_context,
+            prev_answers=prev_answers,
+        )
 
-        prompt = self._build_plan_prompt(raw, repo_doc, prev_answers=prev_answers)
-
-        # Plan 10 Task 9：多图（>1）走 complete_vision_multi；单图走原 single 接口
-        # （保留旧测试 + 老 client 路径不变）。raw.images() 已统一兜底逻辑。
-        images = raw.images()
-        use_multi = len(images) > 1
-
-        # 优先流式（cursor-like 体验）：每个 token chunk 经 channel.log 回灌 SSE。
-        # 上游不支持 stream 或网络出错时降级到非流式，最终再失败才退降级 plan。
-        if callable(log):
-            try:
-                buf: list[str] = []
-
-                async def _on_token(tok: str) -> None:
-                    # 累一行再 publish：避免 single-char publish 把扩展端冲爆，
-                    # 但太长就 flush，保持 cursor-like 感觉。
-                    buf.append(tok)
-                    joined = "".join(buf)
-                    if "\n" in tok or len(joined) >= 32:
-                        await log(joined.replace("\n", " ").strip())
-                        buf.clear()
-
-                if use_multi:
-                    text = await self._llm.complete_vision_multi_stream(
-                        prompt, images, on_token=_on_token,
-                    )
-                else:
-                    text = await self._llm.complete_vision_stream(
-                        prompt, raw.screenshot_b64, on_token=_on_token,
-                    )
-                # flush 残余
-                tail = "".join(buf).strip()
-                if tail:
-                    try:
-                        await log(tail)
-                    except Exception:
-                        pass
-                return _safe_parse_json(text)
-            except Exception:
+        # 主路径：text-only model（deepseek-v4-pro，跟 dev_runner 同款）
+        try:
+            text = await self._llm.complete(prompt)
+            parsed = _parse_unknowns(text)
+            if callable(log):
+                n = len(parsed.get("unknowns") or [])
+                await log(f"✓ LLM 评估完成 unknowns={n}")
+            return parsed
+        except Exception as exc:  # noqa: BLE001
+            if callable(log):
                 try:
-                    await log("⚠ 流式调用失败，回退非流式...")
+                    await log(f"⚠ text LLM 调用失败：{exc}，尝试 vision 兜底...")
                 except Exception:
                     pass
 
+        # 降级路径：vision model（也许是限速 / API 临时挂）
         try:
-            if use_multi:
-                text = await self._llm.complete_vision_multi(prompt, images)
+            if len(raw.images()) > 1:
+                text = await self._llm.complete_vision_multi(prompt, raw.images())
             else:
                 text = await self._llm.complete_vision(prompt, raw.screenshot_b64)
-        except Exception:
-            return {"weight": "light", "questions": []}
-        return _safe_parse_json(text)
+            return _parse_unknowns(text)
+        except Exception:  # noqa: BLE001
+            if callable(log):
+                try:
+                    await log("⚠ vision 也失败，进开放兜底问题（不 default done）")
+                except Exception:
+                    pass
+            return _fallback_open_question()
 
-    def _build_plan_prompt(
-        self, raw: RawRequest, repo_doc: str,
-        *, prev_answers: list[dict] | None = None,
+    def _build_unknowns_prompt(
+        self, raw: RawRequest, repo_doc: str, *,
+        screen_context: str = "",
+        prev_answers: list[dict] | None = None,
     ) -> str:
-        """Plan 10 Task 8：每轮拿 prev_answers，让 LLM 累计判断「还问不问」。
+        """填 UNKNOWNS_PROMPT_TEMPLATE 的占位符。"""
+        prev_qa_lines: list[str] = []
+        for i, qa in enumerate(prev_answers or [], 1):
+            q = (qa.get("question") or "").strip()
+            a = (qa.get("answer") or "").strip()
+            if q or a:
+                prev_qa_lines.append(f"轮 {i}:")
+                prev_qa_lines.append(f"  Q: {q}")
+                prev_qa_lines.append(f"  A: {a}")
+        prev_qa = "\n".join(prev_qa_lines) if prev_qa_lines else "（暂无）"
 
-        返回 JSON：
-          - heavy 路径：{"weight":"heavy","variants":[...]}
-          - light 路径 done：{"weight":"light","done":true}
-          - light 路径继续：{"weight":"light","done":false,"question":"...","options":[...]}
-
-        强制 options 2-4 个 + 最后一个必须是「我自己描述」。
-        """
-        parts: list[str] = [TECH_CONSTRAINT, ""]
-
-        if repo_doc:
-            parts.append("=== 项目概览（基于此判断业务是否真有歧义） ===")
-            parts.append(repo_doc)
-            parts.append("=== 概览结束 ===")
-            parts.append("")
-
-        prev_block = ""
-        if prev_answers:
-            prev_lines = ["", "=== 业务员已经回答过的问题 ==="]
-            for i, qa in enumerate(prev_answers, 1):
-                prev_lines.append(f"{i}. Q: {qa.get('question', '')}")
-                prev_lines.append(f"   A: {qa.get('answer', '')}")
-            prev_lines.append("=== 已答结束 ===")
-            prev_block = "\n".join(prev_lines) + "\n"
-
-        parts.append(
-            "下面是业务员对一个 web 页面的截图（含他框选的区域），"
-            "以及他用自然语言描述的需求。\n"
-            + prev_block +
-            "请按下面的 JSON 格式返回（不要任何额外文字）：\n"
-            '{\n'
-            '  "weight": "light" | "heavy",\n'
-            '  "done": true | false,                          // light 必填；true=不再问了，可以开干\n'
-            '  "question": "下一个要问的业务问题",                  // light + done=false 必填\n'
-            '  "options": ["选项 1","选项 2","选项 3","我自己描述"],  // light + done=false 必填，2-4 个，最后一个固定「我自己描述」\n'
-            '  "variants": [{"id":"v1","title":"...","html":"<style+html>"}]  // 仅 heavy\n'
-            '}\n\n'
-            "**判定原则（严格 / 默认要问）**：\n"
-            "\n"
-            "**done=true 必须同时满足三个条件，否则一律 done=false 至少问一题：**\n"
-            "1. 业务员明确说了要改「哪个元素 / 哪个字段」\n"
-            "2. 业务员明确给出了「目标形态」或「目标值」（颜色码 / 字号 / 具体方案 / 文案）\n"
-            "3. 业务员没用主观词（好看 / 丑 / 更好 / 精致 / 单调 / 乱 / 现代 / 优雅）\n"
-            "\n"
-            "**任一条不满足 → done=false。** 业务员心里有具体期望，但没说出来；AI 凭空\n"
-            "猜永远会瞎改。先问清是「负责」，不是「啰嗦」。\n"
-            "\n"
-            "**常见必问场景及示例问题（每题必带 2-4 个 options + 末位「我自己描述」）：**\n"
-            "\n"
-            "- 业务员说「不喜欢 X」「去掉 X」「改掉 X」「把 X 换掉」**但没说换成什么** →\n"
-            "  问「想换成什么？」给 2-3 个常见替代方案 options。\n"
-            "  例：业务员「我想把状态搜索改掉，我不喜欢下拉框」\n"
-            "      → 问「状态筛选想换成什么？」options=[\"横排按钮组（全部/已支付/...）\",\n"
-            "         \"顶部 tab\",\"完全去掉不要筛选\",\"我自己描述\"]\n"
-            "\n"
-            "- 业务员说「改好看 / 不好看 / 更精致 / 太单调」**主观审美词** → 问「具体哪里不满意？」\n"
-            "  options=[\"颜色搭配\",\"布局留白\",\"字体字号\",\"我自己描述\"]\n"
-            "\n"
-            "- 业务员说「优化 / 改进 / 调整 X」**没说具体方向** → 问「想往哪个方向优化？」\n"
-            "  options=[\"信息密度更高\",\"视觉更干净\",\"加新功能\",\"我自己描述\"]\n"
-            "\n"
-            "- 业务员说「把 X 改一下」但 X 是个区块包含多个元素 → 问「区块里具体哪部分？」\n"
-            "\n"
-            "**done=true 的正确示例（罕见，但确实清晰）：**\n"
-            "- 「把搜索框 placeholder 改成『按客户名搜索』」 → 元素=placeholder 目标=具体文本 ✓\n"
-            "- 「按钮背景色改成 #1890ff」 → 元素=按钮背景 目标=色值 ✓\n"
-            "- 「字号 14px 改成 16px」 → 元素+值都明 ✓\n"
-            "\n"
-            "**每答完一轮再判断**：业务员答完后，重新跑这三个条件检查。若仍缺关键\n"
-            "信息 → 再问一题；若已足够动手 → done=true。\n"
-            "- **信息架构变化** → weight=heavy, variants=2-3 套独立 HTML mockup。\n\n"
-            "**问题的形式**：\n"
-            "- options 必须是业务员能直接选的具体方案（不是空泛描述）\n"
-            "- options 最后一个**必须固定**是「我自己描述」，让业务员能自定义答\n"
-            "- 不能问技术细节（组件名、API、CSS 属性等）\n"
-            "- 不能问业务员答不了的（「用户是不是没有订单？」）\n\n"
-            f"业务员的需求：{raw.request_text}\n"
-            f"页面 URL：{raw.url}\n"
-            f"框选坐标：{raw.box_coords}\n"
+        body = UNKNOWNS_PROMPT_TEMPLATE.format(
+            screen_context=screen_context or "（无截图描述）",
+            repo_doc=repo_doc or "（无）",
+            request=raw.request_text or "（空）",
+            prev_qa=prev_qa,
         )
-        return "\n".join(parts)
+        # TECH_CONSTRAINT 作为强约束顶部声明 —— 老 contract 测试也断言其存在
+        return f"{TECH_CONSTRAINT}\n\n{body}"
+
+    # 历史别名 —— 旧 contract 测试 import 这个名字
+    def _build_plan_prompt(
+        self, raw: RawRequest, repo_doc: str, **kwargs,
+    ) -> str:
+        return self._build_unknowns_prompt(raw, repo_doc, **kwargs)
 
 
+# ── JSON 解析（绝不默认 done） ─────────────────────────────────────
 _JSON_BLOCK = re.compile(r"\{[\s\S]*\}")
 
 
-def _safe_parse_json(text: str) -> dict:
-    """模型返回的 JSON 可能被包了 markdown 代码块；尽量抠出来。"""
+def _fallback_open_question() -> dict:
+    """LLM 出错时绝不默认 done —— 问一个开放问题逼业务员补细节。"""
+    return {
+        "weight": "light",
+        "unknowns": ["LLM 解析失败/服务不可用 — 需要业务员补充细节"],
+        "question": "再具体描述一下你想要的效果？比如换成什么样的 UI、要保留哪些功能。",
+        "options": ["我自己描述"],
+    }
+
+
+def _parse_unknowns(text: str) -> dict:
+    """解析 LLM 返的 {weight, unknowns, question, options}。
+
+    解析失败 → 兜底**开放问题**（不 default done）。
+    兼容老 LLM 返 {done: true/false}：done=true 视为 unknowns=[]。
+    兼容 heavy: {weight:"heavy", variants:[...]}。
+    """
     if not text:
-        return {"weight": "light", "questions": []}
+        return _fallback_open_question()
     m = _JSON_BLOCK.search(text)
     if not m:
-        return {"weight": "light", "questions": []}
+        return _fallback_open_question()
     try:
         data = json.loads(m.group(0))
-        if not isinstance(data, dict):
-            return {"weight": "light", "questions": []}
+    except (json.JSONDecodeError, ValueError):
+        return _fallback_open_question()
+    if not isinstance(data, dict):
+        return _fallback_open_question()
+
+    # heavy 路径透传
+    if data.get("weight") == "heavy" and isinstance(data.get("variants"), list):
         return data
-    except json.JSONDecodeError:
-        return {"weight": "light", "questions": []}
+
+    # 优先用 unknowns 字段；老 LLM 还在用 done 兼容一下
+    unknowns_raw = data.get("unknowns")
+    if isinstance(unknowns_raw, list):
+        unknowns = [str(u) for u in unknowns_raw if str(u).strip()]
+    elif data.get("done") is True:
+        unknowns = []
+    elif data.get("done") is False:
+        # 老 LLM 没列 unknowns 但说没 done → 给个占位 unknown 防 default done
+        unknowns = ["（LLM 未列具体未知项但报告未 done）"]
+    else:
+        # 没说 done 也没 unknowns → 兜底开放问题
+        return _fallback_open_question()
+
+    return {
+        "weight": "light",
+        "unknowns": unknowns,
+        "question": str(data.get("question") or "").strip(),
+        "options": [str(o) for o in (data.get("options") or []) if str(o).strip()],
+    }
+
+
+# 历史 API 别名 —— 老测试 import _safe_parse_json 仍能拿到等价行为
+def _safe_parse_json(text: str) -> dict:
+    return _parse_unknowns(text)
