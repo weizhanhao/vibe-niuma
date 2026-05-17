@@ -165,6 +165,32 @@ class Pipeline:
             request_id, Event(type="status", data={"state": state.value})
         )
 
+    async def _teardown_preview_if_any(self, request_id: str) -> None:
+        """new_cr 失败兜底：如果已经起了独占 preview 容器，立刻拆 + 清 DB 指针。
+
+        正常路径上 merge/discard endpoint 会同步拆，reaper 也兜底，但快速失败时
+        让端口立刻可复用。refine_cr 共享 base 容器，不能调这个 —— 所以只在
+        _run_new_cr 的异常分支里调。
+        """
+        try:
+            cr = self.repository.get(request_id)
+        except Exception:  # noqa: BLE001
+            return
+        if cr is None or not cr.preview_handle:
+            return
+        from orchestrator.adapters.types import PreviewInstance
+        handle = cr.preview_handle
+        try:
+            await self.preview_adapter.teardown(
+                PreviewInstance(preview_id="", url=cr.preview_url or "", handle=handle)
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.repository.clear_preview(request_id)
+        except Exception:  # noqa: BLE001
+            pass
+
     async def _maybe_compact_history(self, request_id, ctx, *, log) -> None:
         """Plan 9 Task 5：把 CR 所在 conversation 的 messages 压缩后塞 ctx.chat_history。
 
@@ -440,6 +466,9 @@ class Pipeline:
             self.repository.mark_failed(
                 request_id, phase=pe.phase, reason=pe.reason, log=pe.log
             )
+            # 失败但已经起了 preview 容器（building 之后 fail）→ 立刻拆，
+            # 不等 reaper。new_cr 的 preview 独占，拆掉无副作用。
+            await self._teardown_preview_if_any(request_id)
             await self.event_bus.publish(
                 request_id,
                 Event(
@@ -455,6 +484,7 @@ class Pipeline:
         except BaseException as exc:  # noqa: BLE001
             # 任何 _PhaseError 之外的异常（git 错误、DB 错误、CancelledError、
             # 编程 bug）都必须收敛 —— 否则 CR 卡死、配额泄漏、扩展端无任何提示。
+            await self._teardown_preview_if_any(request_id)
             tb = "".join(traceback.format_exception(exc))
             try:
                 current = self.repository.get(request_id).state

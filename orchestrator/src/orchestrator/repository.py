@@ -142,3 +142,24 @@ class ChangeRequestRepository:
             ChangeRequest.last_activity_at < cutoff,
         )
         return list(self._db.scalars(stmt))
+
+    def list_orphan_previews(self) -> list[ChangeRequest]:
+        """终态 CR 但 preview_handle 仍非空 —— 容器泄漏候选。
+
+        正常路径下 merge/discard endpoint 会同步拆容器，但 pipeline 失败
+        路径（_PhaseError 后 mark_failed）历史上不拆，导致容器永久占端口。
+        reaper 拿这个列表立刻清，不等 idle TTL。
+        """
+        terminal_values = [s.value for s in TERMINAL]
+        stmt = select(ChangeRequest).where(
+            ChangeRequest.state.in_(terminal_values),
+            ChangeRequest.preview_handle.isnot(None),
+        )
+        return list(self._db.scalars(stmt))
+
+    def clear_preview(self, request_id: str) -> None:
+        """拆完容器后把 preview_handle / preview_url 清空，避免重复 teardown。"""
+        cr = self._get_or_raise(request_id)
+        cr.preview_handle = None
+        cr.preview_url = None
+        self._db.commit()

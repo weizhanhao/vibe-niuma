@@ -34,6 +34,38 @@ async def reap_idle_previews(
     return reaped
 
 
+async def reap_orphan_previews(
+    repository: ChangeRequestRepository,
+    preview_adapter: PreviewAdapter,
+) -> list[str]:
+    """清理终态（failed/merged/discarded/expired）但 preview_handle 还在的容器。
+
+    pipeline 失败路径历史上不拆 preview，accumulates 13+ 个孤儿容器把 5100~5199
+    端口段占满。每 reaper 周期扫一次终态 CR 兜底；不等 idle TTL，因为终态 CR
+    不可能再被业务员合并，留容器就是纯浪费。
+
+    返回被清理掉的 request id 列表。
+    """
+    cleaned: list[str] = []
+    for cr in repository.list_orphan_previews():
+        handle = cr.preview_handle
+        if not handle:
+            continue
+        instance = PreviewInstance(
+            preview_id="", url=cr.preview_url or "", handle=handle
+        )
+        try:
+            await preview_adapter.teardown(instance)
+        except Exception:  # noqa: BLE001  best-effort
+            pass
+        try:
+            repository.clear_preview(cr.id)
+        except Exception:  # noqa: BLE001
+            pass
+        cleaned.append(cr.id)
+    return cleaned
+
+
 async def run_reaper_loop(
     session_factory,
     quota: QuotaManager,
@@ -47,11 +79,17 @@ async def run_reaper_loop(
             await asyncio.sleep(interval_seconds)
             db = session_factory()
             try:
+                repo = ChangeRequestRepository(db)
                 await reap_idle_previews(
-                    repository=ChangeRequestRepository(db),
+                    repository=repo,
                     quota=quota,
                     preview_adapter=preview_adapter,
                     ttl_seconds=ttl_seconds,
+                )
+                # 兜底清孤儿：终态 CR 但容器还在的（pipeline 失败路径常见）
+                await reap_orphan_previews(
+                    repository=repo,
+                    preview_adapter=preview_adapter,
                 )
             finally:
                 db.close()
