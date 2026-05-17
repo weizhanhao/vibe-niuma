@@ -52,6 +52,27 @@
   --t-fast:   140ms;
   --t-normal: 240ms;
   --ease:     cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Plan 10 B: backfill missing tokens cursor-like UI 用 ── */
+  /* alias：组件用了这些名字但 design 里没声明，统一回退到 base */
+  --surface-0:    var(--surface);
+  --surface-1:    var(--canvas);
+  --ink-strong:   var(--ink);
+  --shadow-lg:    0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  --tone-danger:  var(--danger);
+  --tone-accent:  var(--accent);
+
+  /* user 气泡专用：light 下要可读（accent 实色背景 + 深字） */
+  --bubble-user-bg:   var(--accent);
+  --bubble-user-ink:  oklch(99% 0.005 200);
+  --bubble-ai-bg:     var(--surface-2);
+  --bubble-ai-ink:    var(--ink);
+
+  /* mode badge —— light 下需要 contrast */
+  --badge-new-bg:    oklch(92% 0.06 200);
+  --badge-new-ink:   oklch(32% 0.12 200);
+  --badge-refine-bg: oklch(93% 0.08 75);
+  --badge-refine-ink: oklch(35% 0.12 75);
 }
 
 /* DARK workbench palette —— body.theme-dark 时切换。design 默认就是这一套。 */
@@ -87,6 +108,16 @@ body.theme-dark {
   --danger-soft:  oklch(70% 0.17 25 / 0.10);
 
   --log-bg:       oklch(11% 0.004 250);
+
+  /* Plan 10 B: dark 覆盖 bubble / badge —— dark 下气泡和 badge 颜色要重平衡 */
+  --bubble-user-bg:   var(--accent);
+  --bubble-user-ink:  oklch(15% 0.04 200);
+  --bubble-ai-bg:     var(--surface-2);
+  --bubble-ai-ink:    var(--ink);
+  --badge-new-bg:     oklch(38% 0.10 200);
+  --badge-new-ink:    oklch(95% 0.02 200);
+  --badge-refine-bg:  oklch(40% 0.10 75);
+  --badge-refine-ink: oklch(96% 0.02 75);
 }
 
 * { box-sizing: border-box; }
@@ -1449,25 +1480,31 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   flex-direction: column;
 }
 .chat-input-bar {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   padding: 10px 12px 12px;
-  align-items: end;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.chat-input-row {
+  display: flex; gap: 8px; align-items: end;
 }
 .chat-input-textarea {
+  flex: 1; min-width: 0;
   resize: none;
   min-height: 48px;
   max-height: 140px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--ink) !important;
   font: inherit;
   font-size: 12.5px;
   line-height: 1.4;
 }
+.chat-input-textarea::placeholder { color: var(--ink-faint); }
 .chat-input-textarea:focus {
   outline: none;
   border-color: var(--accent-dim);
@@ -1540,18 +1577,25 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .agent-tab {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 5px 8px 5px 10px;
+  padding: 6px 10px;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
   font-size: 12px; color: var(--ink-soft);
   cursor: pointer; user-select: none;
   border: 1px solid transparent; border-bottom: none;
-  max-width: 160px;
+  max-width: 180px;
 }
-.agent-tab:hover { background: var(--surface-2); }
+.agent-tab:hover { background: var(--surface-2); color: var(--ink); }
 .agent-tab.is-active {
-  background: var(--surface-0); color: var(--ink-strong);
-  border-color: var(--line);
-  font-weight: 500;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line-hard);
+  font-weight: 600;
+  position: relative;
+}
+.agent-tab.is-active::after {
+  /* 把下边「叠」过 agent-tab-bar 的 border 让 active tab 真的「贴上去」 */
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 1px; background: var(--surface);
 }
 .agent-tab__title {
   flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1577,9 +1621,11 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .history-dropdown {
   position: absolute;
   top: 100%; right: 4px; z-index: 30;
-  background: var(--surface-0); border: 1px solid var(--line-hard);
-  border-radius: var(--r-md); box-shadow: var(--shadow-lg);
-  min-width: 220px; max-width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--line-hard);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  min-width: 240px; max-width: 320px;
   max-height: 360px; overflow: auto;
   padding: 6px;
 }
@@ -1616,13 +1662,16 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .chat-stream__msg--ai { align-self: flex-start; align-items: flex-start; }
 .chat-stream__bubble {
   padding: 8px 12px; border-radius: var(--r-md);
-  background: var(--surface-2); color: var(--ink-strong);
+  background: var(--bubble-ai-bg);
+  color: var(--bubble-ai-ink);
   font-size: 13px; line-height: 1.55; white-space: pre-wrap;
   max-width: 88%;
+  border: 1px solid var(--line-soft);
 }
 .chat-stream__msg--user .chat-stream__bubble {
-  background: var(--accent-soft, var(--accent-dim));
-  color: var(--accent-ink, var(--ink-strong));
+  background: var(--bubble-user-bg);
+  color: var(--bubble-user-ink);
+  border-color: transparent;
 }
 .chat-stream__summary {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1635,31 +1684,65 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .chat-stream__summary-icon { font-size: 10px; opacity: 0.7; }
 
 .inline-card {
-  border: 1px solid var(--line); border-radius: var(--r-sm);
-  background: var(--surface-1); padding: 8px 10px;
-  display: flex; flex-direction: column; gap: 6px;
-  width: 280px; max-width: 88%;
+  border: 1px solid var(--line-hard); border-radius: var(--r-md);
+  background: var(--surface); padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  width: 320px; max-width: 92%;
   font-size: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .inline-card__head { display: flex; gap: 8px; align-items: center; }
 .inline-card__mode {
-  padding: 2px 6px; border-radius: 999px;
-  background: var(--surface-3); color: var(--ink-soft);
-  font-size: 10.5px;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--badge-new-bg);
+  color: var(--badge-new-ink);
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.02em;
 }
 .inline-card__state {
-  color: var(--ink-strong); font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--ink); font-weight: 600;
 }
-.inline-card--failed { border-color: var(--tone-danger, #d33); }
-.inline-card--preview-ready { border-color: var(--tone-accent, var(--accent-dim)); }
-.inline-card__fail { color: var(--tone-danger, #d33); font-size: 11.5px; }
+.inline-card__spinner {
+  width: 10px; height: 10px;
+  border: 2px solid var(--accent); border-right-color: transparent;
+  border-radius: 50%;
+  animation: doskill-spin 0.7s linear infinite;
+}
+@keyframes doskill-spin { to { transform: rotate(360deg); } }
+.inline-card.is-running { border-color: var(--accent-dim); }
+.inline-card--failed { border-color: var(--danger); }
+.inline-card--preview-ready { border-color: var(--success); }
+.inline-card__fail {
+  color: var(--danger); font-size: 11.5px;
+  padding: 6px 8px; background: var(--danger-soft); border-radius: var(--r-sm);
+}
+.inline-card__activity {
+  max-height: 110px; overflow-y: auto;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--log-bg);
+  border: 1px solid var(--line-soft); border-radius: var(--r-sm);
+  padding: 6px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.inline-card__activity--placeholder {
+  color: var(--ink-mute); font-style: italic;
+}
+.inline-card__activity-line {
+  white-space: pre-wrap; word-break: break-word;
+}
 .inline-card__preview {
   align-self: flex-start;
-  font-size: 11.5px; color: var(--accent-ink, var(--accent-dim));
-  text-decoration: none; padding: 4px 8px; border-radius: var(--r-sm);
-  border: 1px solid var(--line);
+  font-size: 12px; color: var(--accent); font-weight: 500;
+  text-decoration: none; padding: 6px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--accent-dim);
+  background: var(--accent-soft);
 }
-.inline-card__preview:hover { background: var(--surface-2); }
+.inline-card__preview:hover {
+  background: var(--accent); color: white;
+  border-color: var(--accent);
+}
 
 /* ── Plan 10 Task 16: ChatInputBar attachments tray + mode badge ── */
 .chat-input-meta {
@@ -1667,17 +1750,18 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   padding: 0 8px 4px; font-size: 11px;
 }
 .mode-badge {
-  padding: 2px 8px; border-radius: 999px;
+  padding: 3px 10px; border-radius: 999px;
   background: var(--surface-2); color: var(--ink-soft);
-  font-size: 10.5px;
+  font-size: 11px; font-weight: 500;
+  letter-spacing: 0.02em;
 }
-.mode-badge.mode-new_cr { background: var(--accent-dim, #cde); color: var(--accent-ink, #024); }
-.mode-badge.mode-refine_cr { background: #f5e7b0; color: #5a3e00; }
-.mode-badge.mode-chat_only { background: var(--surface-3); color: var(--ink-mute); }
+.mode-badge.mode-new_cr { background: var(--badge-new-bg); color: var(--badge-new-ink); }
+.mode-badge.mode-refine_cr { background: var(--badge-refine-bg); color: var(--badge-refine-ink); }
+.mode-badge.mode-chat_only { background: var(--surface-3); color: var(--ink-soft); }
 .mode-unsure {
   color: var(--ink-mute);
-  border: 1px dashed var(--line);
-  padding: 1px 6px; border-radius: 999px; font-size: 10.5px;
+  border: 1px dashed var(--line-hard);
+  padding: 1px 8px; border-radius: 999px; font-size: 10.5px;
 }
 
 .attachment-tray {

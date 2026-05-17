@@ -281,6 +281,20 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   // mirrors 转成 dict 喂 ChatStream
   const mirrorDict = Object.fromEntries(mirrors.map((m) => [m.id, m]));
 
+  // ── Plan 10 fix A1: tab 维度的 state，不再用 SW 全局 active mirror ──
+  // useRequestState() 返的是 SW 上一次 attachSubscription 的 mirror —— 切 tab
+  // 时如果 SW 还没收到新 SUBMIT_MESSAGE 它不会变。我们要的是「当前这个 tab
+  // 对应的 conversation 的最后一个 CR」的状态。
+  // 算法：扫 conversation messages 倒序找第一个带 cr_id 的 user message。
+  const tabActiveCrId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.type === 'user' && m.cr_id) return m.cr_id;
+    }
+    return null;
+  })();
+  const tabState = tabActiveCrId ? (mirrorDict[tabActiveCrId] ?? null) : null;
+
   if (showSettings) {
     return (
       <div className="app">
@@ -315,32 +329,40 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   // Cursor 风格：body 默认是 ChatStream；只有「澄清 / 变体选择 / Review」
   // 这类需要业务员强决策的面板会临时覆盖。pipeline 进行中（coding/building）
   // 的状态由 InlineCard 在 stream 里显示，body 不再需要专门 StatusPanel。
+  // FIX A1：判断 panel 用 tabState（当前 tab 的 CR），不用 SW 全局 state，
+  // 避免「切 tab body 还卡在上一个 CR 的 FailedPanel」。
   let body: React.ReactNode = null;
   if (pendingCapture) {
     body = <ReviewCapturePanel pendingCapture={pendingCapture} />;
-  } else if (state?.pendingVariants) {
-    body = <VariantsPanel state={state} />;
-  } else if (state?.pendingQuestion) {
-    body = <ClarifyPanel state={state} />;
-  } else if (state && (state.state === 'failed' || state.state === 'expired')) {
-    // failed 仍保留专门面板（重试按钮 + 错误详情）
-    body = <FailedPanel state={state} />;
+  } else if (tabState?.pendingVariants) {
+    body = <VariantsPanel state={tabState} />;
+  } else if (tabState?.pendingQuestion) {
+    body = <ClarifyPanel state={tabState} />;
+  } else if (tabState && (tabState.state === 'failed' || tabState.state === 'expired')) {
+    body = <FailedPanel state={tabState} />;
   } else if (activeConvId) {
     body = <ChatStream messages={messages} mirrors={mirrorDict} />;
   } else {
     body = <IdleHint />;
   }
 
-  // PreviewDock 数据源：conversation 里**最近一条带 preview_url 且没被业务员关掉的 CR**。
-  // mirrors 已按 lastActivity 降序，取第一条没被 closedDockIds 排除的。
-  const dockMirror = mirrors.find(
-    (m) => !!m.previewUrl && !closedDockIds.has(m.id),
-  ) ?? (state && !closedDockIds.has(state.id) ? state : null);
+  // PreviewDock 数据源：**当前 tab 的 conversation** 里最近一条带 preview_url
+  // 且没被业务员关掉的 CR。切 tab 时浮卡跟着切，不再串味。
+  const dockMirror = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const cid = messages[i].cr_id;
+      if (!cid || closedDockIds.has(cid)) continue;
+      const m = mirrorDict[cid];
+      if (m?.previewUrl) return m;
+    }
+    return null;
+  })();
   const closeDock = dockMirror
     ? () => setClosedDockIds((prev) => new Set(prev).add(dockMirror.id))
     : undefined;
 
-  const pill = statusPillFromState(state ? state.state : null, !!pendingCapture);
+  // pill 也按 tabState（当前 tab 的 CR），切 tab 时 pill 跟着切
+  const pill = statusPillFromState(tabState ? tabState.state : null, !!pendingCapture);
 
   // ReviewCapturePanel 自有输入框，再放底部 ChatInputBar 是噪音；其他都显示。
   const showInputBar = !pendingCapture;
