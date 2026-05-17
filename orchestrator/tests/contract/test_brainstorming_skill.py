@@ -54,6 +54,7 @@ def _stub_llm(monkeypatch, response: str) -> LLMClient:
 
 # ── 轻路径 ──────────────────────────────────────────────────────────
 
+@pytest.mark.skip(reason="[Plan 10 obsolete] uses legacy questions:[] JSON shape; multi-turn loop tested in test_multiturn_clarify.py")
 async def test_clarify_light_path_asks_text_questions(monkeypatch):
     plan = json.dumps({
         "weight": "light",
@@ -68,6 +69,7 @@ async def test_clarify_light_path_asks_text_questions(monkeypatch):
     assert brief.selected_mockup is None
 
 
+@pytest.mark.skip(reason="[Plan 10 obsolete] max_questions cap replaced by MAX_SOFT_ROUNDS + LLM done=true; see test_multiturn_clarify.py::test_clarify_soft_cap_8_rounds_force_break")
 async def test_clarify_respects_max_three_questions(monkeypatch):
     plan = json.dumps({
         "weight": "light",
@@ -79,6 +81,7 @@ async def test_clarify_respects_max_three_questions(monkeypatch):
     assert len(chan.asked) == 3
 
 
+@pytest.mark.skip(reason="[Plan 10 obsolete] uses legacy questions:[] JSON shape; skip-answer behavior tested in test_multiturn_clarify.py")
 async def test_clarify_skipped_answers_do_not_pollute_brief(monkeypatch):
     plan = json.dumps({"weight": "light", "questions": ["q1", "q2"]})
     skill = BrainstormingSkill(_stub_llm(monkeypatch, plan))
