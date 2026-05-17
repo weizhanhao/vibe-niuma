@@ -1660,3 +1660,57 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   border: 1px solid var(--line);
 }
 .inline-card__preview:hover { background: var(--surface-2); }
+
+/* ── Plan 10 Task 16: ChatInputBar attachments tray + mode badge ── */
+.chat-input-meta {
+  display: flex; gap: 6px; align-items: center;
+  padding: 0 8px 4px; font-size: 11px;
+}
+.mode-badge {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-soft);
+  font-size: 10.5px;
+}
+.mode-badge.mode-new_cr { background: var(--accent-dim, #cde); color: var(--accent-ink, #024); }
+.mode-badge.mode-refine_cr { background: #f5e7b0; color: #5a3e00; }
+.mode-badge.mode-chat_only { background: var(--surface-3); color: var(--ink-mute); }
+.mode-unsure {
+  color: var(--ink-mute);
+  border: 1px dashed var(--line);
+  padding: 1px 6px; border-radius: 999px; font-size: 10.5px;
+}
+
+.attachment-tray {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 0 8px 4px;
+}
+.attachment-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 6px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); font-size: 11px;
+  color: var(--ink-soft); max-width: 140px;
+}
+.attachment-chip__icon { font-size: 12px; }
+.attachment-chip__name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.attachment-chip__close {
+  appearance: none; border: none; background: transparent;
+  color: var(--ink-mute); font-size: 12px; line-height: 1;
+  padding: 0 2px; cursor: pointer; border-radius: 2px;
+}
+.attachment-chip__close:hover { background: var(--surface-3); color: var(--ink-strong); }
+
+.chat-input-row {
+  display: flex; gap: 6px; align-items: stretch;
+}
+.btn-ghost {
+  background: transparent; border: 1px dashed var(--line);
+  color: var(--ink-soft); padding: 4px 8px;
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--line-hard); color: var(--ink-strong);
+  background: var(--surface-2);
+}
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
