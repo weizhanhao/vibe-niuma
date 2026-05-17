@@ -384,14 +384,15 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     body = <IdleHint />;
   }
 
-  // PreviewDock 数据源：**当前 tab 的 conversation** 里最近一条带 preview_url
-  // 且没被业务员关掉的 CR。切 tab 时浮卡跟着切，不再串味。
+  // PreviewDock 数据源：当前 tab 的 conversation 里**最近一条仍可操作的** CR
+  // （preview-ready 且有 previewUrl）。已合并/丢弃后 dock 隐藏 —— 业务员心智
+  //「合并完就过去了，除非又有新改动 dock 才会再出来」。
   const dockMirror = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const cid = messages[i].cr_id;
       if (!cid || closedDockIds.has(cid)) continue;
       const m = mirrorDict[cid];
-      if (m?.previewUrl) return m;
+      if (m?.previewUrl && m.state === 'preview-ready') return m;
     }
     return null;
   })();

@@ -13,36 +13,45 @@ interface Props {
 }
 
 export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // 实际 scroll 容器是 .app-body（父级），不是 ChatStream 自己。用 bottom
+  // sentinel + scrollIntoView 不依赖具体哪一层滚动，永远把哨兵推到可视区。
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 新消息进来自动滚到底；只有当用户已经在底部附近时才滚（不打断主动滚阅读历史）
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom) {
-      el.scrollTop = el.scrollHeight;
+  const scrollToBottomIfNearBottom = () => {
+    const sentinel = bottomRef.current;
+    if (!sentinel) return;
+    // 找最近的可滚动祖先；如果它已经接近底部才滚（不打断业务员翻阅历史）
+    let scroller: HTMLElement | null = sentinel.parentElement;
+    while (scroller) {
+      const overflowY = getComputedStyle(scroller).overflowY;
+      if (overflowY === 'auto' || overflowY === 'scroll') break;
+      scroller = scroller.parentElement;
     }
-  }, [messages.length, messages[messages.length - 1]?.content]);
+    if (!scroller) return;
+    const nearBottom =
+      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
+    if (nearBottom) {
+      sentinel.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  };
 
-  // 也跟 mirror.logs 数量变化滚（流式日志增长时跟）
+  // 新消息进来 / 最后一条内容变 / 流式日志总数变 → 跟着滚
+  const lastContent = messages[messages.length - 1]?.content ?? '';
   const totalLogs = Object.values(mirrors).reduce((s, m) => s + m.logs.length, 0);
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [totalLogs]);
+    scrollToBottomIfNearBottom();
+  }, [messages.length, lastContent, totalLogs]);
 
   if (messages.length === 0) {
     return (
-      <div ref={containerRef} className="chat-stream chat-stream--empty">
+      <div className="chat-stream chat-stream--empty">
         <p>还没有对话。在下方输入框开聊。</p>
+        <div ref={bottomRef} />
       </div>
     );
   }
   return (
-    <div ref={containerRef} className="chat-stream" role="log" aria-live="polite">
+    <div className="chat-stream" role="log" aria-live="polite">
       {messages.map((m) => {
         if (m.type === 'summary') {
           return (
@@ -69,6 +78,7 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
           </div>
         );
       })}
+      <div ref={bottomRef} />
     </div>
   );
 }
