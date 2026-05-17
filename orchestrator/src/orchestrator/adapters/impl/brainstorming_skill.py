@@ -394,9 +394,14 @@ class BrainstormingSkill:
         channel: InteractionChannel | None = None,
         prev_answers: list[dict] | None = None,
     ) -> dict:
-        """每轮判断：返 {weight, unknowns, question, options} 或 heavy 的 variants。
+        """每轮判断：返 {weight, unknowns, questions} 或 heavy 的 variants。
 
-        优先用 text-only 模型（complete）—— 对长指令服从度高。失败时降级 vision。
+        策略：
+        - 主路径用 text-only 模型（对长指令服从度高），偶发失败重试 1 次
+        - 重试也挂 → 仅在 raw 真有截图时降级到 vision（避免 qwen-vl-plus
+          收到空 base64 返 400 又错一次）
+        - 两层都挂 → fallback_open_question，**带上当前 prev_answers 的最后
+          一题让业务员重答**，不发那个完全无用的「再具体描述」泛问
         """
         prev_answers = prev_answers or []
         log = getattr(channel, "log", None) if channel is not None else None
@@ -407,34 +412,50 @@ class BrainstormingSkill:
         )
 
         # 主路径：text-only model（deepseek-v4-pro，跟 dev_runner 同款）
-        try:
-            text = await self._llm.complete(prompt)
-            parsed = _parse_unknowns(text)
-            if callable(log):
-                n = len(parsed.get("unknowns") or [])
-                await log(f"✓ LLM 评估完成 unknowns={n}")
-            return parsed
-        except Exception as exc:  # noqa: BLE001
-            if callable(log):
-                try:
-                    await log(f"⚠ text LLM 调用失败：{exc}，尝试 vision 兜底...")
-                except Exception:
-                    pass
+        # 失败重试 1 次，避免偶发抖动直接进兜底误导业务员
+        last_text_exc: Exception | None = None
+        for attempt in (1, 2):
+            try:
+                text = await self._llm.complete(prompt)
+                parsed = _parse_unknowns(text)
+                if callable(log):
+                    n = len(parsed.get("unknowns") or [])
+                    await log(f"✓ LLM 评估完成 unknowns={n}")
+                return parsed
+            except Exception as exc:  # noqa: BLE001
+                last_text_exc = exc
+                if callable(log):
+                    try:
+                        await log(
+                            f"⚠ text LLM 第 {attempt} 次失败：{type(exc).__name__}: {exc}",
+                        )
+                    except Exception:
+                        pass
 
-        # 降级路径：vision model（也许是限速 / API 临时挂）
-        try:
-            if len(raw.images()) > 1:
-                text = await self._llm.complete_vision_multi(prompt, raw.images())
-            else:
-                text = await self._llm.complete_vision(prompt, raw.screenshot_b64)
-            return _parse_unknowns(text)
-        except Exception:  # noqa: BLE001
-            if callable(log):
-                try:
-                    await log("⚠ vision 也失败，进开放兜底问题（不 default done）")
-                except Exception:
-                    pass
-            return _fallback_open_question()
+        # 降级 vision：仅在真有截图时尝试。没截图传空 base64 会被 dashscope
+        # 直接 400，反而绕开了我们能给业务员的友好兜底。
+        has_screenshot = bool(raw.screenshot_b64) or bool(raw.images())
+        if has_screenshot:
+            try:
+                if len(raw.images()) > 1:
+                    text = await self._llm.complete_vision_multi(prompt, raw.images())
+                else:
+                    text = await self._llm.complete_vision(prompt, raw.screenshot_b64)
+                return _parse_unknowns(text)
+            except Exception:  # noqa: BLE001
+                if callable(log):
+                    try:
+                        await log("⚠ vision 兜底也失败，进开放问题")
+                    except Exception:
+                        pass
+
+        # 最终兜底：友好提示 LLM 错了 + 沿用上一轮 unknowns（如果有）让业务员重答
+        if callable(log):
+            try:
+                await log(f"⚠ LLM 完全不可用，进兜底（last={last_text_exc}）")
+            except Exception:
+                pass
+        return _fallback_open_question(prev_answers=prev_answers)
 
     def _build_unknowns_prompt(
         self, raw: RawRequest, repo_doc: str, *,
@@ -472,13 +493,25 @@ class BrainstormingSkill:
 _JSON_BLOCK = re.compile(r"\{[\s\S]*\}")
 
 
-def _fallback_open_question() -> dict:
-    """LLM 出错时绝不默认 done —— 问一个开放问题逼业务员补细节。"""
+def _fallback_open_question(prev_answers: list[dict] | None = None) -> dict:
+    """LLM 出错时绝不默认 done —— 问一个能继续推进的问题。
+
+    设计：
+    - 标题诚实说 AI 这次没判明白，不假装在继续 brainstorm
+    - 只有「我自己描述」一个选项 + 「✓ 够了直接干」（业务员答完表单还撞到
+      LLM 错时，最不该的是让他再描述一长串需求）
+    """
+    last_q = ""
+    if prev_answers:
+        last_q = (prev_answers[-1].get("question") or "").strip()
+    suffix = f"\n\n（上一题是：「{last_q}」）" if last_q else ""
     return {
         "weight": "light",
-        "unknowns": ["LLM 解析失败/服务不可用 — 需要业务员补充细节"],
+        "unknowns": ["LLM 临时不可用 — 让业务员补一条直接描述"],
         "questions": [{
-            "question": "再具体描述一下你想要的效果？比如换成什么样的 UI、要保留哪些功能。",
+            "question": "⚠ AI 暂时没能判断需求，请直接用一两句话说你想要什么效果（"
+                        "什么元素、想换成什么样、要保留什么）。如果上次答案已经够"
+                        "用，可以点「✓ 够了直接干」让 AI 按现有理解开始。" + suffix,
             "options": ["我自己描述"],
             "multi": False,
             "recommended": None,

@@ -312,7 +312,8 @@ async def test_llm_failure_falls_back_to_open_question_not_done():
     # LLM 全挂 → 兜底问题，业务员被问了一次
     assert len(channel.ask_calls) == 1
     q, options = channel.ask_calls[0]
-    assert "具体" in q or "描述" in q
+    # 兜底问题必须明示 AI 出错 + 提供「直接描述」逃生口
+    assert "AI" in q and ("出错" in q or "不可用" in q or "没能" in q)
     assert options is not None and "我自己描述" in options
     # STOP → 没产生 clarifications
     assert brief.clarifications == []
