@@ -289,7 +289,11 @@ class Pipeline:
             clarify_log = _make_log_sink(bus, request_id, "clarifying")
             brief = await _with_heartbeat(
                 self.interaction_skill.clarify(raw, channel),
-                log=clarify_log, label="视觉模型回答中",
+                log=clarify_log,
+                # 不再叫「视觉模型回答中」—— 实际 clarify 里 vision 只调一次
+                # 描述截图（几秒），剩下时间是 text 模型 streaming + 等业务员答。
+                # 业务员看到「视觉模型」会以为又在调视觉，造成误判。
+                label="AI 评估需求中",
             )
             await _phase_done("clarifying", "✓ 澄清完成")
 
