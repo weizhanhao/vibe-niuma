@@ -62,11 +62,21 @@ class DockerPreviewAdapter:
 
     # ── serve ───────────────────────────────────────────────────────
     async def serve(
-        self, repo_path: str, branch: str, *, log: LogSink | None = None
+        self, repo_path: str, branch: str, *,
+        log: LogSink | None = None,
+        base_handle: str | None = None,
     ) -> PreviewInstance:
         """构建 + 起容器；Phase F 把 docker build / run 输出实时推到 log。
         Plan 8 Task 8：项目根有 docker-compose.preview.yml → 走 compose 模式；
-        否则走老的「单 Dockerfile」路径，向后兼容。"""
+        否则走老的「单 Dockerfile」路径，向后兼容。
+
+        Plan 10 Task 7：base_handle 非空 → refine 路径，复用同容器名 + 同端口。
+        目前 _run_refine_cr 实现是「跳过 serve 让 Vite hot-reload 自动接管」，
+        所以 base_handle 这个参数主要为 future-proof：dev_runner 改了 config
+        文件（vite.config / package.json）需要 restart 时由 pipeline 显式调
+        serve(base_handle=...) 触发本路径的 docker compose restart。
+        """
+        del base_handle  # 当前未使用；future-proof 接口
         if (Path(repo_path) / _COMPOSE_FILE).exists():
             return await self._serve_compose(repo_path, branch, log=log)
         return await self._serve_single(repo_path, branch, log=log)

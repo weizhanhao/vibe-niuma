@@ -89,19 +89,31 @@ class FakePreviewAdapter:
         self._serve_succeeds = serve_succeeds
         self.live_handles: set[str] = set()
         self._port = 5100
+        # Plan 10 Task 7：handle → url 反查表，refine 路径复用同容器
+        self._handle_to_url: dict[str, str] = {}
 
     async def serve(
-        self, repo_path: str, branch: str, *, log=None
+        self, repo_path: str, branch: str, *,
+        log=None, base_handle: str | None = None,
     ) -> PreviewInstance:
         # Phase F：`log` 是 Pipeline 注入的 LogSink，fake 忽略。
         if not self._serve_succeeds:
             raise RuntimeError("fake preview serve failure")
+        # Plan 10 Task 7：base_handle 非空 → 复用同容器（refine 路径用）
+        if base_handle and base_handle in self._handle_to_url:
+            return PreviewInstance(
+                preview_id=uuid.uuid4().hex[:12],
+                url=self._handle_to_url[base_handle],
+                handle=base_handle,
+            )
         self._port += 1
         handle = f"fake-container-{uuid.uuid4().hex[:8]}"
+        url = f"http://localhost:{self._port}"
         self.live_handles.add(handle)
+        self._handle_to_url[handle] = url
         return PreviewInstance(
             preview_id=uuid.uuid4().hex[:12],
-            url=f"http://localhost:{self._port}",
+            url=url,
             handle=handle,
         )
 
