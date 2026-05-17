@@ -134,7 +134,8 @@ export type AttachmentKind =
   | 'framed_region'
   | 'screenshot_active_tab'
   | 'pasted_image'
-  | 'attached_file';
+  | 'attached_file'
+  | 'annotated_screenshot';   // AnnotateOverlay 烘焙后的 PNG（含红框/箭头/文字/马赛克）
 
 export interface Attachment {
   kind: AttachmentKind;

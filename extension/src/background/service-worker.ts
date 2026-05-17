@@ -295,6 +295,72 @@ async function handleMessage(msg: Message): Promise<unknown> {
       }
       return { ok: true };
     }
+    case MSG.UI_START_ANNOTATE: {
+      // 截图标注流：SW 先 captureVisibleTab 拿 PNG，再把 dataURL 推给
+      // content script 启全屏标注 overlay。content 用 4 工具标注后烘焙
+      // PNG 回 SW（ANNOTATE_RESULT），SW 压缩 + 广播 CAPTURE_ATTACHED。
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      console.log('[doskill sw] UI_START_ANNOTATE → tab', tab?.id);
+      if (tab?.id === undefined || tab.windowId === undefined) {
+        return { ok: false, error: 'no active tab' };
+      }
+      // 先截图。如果 captureVisibleTab 因为没权限/不能截（chrome:// 等）
+      // 会抛 —— 兜底返 error。
+      let dataUrl = '';
+      try {
+        dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+      } catch (err) {
+        console.error('[doskill sw] captureVisibleTab failed', err);
+        return { ok: false, error: `截图失败：${String(err)}` };
+      }
+      if (!dataUrl) return { ok: false, error: '截图为空' };
+
+      // 跟 START_CAPTURE 同款 ensure content script 已注入
+      const sendStart = () => chrome.tabs.sendMessage(
+        tab.id!, { type: MSG.START_ANNOTATE, screenshotDataUrl: dataUrl },
+      );
+      try {
+        await sendStart();
+      } catch (err) {
+        console.warn('[doskill sw] content script 未注入，注入后重试', err);
+        const manifest = chrome.runtime.getManifest();
+        const files = manifest.content_scripts?.[0]?.js ?? [];
+        if (files.length === 0) {
+          return { ok: false, error: 'no content_scripts in manifest' };
+        }
+        try {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
+          await sendStart();
+        } catch (err2) {
+          return { ok: false, error: `inject failed: ${String(err2)}` };
+        }
+      }
+      return { ok: true };
+    }
+    case MSG.ANNOTATE_RESULT: {
+      // content 烘焙好 PNG 回来。SW 压一下广播给 UI 加到输入栏 chip。
+      console.log('[doskill sw] ANNOTATE_RESULT pngB64.len=', msg.pngB64.length);
+      const dataUrl = `data:image/png;base64,${msg.pngB64}`;
+      const { b64: screenshotB64, mime } = await compressScreenshot(dataUrl);
+      try {
+        await chrome.runtime.sendMessage({
+          type: MSG.CAPTURE_ATTACHED,
+          attachment: {
+            kind: 'annotated_screenshot',
+            mime,
+            b64: screenshotB64,
+            name: '标注截图',
+          },
+        });
+      } catch (err) {
+        console.warn('[doskill sw] broadcast CAPTURE_ATTACHED failed', err);
+      }
+      return { ok: true };
+    }
+    case MSG.ANNOTATE_CANCEL: {
+      console.log('[doskill sw] ANNOTATE_CANCEL');
+      return { ok: true };
+    }
     case MSG.CAPTURE_RESULT: {
       // Plan 10 fix：cursor-like 流。框选完截屏 + 压缩 → 直接广播给 UI 加到
       // 输入栏 chip，不再跳到 ReviewCapturePanel 占满 body。

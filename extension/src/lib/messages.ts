@@ -107,6 +107,30 @@ export interface CaptureAttachedMsg {
   attachment: Attachment;
 }
 
+/** UI → SW：业务员点「📷 截图标注」按钮。SW 先 captureVisibleTab 拿 PNG，
+ *  再把 dataURL 发给 content script 弹标注 overlay。 */
+export interface UiStartAnnotateMsg {
+  type: 'UI_START_ANNOTATE';
+}
+
+/** SW → content：把刚截的 PNG dataURL 喂给 content script 启 overlay。 */
+export interface StartAnnotateMsg {
+  type: 'START_ANNOTATE';
+  screenshotDataUrl: string;
+}
+
+/** content → SW：业务员标注完点「完成」。pngB64 是烘焙后的 PNG base64
+ *  （不含 data:image/png;base64, 前缀）。 */
+export interface AnnotateResultMsg {
+  type: 'ANNOTATE_RESULT';
+  pngB64: string;
+}
+
+/** content → SW：业务员按 Esc 或点「取消」。SW 不广播 attachment。 */
+export interface AnnotateCancelMsg {
+  type: 'ANNOTATE_CANCEL';
+}
+
 export type Message =
   | CaptureResultMsg | CaptureCancelMsg | StartCaptureMsg
   | UiStartCaptureMsg | SubmitAnswerMsg | MergeMsg | DiscardMsg | RetryMsg
@@ -114,7 +138,8 @@ export type Message =
   | RequestStateChangedMsg | MirrorsChangedMsg | RequestStateQueryMsg
   | ConfirmCaptureMsg | RetakeCaptureMsg | GetPendingCaptureMsg
   | PendingCaptureChangedMsg | SubmitTextOnlyMsg
-  | SetConversationMsg | SubmitMessageMsg | CaptureAttachedMsg;
+  | SetConversationMsg | SubmitMessageMsg | CaptureAttachedMsg
+  | UiStartAnnotateMsg | StartAnnotateMsg | AnnotateResultMsg | AnnotateCancelMsg;
 
 export const MSG = {
   START_CAPTURE: 'START_CAPTURE' as const,
@@ -144,4 +169,9 @@ export const MSG = {
   SUBMIT_MESSAGE: 'SUBMIT_MESSAGE' as const,
   // 框选完直接推 Attachment 给 UI（替代 ReviewCapturePanel 接管 body）
   CAPTURE_ATTACHED: 'CAPTURE_ATTACHED' as const,
+  // 截图 + 标注流（替代框选的演进版）
+  UI_START_ANNOTATE: 'UI_START_ANNOTATE' as const,
+  START_ANNOTATE: 'START_ANNOTATE' as const,
+  ANNOTATE_RESULT: 'ANNOTATE_RESULT' as const,
+  ANNOTATE_CANCEL: 'ANNOTATE_CANCEL' as const,
 };

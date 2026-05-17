@@ -109,8 +109,8 @@ export function ChatInputBar({
     }
   };
 
-  const startFrame = () => {
-    send({ type: MSG.UI_START_CAPTURE, requestText: text });
+  const startAnnotate = () => {
+    send({ type: MSG.UI_START_ANNOTATE });
   };
 
   const removeAttachment = (idx: number) => {
@@ -180,11 +180,11 @@ export function ChatInputBar({
           <button
             type="button"
             className="btn btn-secondary btn-small"
-            onClick={startFrame}
-            aria-label="框选区域"
-            title="精确定位：在页面上拖一个框"
+            onClick={startAnnotate}
+            aria-label="打开截图标注工具"
+            title="截图当前页面 + 用红框/箭头/文字/马赛克标注，完成后加到附件"
           >
-            <span className="ico">▢</span> 框选
+            <span className="ico">📷</span> 截图标注
           </button>
           <button
             type="button"
