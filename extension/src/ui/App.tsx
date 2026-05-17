@@ -223,6 +223,8 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   const [historyItems, setHistoryItems] = useState<Conversation[] | null>(null);
   // ChatInputBar attachments tray —— state lifted 到 MainShell
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // 发送成功后递增，触发 useActiveConversation 立即 refetch，业务员看到自己刚发的消息
+  const [submitTick, setSubmitTick] = useState(0);
 
   // 拉一次完整 conversation list，用来给历史下拉 + tab 标题
   useEffect(() => {
@@ -242,7 +244,7 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   // （server 在 pipeline 推进 / refine / chat_only 时会写 ai message 到 conv）
   const refreshKey = `${mirrors.length}:${activeId ?? ''}:${
     state ? state.state : ''
-  }`;
+  }:${submitTick}`;
   const { messages } = useActiveConversation(activeConvId, refreshKey);
 
   const handleNewConversation = async () => {
@@ -415,6 +417,8 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
           <ChatInputBar
             attachments={attachments}
             onAttachmentsChange={setAttachments}
+            conversationId={activeConvId}
+            onSubmitted={() => setSubmitTick((t) => t + 1)}
           />
         )}
       </footer>

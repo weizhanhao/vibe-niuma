@@ -62,26 +62,51 @@ describe('ChatInputBar attachments + mode', () => {
     expect(screen.getByText(/新需求|new_cr/i)).toBeInTheDocument();
   });
 
-  it('sending text dispatches SUBMIT_MESSAGE with attachments', () => {
+  it('sending text dispatches SUBMIT_MESSAGE with attachments + convId', async () => {
     render(
       <ChatInputBar
         attachments={[mkAtt('AAA')]}
         onAttachmentsChange={() => {}}
         initialText="加个搜索"
+        conversationId="conv-abc"
       />,
     );
     const sendBtn = screen.getByRole('button', { name: /发送|提交|→/ });
     fireEvent.click(sendBtn);
+    // await microtask flush so the async submit handler runs
+    await Promise.resolve();
+    await Promise.resolve();
     const submitMsg = sent.find(
       (m) => (m as { type?: string }).type === 'SUBMIT_MESSAGE',
-    ) as { text: string; attachments?: Attachment[] } | undefined;
+    ) as { text: string; attachments?: Attachment[]; conversation_id?: string } | undefined;
     expect(submitMsg).toBeTruthy();
     expect(submitMsg!.text).toBe('加个搜索');
+    expect(submitMsg!.conversation_id).toBe('conv-abc');
     expect(submitMsg!.attachments).toHaveLength(1);
     expect(submitMsg!.attachments![0].b64).toBe('AAA');
   });
 
-  it('cmd+enter submits as well', () => {
+  it('cmd+enter submits as well', async () => {
+    render(
+      <ChatInputBar
+        attachments={[]}
+        onAttachmentsChange={() => {}}
+        initialText="hi"
+        conversationId="conv-x"
+      />,
+    );
+    const ta = screen.getByLabelText(/业务需求/) as HTMLTextAreaElement;
+    fireEvent.keyDown(ta, { key: 'Enter', metaKey: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    const submit = sent.find(
+      (m) => (m as { type?: string }).type === 'SUBMIT_MESSAGE',
+    );
+    expect(submit).toBeTruthy();
+  });
+
+  it('submit without conversationId is no-op (warns)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     render(
       <ChatInputBar
         attachments={[]}
@@ -89,12 +114,10 @@ describe('ChatInputBar attachments + mode', () => {
         initialText="hi"
       />,
     );
-    const ta = screen.getByLabelText(/业务需求/) as HTMLTextAreaElement;
-    fireEvent.keyDown(ta, { key: 'Enter', metaKey: true });
-    const submit = sent.find(
-      (m) => (m as { type?: string }).type === 'SUBMIT_MESSAGE',
-    );
-    expect(submit).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /发送|提交|→/ }));
+    expect(sent.find((m) => (m as { type?: string }).type === 'SUBMIT_MESSAGE'))
+      .toBeUndefined();
+    warnSpy.mockRestore();
   });
 
   it('does not exceed MAX_ATTACHMENTS=3 — input file picker disabled', () => {

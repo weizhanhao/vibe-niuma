@@ -480,16 +480,21 @@ async function handleMessage(msg: Message): Promise<unknown> {
       return { ok: true };
     }
     case MSG.SUBMIT_MESSAGE: {
-      if (!session.activeConversationId) {
-        return { ok: false, error: '请先设置 active conversation（SET_CONVERSATION）' };
+      // 优先用 payload 里的 conversation_id（UI 显式带），避免 SW 死了 / SET_CONVERSATION
+      // 还没到的竞态。fallback 到 session 状态保持兼容。
+      const convId = msg.conversation_id ?? session.activeConversationId;
+      if (!convId) {
+        return { ok: false, error: '请先打开或新建一个对话再发送' };
       }
+      // 顺手把 session 同步上，下次 fallback 路径也能 work
+      session.activeConversationId = convId;
       const client = await getOrchestratorClient();
       if (!client) {
         return { ok: false, error: '请先在设置里配置 orchestrator URL' };
       }
       let resp;
       try {
-        resp = await client.postMessage(session.activeConversationId, {
+        resp = await client.postMessage(convId, {
           text: msg.text,
           ...(msg.attachments ? { attachments: msg.attachments } : {}),
           ...(msg.override_mode ? { override_mode: msg.override_mode } : {}),

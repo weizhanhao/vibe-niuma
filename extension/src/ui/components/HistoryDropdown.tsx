@@ -19,9 +19,13 @@ const UNTITLED = '（未命名）';
 
 function relativeTime(iso: string | null): string {
   if (!iso) return '';
-  const t = Date.parse(iso);
+  // 后端 datetime.utcnow().isoformat() 不带 Z；浏览器默认按本地时区解析 → UTC+8 偏 8 小时。
+  // 显式标 Z 让浏览器知道这是 UTC。已经带 Z/offset 的不动。
+  const normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z';
+  const t = Date.parse(normalized);
   if (Number.isNaN(t)) return '';
   const delta = Date.now() - t;
+  if (delta < 0) return '刚刚';            // server 时钟比 client 略快也算「刚刚」
   const min = Math.floor(delta / 60_000);
   if (min < 1) return '刚刚';
   if (min < 60) return `${min} 分钟前`;

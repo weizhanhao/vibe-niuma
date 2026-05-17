@@ -150,8 +150,24 @@ describe('SUBMIT_MESSAGE → /messages routing', () => {
       type: 'SUBMIT_MESSAGE', text: '?',
     }) as { ok: boolean; error?: string };
     expect(resp.ok).toBe(false);
-    expect(resp.error).toMatch(/conversation/i);
+    expect(resp.error).toMatch(/对话|conversation/i);
     expect(postMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('SUBMIT_MESSAGE with conversation_id in payload bypasses session state', async () => {
+    postMessageMock.mockResolvedValue({
+      message_id: 'm', mode: 'chat_only', cr_id: null, ai_message_id: 'ai1',
+      confidence: 0.9, is_unsure: false, reason: 'ok',
+    });
+    await importSW();
+
+    // 没 SET_CONVERSATION，直接发 SUBMIT_MESSAGE 携 convId
+    const resp = await fireMsg({
+      type: 'SUBMIT_MESSAGE', text: 'hi',
+      conversation_id: 'inline-conv-123',
+    }) as { ok: boolean };
+    expect(resp.ok).toBe(true);
+    expect(postMessageMock).toHaveBeenCalledWith('inline-conv-123', expect.any(Object));
   });
 
   it('override_mode forwarded to postMessage body', async () => {

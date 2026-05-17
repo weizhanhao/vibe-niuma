@@ -28,12 +28,18 @@ interface Props {
   attachments?: Attachment[];
   onAttachmentsChange?: (next: Attachment[]) => void;
   initialText?: string;
+  /** 当前 active conversation id。UI 显式带，SW 不依赖 session 状态。 */
+  conversationId?: string | null;
+  /** SUBMIT_MESSAGE 成功送达 SW 后回调。MainShell 用它 invalidate ChatStream cache 立即刷新。 */
+  onSubmitted?: () => void;
 }
 
 export function ChatInputBar({
   attachments = [],
   onAttachmentsChange = () => {},
   initialText = '',
+  conversationId = null,
+  onSubmitted,
 }: Props = {}) {
   const [text, setText] = useState(initialText);
 
@@ -49,15 +55,37 @@ export function ChatInputBar({
   const disabled = !text.trim();
   const atLimit = attachments.length >= MAX_ATTACHMENTS;
 
-  const submit = () => {
+  const submit = async () => {
     if (disabled) return;
-    send({
-      type: MSG.SUBMIT_MESSAGE,
-      text,
-      ...(attachments.length > 0 ? { attachments } : {}),
-    });
+    if (!conversationId) {
+      // 没 conv：理论上 MainShell 会 disable 输入框；这里兜底
+      console.warn('[doskill] submit without conversation_id');
+      return;
+    }
+    const sent = text;
+    const sentAtt = attachments;
     setText('');
     onAttachmentsChange([]);
+    try {
+      const reply = await send({
+        type: MSG.SUBMIT_MESSAGE,
+        text: sent,
+        conversation_id: conversationId,
+        ...(sentAtt.length > 0 ? { attachments: sentAtt } : {}),
+      }) as { ok: boolean; error?: string } | undefined;
+      if (reply && reply.ok === false) {
+        console.warn('[doskill] SUBMIT_MESSAGE failed', reply.error);
+        // 失败：回填 text 让业务员能重试
+        setText(sent);
+        onAttachmentsChange(sentAtt);
+      } else {
+        onSubmitted?.();
+      }
+    } catch (err) {
+      console.warn('[doskill] SUBMIT_MESSAGE exception', err);
+      setText(sent);
+      onAttachmentsChange(sentAtt);
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

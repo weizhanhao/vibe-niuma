@@ -95,6 +95,9 @@ export interface SubmitMessageMsg {
   text: string;
   attachments?: Attachment[];
   override_mode?: IntentMode;
+  /** Plan 10 fix：UI 直接带 convId 不依赖 SW session（避免 SW 死了 / SET_CONVERSATION 还没到的竞态）。
+   *  SW 优先用这个；老 client 不带 → fallback 到 session.activeConversationId。 */
+  conversation_id?: string;
 }
 
 export type Message =
