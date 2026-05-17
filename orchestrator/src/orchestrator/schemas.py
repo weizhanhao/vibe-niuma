@@ -18,6 +18,7 @@ AttachmentKind = Literal[
     "screenshot_active_tab",  # 自动截当前 tab，全屏，box 留空
     "pasted_image",           # 业务员从剪贴板 / 文件选择器贴的图
     "attached_file",          # PDF 等非图文件
+    "annotated_screenshot",   # AnnotateOverlay 烘焙的 PNG（含红框/箭头/文字/马赛克）
 ]
 
 

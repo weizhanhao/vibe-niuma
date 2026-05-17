@@ -67,9 +67,33 @@ export function ChatStream({ messages, mirrors }: Props): React.ReactElement {
           );
         }
         const mirror = m.cr_id ? mirrors[m.cr_id] : undefined;
+        const atts = m.attachments ?? [];
         return (
           <div key={m.id} className={`chat-stream__msg chat-stream__msg--${m.type}`}>
             <div className="chat-stream__bubble">
+              {atts.length > 0 && (
+                <div className="chat-stream__attachments">
+                  {atts.map((a, i) => {
+                    const isImage = a.mime?.startsWith('image/');
+                    if (!isImage) {
+                      return (
+                        <span key={i} className="chat-stream__att chat-stream__att--file">
+                          📎 {a.name ?? a.kind}
+                        </span>
+                      );
+                    }
+                    return (
+                      <img
+                        key={i}
+                        className="chat-stream__att-img"
+                        src={`data:${a.mime};base64,${a.b64}`}
+                        alt={a.name ?? '截图'}
+                        loading="lazy"
+                      />
+                    );
+                  })}
+                </div>
+              )}
               {m.content}
             </div>
             {mirror && (

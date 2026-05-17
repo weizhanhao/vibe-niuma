@@ -11,9 +11,24 @@
 // 走 SUBMIT_MESSAGE。框选保留 UI_START_CAPTURE 是因为 overlay 还在那条链路上工作。
 // props 都可选 —— App.tsx 改造完成前老调用 `<ChatInputBar />` 仍能跑（空 attachments）。
 import { useMemo, useState } from 'react';
+import { MAX_ATTACHMENTS } from '../../lib/attachments';
 import { classifyIntent } from '../../lib/intent';
 import { MSG, type Message } from '../../lib/messages';
 import type { Attachment, IntentMode } from '../../lib/types';
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const result = r.result as string;
+      // dataURL = data:image/png;base64,xxxx → 剥 prefix 只留 base64
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
 
 const send = (msg: Message) => chrome.runtime.sendMessage(msg);
 
@@ -103,10 +118,41 @@ export function ChatInputBar({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !disabled) {
+    // 回车直接发送；⇧+回车换行（避免误发的同时保留长文换行能力）
+    if (e.key === 'Enter' && !e.shiftKey && !disabled) {
       e.preventDefault();
       submit();
     }
+  };
+
+  // 剪贴板贴图：扫 clipboard 里的 image item → 转 base64 → 加进 attachments
+  const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageItems: DataTransferItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+        imageItems.push(items[i]);
+      }
+    }
+    if (imageItems.length === 0) return;       // 没图 → 走默认粘贴（文本）
+    e.preventDefault();
+    const room = MAX_ATTACHMENTS - attachments.length;
+    const slice = imageItems.slice(0, Math.max(0, room));
+    if (slice.length === 0) return;
+    const next: Attachment[] = [];
+    for (const item of slice) {
+      const file = item.getAsFile();
+      if (!file) continue;
+      const b64 = await fileToBase64(file);
+      next.push({
+        kind: 'pasted_image',
+        mime: file.type || 'image/png',
+        b64,
+        name: file.name || '剪贴板图',
+      });
+    }
+    if (next.length > 0) onAttachmentsChange([...attachments, ...next]);
   };
 
   const startAnnotate = () => {
@@ -163,29 +209,32 @@ export function ChatInputBar({
           })}
         </div>
       )}
+      {/* 输入框上沿工具条：截图标注 + 提示按 ⏎ 发送 */}
+      <div className="chat-input-tools">
+        <button
+          type="button"
+          className="chat-input-tool"
+          onClick={startAnnotate}
+          aria-label="打开截图标注工具"
+          title="截图当前页面 + 用红框/箭头/文字/马赛克标注（可⌘V贴剪贴板图）"
+        >
+          <span aria-hidden="true">✂</span>
+        </button>
+        <span className="chat-input-tools__hint">⌘V 粘贴图片 · ⏎ 发送 · ⇧⏎ 换行</span>
+      </div>
       <div className="chat-input-row">
-        {/* 老的「+」附件按钮已删 —— 是个死按钮，没接 file input；后续随
-            截图+标注工具一起重做。框选按钮在右侧仍可用。 */}
         <textarea
           aria-label="业务需求"
           className="chat-input-textarea"
           rows={2}
-          placeholder="想改这个页面的哪里？⌘↵ 发送"
+          placeholder="想改这个页面的哪里？⏎ 发送"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           maxLength={500}
         />
         <div className="chat-input-actions">
-          <button
-            type="button"
-            className="btn btn-secondary btn-small"
-            onClick={startAnnotate}
-            aria-label="打开截图标注工具"
-            title="截图当前页面 + 用红框/箭头/文字/马赛克标注，完成后加到附件"
-          >
-            <span className="ico">📷</span> 截图标注
-          </button>
           <button
             type="button"
             className="btn btn-primary btn-small"
