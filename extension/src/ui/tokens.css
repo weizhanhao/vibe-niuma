@@ -1868,11 +1868,10 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   padding: 0 8px 4px; font-size: 11px;
 }
 
-/* 输入框上沿工具条：✂ 截图按钮 + 快捷键提示 */
+/* 输入框上沿工具条：仅 ✂ 截图按钮 —— 提示文案已去掉，给用户视觉自由度 */
 .chat-input-tools {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px 4px;
-  border-bottom: 1px dashed var(--line-soft);
+  display: flex; align-items: center;
+  padding: 4px 8px 0;
 }
 .chat-input-tool {
   appearance: none;
@@ -1881,17 +1880,36 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--surface-2);
-  color: var(--ink);
+  color: var(--ink-soft);
   cursor: pointer;
   font-size: 14px;
-  transition: background var(--t-fast), border-color var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 .chat-input-tool:hover {
   background: var(--surface-3);
   border-color: var(--line-hard);
+  color: var(--ink);
 }
-.chat-input-tools__hint {
-  font-size: 10.5px; color: var(--ink-mute);
+
+/* 发送按钮：圆形 icon，跟输入框高度协调，不占太多视觉空间 */
+.chat-input-send {
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  border: none; border-radius: 50%;
+  background: var(--accent); color: white;
+  cursor: pointer;
+  font-size: 16px; font-weight: 600; line-height: 1;
+  transition: background var(--t-fast), transform var(--t-fast);
+}
+.chat-input-send:hover:not(:disabled) {
+  background: var(--accent-hover, var(--accent));
+  transform: translateY(-1px);
+}
+.chat-input-send:disabled {
+  background: var(--surface-3);
+  color: var(--ink-mute);
+  cursor: not-allowed;
 }
 .mode-badge {
   padding: 3px 10px; border-radius: 999px;

@@ -70,15 +70,13 @@ export function CapturePanel() {
   return (
     <section>
       <div className="eyebrow">
-        <span className="ix">STEP 01</span>
-        <span>capture</span>
+        <span>需求</span>
         <span className="rule" />
       </div>
-      <h3 className="title">想改这个页面的哪里？</h3>
-      <p className="help">用自己的话写下你想看到的变化。我们不在意「怎么实现」——那是系统的事。</p>
+      <h3 className="title">想改哪里？</h3>
       <label className="field">
         <span className="label">
-          <span>业务需求 · INTENT</span>
+          <span>业务需求</span>
           <span className="count">{text.length} / 500</span>
         </span>
         <textarea
@@ -153,12 +151,10 @@ export function ReviewCapturePanel({ pendingCapture }: { pendingCapture: Pending
   return (
     <section>
       <div className="eyebrow">
-        <span className="ix">STEP 02</span>
-        <span>review · confirm region</span>
+        <span>确认区域</span>
         <span className="rule" />
       </div>
       <h3 className="title">框对了吗？</h3>
-      <p className="help">看一眼框选的位置；不对就重新框，对了就提交给 AI。</p>
 
       <section className="cap">
         <div
@@ -253,13 +249,11 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
   return (
     <section>
       <div className="eyebrow">
-        <span className="ix">STEP 03</span>
-        <span>clarify</span>
+        <span>澄清</span>
         <span className="rule" />
-        {totalOptions > 0 && <span className="right">{totalOptions} OPTIONS</span>}
+        {totalOptions > 0 && <span className="right">{totalOptions} 项可选</span>}
       </div>
       <h3 className="title">{q.question}</h3>
-      <p className="help">这是业务问题，不涉及技术细节。</p>
       {q.options && q.options.length > 0 && (
         <div className="option-row">
           {q.options.map((opt) => {
@@ -404,8 +398,7 @@ export function FormPanel({ state }: { state: RequestStateMirror }) {
   return (
     <section>
       <div className="eyebrow">
-        <span className="ix">STEP 03</span>
-        <span>clarify · {form.questions.length} 题一次问</span>
+        <span>澄清 · {form.questions.length} 题</span>
         <span className="rule" />
       </div>
       {form.questions.map((q, qi) => {
@@ -501,13 +494,12 @@ export function VariantsPanel({ state }: { state: RequestStateMirror }) {
   return (
     <section>
       <div className="eyebrow">
-        <span className="ix">STEP 03</span>
-        <span>pick a direction</span>
+        <span>选个方向</span>
         <span className="rule" />
-        <span className="right">{v.variants.length} OPTIONS</span>
+        <span className="right">{v.variants.length} 项</span>
       </div>
-      <h3 className="title">你想要哪种感觉？</h3>
-      <p className="help">这几套不是最终成品，只是「方向锚点」——挑一个，AI 会按这种感觉在真实代码里实现。</p>
+      <h3 className="title">想要哪种感觉？</h3>
+      <p className="help">挑一个方向，AI 会按这感觉在真实代码里实现。</p>
       <div className="variants">
         {v.variants.map((m: HtmlMockup) => {
           const selected = picked === m.id;

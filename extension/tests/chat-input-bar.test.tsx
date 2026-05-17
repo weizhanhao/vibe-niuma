@@ -51,7 +51,7 @@ describe('ChatInputBar attachments + mode', () => {
     expect(onChange).toHaveBeenCalledWith([mkAtt('A'), mkAtt('C')]);
   });
 
-  it('shows mode badge based on classifyIntent (heuristic preview)', () => {
+  it('mode badge 已移除（用户视觉自由度优先，不展示「新需求/续改」label）', () => {
     render(
       <ChatInputBar
         attachments={[]}
@@ -59,7 +59,9 @@ describe('ChatInputBar attachments + mode', () => {
         initialText="加搜索"
       />,
     );
-    expect(screen.getByText(/新需求|new_cr/i)).toBeInTheDocument();
+    // 旧版有的 mode-badge / 不确定 chips 都不应再渲染
+    expect(screen.queryByText(/新需求/)).toBeNull();
+    expect(screen.queryByText(/不确定/)).toBeNull();
   });
 
   it('sending text dispatches SUBMIT_MESSAGE with attachments + convId', async () => {
@@ -86,7 +88,7 @@ describe('ChatInputBar attachments + mode', () => {
     expect(submitMsg!.attachments![0].b64).toBe('AAA');
   });
 
-  it('cmd+enter submits as well', async () => {
+  it('Enter 直接发送（业务员实测反馈：不要 ⌘+回车）', async () => {
     render(
       <ChatInputBar
         attachments={[]}
@@ -95,14 +97,32 @@ describe('ChatInputBar attachments + mode', () => {
         conversationId="conv-x"
       />,
     );
-    const ta = screen.getByLabelText(/业务需求/) as HTMLTextAreaElement;
-    fireEvent.keyDown(ta, { key: 'Enter', metaKey: true });
+    const ta = screen.getByLabelText(/输入需求/) as HTMLTextAreaElement;
+    fireEvent.keyDown(ta, { key: 'Enter' });
     await Promise.resolve();
     await Promise.resolve();
     const submit = sent.find(
       (m) => (m as { type?: string }).type === 'SUBMIT_MESSAGE',
     );
     expect(submit).toBeTruthy();
+  });
+
+  it('⇧+回车 不发送，保留换行能力', async () => {
+    render(
+      <ChatInputBar
+        attachments={[]}
+        onAttachmentsChange={() => {}}
+        initialText="line1"
+        conversationId="conv-x"
+      />,
+    );
+    const ta = screen.getByLabelText(/输入需求/) as HTMLTextAreaElement;
+    fireEvent.keyDown(ta, { key: 'Enter', shiftKey: true });
+    await Promise.resolve();
+    const submit = sent.find(
+      (m) => (m as { type?: string }).type === 'SUBMIT_MESSAGE',
+    );
+    expect(submit).toBeUndefined();
   });
 
   it('submit without conversationId is no-op (warns)', () => {

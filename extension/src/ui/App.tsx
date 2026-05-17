@@ -42,26 +42,26 @@ import { loadTheme, readThemeSync, saveTheme, type Theme } from '../lib/theme';
 type ConfigState = 'loading' | Config | null;
 const CONFIG_STORAGE_KEY = 'doskill_config_v2';
 
-// FSM → head 状态徽章（READY/RUNNING/SELECTING/MERGED/FAIL）。design 里 head 右侧 pill。
+// FSM → head 状态徽章（就绪/进行中/截图中/已合并/失败）。head 右侧 pill。
 function statusPillFromState(state: ChangeRequestState | null, pendingCapture: boolean): { label: string; tone: string } {
-  if (pendingCapture) return { label: 'SELECTING', tone: 'tone-warn' };
-  if (!state) return { label: 'READY', tone: '' };
+  if (pendingCapture) return { label: '截图中', tone: 'tone-warn' };
+  if (!state) return { label: '就绪', tone: '' };
   switch (state) {
     case 'created':
     case 'clarifying':
     case 'located':
     case 'coding':
     case 'building':
-      return { label: 'RUNNING', tone: 'tone-running' };
+      return { label: '进行中', tone: 'tone-running' };
     case 'preview-ready':
-      return { label: 'READY', tone: '' };
+      return { label: '就绪', tone: '' };
     case 'merged':
-      return { label: 'MERGED', tone: 'tone-merged' };
+      return { label: '已合并', tone: 'tone-merged' };
     case 'failed':
     case 'expired':
-      return { label: 'FAIL', tone: 'tone-fail' };
+      return { label: '失败', tone: 'tone-fail' };
     case 'discarded':
-      return { label: 'READY', tone: '' };
+      return { label: '就绪', tone: '' };
   }
 }
 

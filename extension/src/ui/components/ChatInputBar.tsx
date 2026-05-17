@@ -165,14 +165,6 @@ export function ChatInputBar({
 
   return (
     <div className="chat-input-bar">
-      <div className="chat-input-meta">
-        <span className={`mode-badge mode-${decision.mode}`}>
-          {MODE_LABEL[decision.mode]}
-        </span>
-        {decision.confidence < 0.6 && (
-          <span className="mode-unsure" title={decision.reason}>不确定</span>
-        )}
-      </div>
       {attachments.length > 0 && (
         <div className="attachment-tray">
           {attachments.map((a, i) => {
@@ -209,25 +201,24 @@ export function ChatInputBar({
           })}
         </div>
       )}
-      {/* 输入框上沿工具条：截图标注 + 提示按 ⏎ 发送 */}
+      {/* 输入框上沿：只剩截图按钮，hover 时浮 tooltip 提示快捷键 */}
       <div className="chat-input-tools">
         <button
           type="button"
           className="chat-input-tool"
           onClick={startAnnotate}
-          aria-label="打开截图标注工具"
-          title="截图当前页面 + 用红框/箭头/文字/马赛克标注（可⌘V贴剪贴板图）"
+          aria-label="截图标注"
+          title="截图标注（也可 ⌘V 粘贴图）"
         >
           <span aria-hidden="true">✂</span>
         </button>
-        <span className="chat-input-tools__hint">⌘V 粘贴图片 · ⏎ 发送 · ⇧⏎ 换行</span>
       </div>
       <div className="chat-input-row">
         <textarea
-          aria-label="业务需求"
+          aria-label="输入需求"
           className="chat-input-textarea"
           rows={2}
-          placeholder="想改这个页面的哪里？⏎ 发送"
+          placeholder="想改哪里？"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
@@ -237,12 +228,13 @@ export function ChatInputBar({
         <div className="chat-input-actions">
           <button
             type="button"
-            className="btn btn-primary btn-small"
+            className="chat-input-send"
             onClick={submit}
             disabled={disabled}
             aria-label="发送"
+            title="发送"
           >
-            → 发送
+            <span aria-hidden="true">↑</span>
           </button>
         </div>
       </div>
