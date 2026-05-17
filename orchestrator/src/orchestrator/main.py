@@ -426,6 +426,27 @@ async def post_message(
             override=payload.override_mode,
         )
 
+    # Plan 10 P1：同对话默认续改。业务员心智「我在一个对话里反复优化这个页面」→
+    # 同一 conversation 已经有一个可续改的 CR（preview-ready 或 merged + 有 branch）
+    # → 把 classifier 判出来的 new_cr 强转 refine_cr。换主题就开新 tab，那是新
+    # conversation 自然走 new_cr。chat_only 不受影响。
+    if (
+        decision.mode == "new_cr"
+        and payload.override_mode is None  # 业务员显式 force 不变
+        and last_cr is not None
+        and last_cr.state in ("preview-ready", "merged")
+        and last_cr.branch
+    ):
+        from orchestrator.intent_classifier import IntentDecision
+        decision = IntentDecision(
+            mode="refine_cr",
+            confidence=max(decision.confidence, 0.85),
+            reason=(
+                f"同对话已有可续改 CR（{last_cr.state}），按 refine 处理；"
+                "想从头开个新方向 → 点 + 新建对话"
+            ),
+        )
+
     # 4) dispatch
     if decision.mode == "chat_only":
         if app_state.chat_responder_factory is None:

@@ -283,6 +283,94 @@ def test_post_messages_override_mode_bypasses_classifier(client):
     assert classifier.classify_calls[0].get("override") == "new_cr"
 
 
+def test_post_messages_force_refine_when_conv_has_preview_ready_cr(client):
+    """同对话已有 preview-ready CR + 新消息被 classifier 判为 new_cr →
+    server 强转 refine_cr（业务员心智：同对话默认续改同分支）。"""
+    classifier, _ = _inject_test_factories(intent_mode="new_cr")
+    from orchestrator.main import app_state
+    from orchestrator.conversation import ConversationRepository
+    from orchestrator.repository import ChangeRequestRepository
+    from orchestrator.adapters.types import RawRequest
+    from orchestrator.states import State
+
+    db = app_state.session_factory()
+    conv = ConversationRepository(db).create()
+    repo = ChangeRequestRepository(db)
+    raw = RawRequest(url="http://x", screenshot_b64="", box_coords={},
+                     viewport={}, request_text="加按钮")
+    base = repo.create(raw, conversation_id=conv.id)
+    base.state = State.PREVIEW_READY.value
+    base.branch = "cr/base"
+    base.preview_url = "http://localhost:5100"
+    base.preview_handle = "fake-handle"
+    db.commit()
+
+    resp = client.post(
+        f"/conversations/{conv.id}/messages",
+        json={"text": "再加个表格"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["mode"] == "refine_cr"
+    new_cr = repo.get(body["cr_id"])
+    assert new_cr.mode == "refine_cr"
+    assert new_cr.refine_of == base.id
+
+
+def test_post_messages_no_force_refine_when_conv_only_has_failed_cr(client):
+    """上一 CR 失败 → 不该 refine 死分支，仍走 new_cr。"""
+    _inject_test_factories(intent_mode="new_cr")
+    from orchestrator.main import app_state
+    from orchestrator.conversation import ConversationRepository
+    from orchestrator.repository import ChangeRequestRepository
+    from orchestrator.adapters.types import RawRequest
+    from orchestrator.states import State
+
+    db = app_state.session_factory()
+    conv = ConversationRepository(db).create()
+    repo = ChangeRequestRepository(db)
+    raw = RawRequest(url="http://x", screenshot_b64="", box_coords={},
+                     viewport={}, request_text="勉强一改")
+    failed = repo.create(raw, conversation_id=conv.id)
+    failed.state = State.FAILED.value
+    failed.branch = "cr/dead"
+    db.commit()
+
+    resp = client.post(
+        f"/conversations/{conv.id}/messages",
+        json={"text": "再试一次别的"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "new_cr"
+
+
+def test_post_messages_explicit_override_bypasses_force_refine(client):
+    """业务员 override_mode='new_cr' 显式强制 → 不被自动转 refine。"""
+    _inject_test_factories(intent_mode="new_cr")
+    from orchestrator.main import app_state
+    from orchestrator.conversation import ConversationRepository
+    from orchestrator.repository import ChangeRequestRepository
+    from orchestrator.adapters.types import RawRequest
+    from orchestrator.states import State
+
+    db = app_state.session_factory()
+    conv = ConversationRepository(db).create()
+    repo = ChangeRequestRepository(db)
+    raw = RawRequest(url="http://x", screenshot_b64="", box_coords={},
+                     viewport={}, request_text="base")
+    base = repo.create(raw, conversation_id=conv.id)
+    base.state = State.PREVIEW_READY.value
+    base.branch = "cr/base"
+    db.commit()
+
+    resp = client.post(
+        f"/conversations/{conv.id}/messages",
+        json={"text": "重新开一条", "override_mode": "new_cr"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "new_cr"
+
+
 def test_post_messages_rejects_more_than_3_attachments(client):
     _inject_test_factories(intent_mode="new_cr")
     from orchestrator.main import app_state
