@@ -1427,6 +1427,60 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 }
 .preview-dock-state-merged { color: var(--accent); }
 .preview-dock-state-discarded { color: var(--ink-mute); }
+.preview-dock-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink-mute);
+  font-size: 16px;
+  line-height: 1;
+  width: 20px; height: 20px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.preview-dock-close:hover { background: var(--surface-3); color: var(--ink); }
+
+/* ── Cursor 风格 footer：浮卡 + 输入栏 sticky 底部 ────────────────── */
+.app-footer {
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+}
+.chat-input-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  align-items: end;
+}
+.chat-input-textarea {
+  resize: none;
+  min-height: 48px;
+  max-height: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.chat-input-textarea:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.chat-input-actions {
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+/* idle hint：还没起 CR 时主体一行欢迎语 */
+.idle-hint { padding: 8px 4px; }
+.idle-hint .title { margin: 0 0 6px; font-size: 18px; }
+.idle-hint .help { margin: 0; color: var(--ink-soft); font-size: 12.5px; line-height: 1.55; }
 
 /* ── compacted range notice (Plan 9 Task 11) ───────────────────── */
 .compacted-range {

@@ -13,6 +13,7 @@ import { isConfigSufficient, loadConfig, type Config } from '../lib/config';
 import {
   loadActiveProject, loadProjects, migrateLegacyConfig, type Project,
 } from '../lib/projects';
+import { ChatInputBar } from './components/ChatInputBar';
 import { ConversationList } from './components/ConversationList';
 import { PreviewDock } from './components/PreviewDock';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
@@ -20,7 +21,7 @@ import { useMirrors } from './hooks/useMirrors';
 import { usePendingCapture } from './hooks/usePendingCapture';
 import { useRequestState } from './hooks/useRequestState';
 import {
-  CapturePanel, ClarifyPanel, FailedPanel, ReviewCapturePanel,
+  ClarifyPanel, FailedPanel, ReviewCapturePanel,
   StatusPanel, VariantsPanel,
 } from './panels';
 import { CreateProjectPanel } from './panels/CreateProjectPanel';
@@ -202,6 +203,9 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   const pendingCapture = usePendingCapture();
   const [showSettings, setShowSettings] = useState(false);
   const [theme, toggleTheme] = useThemeToggle();
+  // 用户关掉的 PreviewDock id 集合（merged/discarded 后业务员主动 ×）。仅 in-memory：
+  // 关闭窗口再开浮卡又会回来 —— 业务员还想看就再切；不想看就持续 ×（轻量决策）。
+  const [closedDockIds, setClosedDockIds] = useState<Set<string>>(() => new Set());
 
   if (showSettings) {
     return (
@@ -234,35 +238,44 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     );
   }
 
-  // Plan 9 Task 9：preview-ready / merged / discarded 时不再把 PreviewPanel 当 body —— 主体
-  // 让位给 CapturePanel（业务员继续打字 → 起新一轮 CR），预览/合并/丢弃挪到底部 PreviewDock。
-  const isDoneState = !!state && (
-    state.state === 'preview-ready' ||
-    state.state === 'merged' ||
-    state.state === 'discarded'
-  );
-
-  let body: React.ReactNode;
+  // Cursor 风格：body 只放需要业务员看 / 决策的「状态内容」；输入栏一直在底部 footer。
+  // preview-ready / merged / discarded 时 body 是空白（浮卡 + 输入栏在 footer 都已就位）。
+  let body: React.ReactNode = null;
   if (pendingCapture) {
-    // Phase G：优先级最高——业务员刚框完，必须先确认。
+    // Phase G：优先级最高——业务员刚框完，必须先确认；ReviewCapturePanel 自带提交按钮。
     body = <ReviewCapturePanel pendingCapture={pendingCapture} />;
-  } else if (!state || isDoneState) {
-    body = <CapturePanel />;
+  } else if (!state) {
+    body = <IdleHint />;
   } else if (state.pendingVariants) {
     body = <VariantsPanel state={state} />;
   } else if (state.pendingQuestion) {
     body = <ClarifyPanel state={state} />;
   } else if (state.state === 'failed' || state.state === 'expired') {
+    // failed 也保留 body 显示原因 + 重试按钮，输入栏照样在底部可继续聊新需求
     body = <FailedPanel state={state} />;
+  } else if (
+    state.state === 'preview-ready' ||
+    state.state === 'merged' ||
+    state.state === 'discarded'
+  ) {
+    body = null;
   } else {
     body = <StatusPanel state={state} />;
   }
 
-  // PreviewDock 数据源：conversation 里**最近一条带 preview_url 的 CR**。mirrors 已按
-  // lastActivity 降序，取第一条带 previewUrl 的就行。若没有，用 active state 兜底。
-  const dockMirror = mirrors.find((m) => !!m.previewUrl) ?? state;
+  // PreviewDock 数据源：conversation 里**最近一条带 preview_url 且没被业务员关掉的 CR**。
+  // mirrors 已按 lastActivity 降序，取第一条没被 closedDockIds 排除的。
+  const dockMirror = mirrors.find(
+    (m) => !!m.previewUrl && !closedDockIds.has(m.id),
+  ) ?? (state && !closedDockIds.has(state.id) ? state : null);
+  const closeDock = dockMirror
+    ? () => setClosedDockIds((prev) => new Set(prev).add(dockMirror.id))
+    : undefined;
 
   const pill = statusPillFromState(state ? state.state : null, !!pendingCapture);
+
+  // ReviewCapturePanel 自有输入框，再放底部 ChatInputBar 是噪音；其他都显示。
+  const showInputBar = !pendingCapture;
 
   return (
     <div className="app">
@@ -290,7 +303,21 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
       </header>
       <ConversationList mirrors={mirrors} activeId={activeId} />
       <div className="app-body">{body}</div>
-      <PreviewDock state={dockMirror ?? null} />
+      <footer className="app-footer">
+        <PreviewDock state={dockMirror} onClose={closeDock} />
+        {showInputBar && <ChatInputBar />}
+      </footer>
     </div>
+  );
+}
+
+// 空状态提示：还没起任何 CR 时 body 显示一行欢迎语；具体输入在底部 ChatInputBar。
+function IdleHint() {
+  return (
+    <section className="idle-hint">
+      <h3 className="title">想改这个页面的哪里？</h3>
+      <p className="help">在下方输入你想看到的变化 —— 用大白话就行。AI 按 URL 自定位，
+        想精准定位就点「框选」拖一个框。</p>
+    </section>
   );
 }
