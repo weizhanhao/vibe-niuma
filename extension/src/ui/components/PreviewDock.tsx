@@ -34,21 +34,28 @@ export function PreviewDock({ state, onClose }: Props) {
   };
   const open = () => chrome.tabs.create({ url: state.previewUrl! });
 
+  // branch 完整 SHA（cr/3713c774e3c14a0d92cbedd2e2c4ad6b）在窄侧栏会撑爆，
+  // 显示短哈希 cr/3713c774…，完整 SHA 放 title 鼠标 hover 看。
+  const branchShort = state.branch
+    ? (state.branch.length > 14 ? `${state.branch.slice(0, 11)}…` : state.branch)
+    : null;
+
   return (
     <div className={`preview-dock ${isMerged ? 'is-merged' : ''} ${isDiscarded ? 'is-discarded' : ''}`}>
       <div className="preview-dock-top">
-        {state.branch && <span className="branch-chip">{state.branch}</span>}
-        <span className="preview-dock-url" title={state.previewUrl}>
-          {state.previewUrl}
-        </span>
-        <button
-          className="btn btn-small btn-secondary"
-          onClick={open}
-          title="新标签打开预览"
-          aria-label="新标签打开预览"
+        {branchShort && (
+          <span className="preview-dock-branch" title={state.branch ?? undefined}>
+            {branchShort}
+          </span>
+        )}
+        <a
+          className="preview-dock-url"
+          href={state.previewUrl}
+          onClick={(e) => { e.preventDefault(); open(); }}
+          title={state.previewUrl}
         >
-          ↗ 预览
-        </button>
+          {state.previewUrl}
+        </a>
         {showClose && (
           <button
             type="button"
@@ -63,8 +70,29 @@ export function PreviewDock({ state, onClose }: Props) {
       </div>
       {!isMerged && !isDiscarded && (
         <div className="preview-dock-actions">
-          <button className="btn btn-small btn-danger" onClick={discard}>丢弃</button>
-          <button className="btn btn-small btn-primary" onClick={merge}>合并 →</button>
+          <button
+            type="button"
+            className="preview-dock-btn preview-dock-btn--ghost"
+            onClick={open}
+            title="新标签打开预览"
+          >
+            ↗ 预览
+          </button>
+          <span className="preview-dock-actions__spacer" />
+          <button
+            type="button"
+            className="preview-dock-btn preview-dock-btn--danger"
+            onClick={discard}
+          >
+            丢弃
+          </button>
+          <button
+            type="button"
+            className="preview-dock-btn preview-dock-btn--primary"
+            onClick={merge}
+          >
+            合并 →
+          </button>
         </div>
       )}
       {isMerged && (

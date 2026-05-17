@@ -1455,44 +1455,121 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
 .project-list-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); }
 
 /* ── preview dock (Plan 9 Task 9) ──────────────────────────────── */
+/* PreviewDock —— 浮在 commander 上方的「这次改动可预览/合并/丢弃」卡片。
+   重做：去掉 branch chip 占满行宽的工程感，统一三个按钮的视觉重量，
+   整体加圆角 + 内边距，跟下面 commander 形成「两张面板」的层次感。 */
 .preview-dock {
-  border-top: 1px solid var(--line);
-  background: linear-gradient(to bottom, var(--surface-2), var(--surface));
-  padding: 10px 14px;
-  display: grid;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+  box-shadow: var(--shadow-sm);
 }
-.preview-dock.is-merged { border-top-color: var(--accent-dim); }
-.preview-dock.is-discarded { opacity: 0.78; }
+.preview-dock.is-merged { border-color: var(--accent-dim); }
+.preview-dock.is-discarded { opacity: 0.7; }
+
+/* 第一行：branch chip + URL（可点击打开预览）+ × 关闭 */
 .preview-dock-top {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
+.preview-dock-branch {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  color: var(--ink-soft);
+}
+.preview-dock-branch::before {
+  content: "";
+  width: 5px; height: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+}
 .preview-dock-url {
+  flex: 1; min-width: 0;
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--ink-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+  color: var(--ink-mute);
+  text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: pointer;
 }
+.preview-dock-url:hover { color: var(--accent); text-decoration: underline; }
+
+/* 第二行：[↗ 预览]    [丢弃] [合并 →] */
 .preview-dock-actions {
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
 }
+.preview-dock-actions__spacer { flex: 1; }
+
+.preview-dock-btn {
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast),
+              border-color var(--t-fast), transform var(--t-fast);
+}
+.preview-dock-btn:active { transform: translateY(1px); }
+
+.preview-dock-btn--ghost {
+  color: var(--ink-soft);
+  border-color: var(--line);
+  background: var(--surface);
+}
+.preview-dock-btn--ghost:hover {
+  color: var(--ink);
+  border-color: var(--line-hard);
+  background: var(--surface-2);
+}
+
+.preview-dock-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger-dim);
+  background: var(--surface);
+}
+.preview-dock-btn--danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.preview-dock-btn--primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.preview-dock-btn--primary:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  transform: translateY(-1px);
+}
+
 .preview-dock-state {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  padding: 4px 0 0;
+  font-size: 11.5px;
+  padding: 2px 0 0;
 }
-.preview-dock-state-merged { color: var(--accent); }
+.preview-dock-state-merged { color: var(--success); font-weight: 600; }
 .preview-dock-state-discarded { color: var(--ink-mute); }
+
 .preview-dock-close {
   appearance: none;
   border: 0;
@@ -1500,12 +1577,13 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   color: var(--ink-mute);
   font-size: 16px;
   line-height: 1;
-  width: 20px; height: 20px;
-  border-radius: 3px;
+  width: 22px; height: 22px;
+  border-radius: var(--r-sm);
   cursor: pointer;
+  flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.preview-dock-close:hover { background: var(--surface-3); color: var(--ink); }
+.preview-dock-close:hover { background: var(--surface-2); color: var(--ink); }
 
 /* ── Footer + Commander panel —— 一整块圆角面板 ──────────────── */
 .app-footer {
