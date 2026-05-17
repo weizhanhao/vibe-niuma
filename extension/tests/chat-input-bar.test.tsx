@@ -120,14 +120,15 @@ describe('ChatInputBar attachments + mode', () => {
     warnSpy.mockRestore();
   });
 
-  it('does not exceed MAX_ATTACHMENTS=3 — input file picker disabled', () => {
+  it('「+」 button removed — replaced by screenshot tool (TODO)', () => {
+    // 旧版「+」按钮是个死 stub（label「添加附件」）。已删除等截图+标注工具
+    // 一并重做。这条用 queryBy 断言它不存在，未来加回时改这条而不是新增。
     render(
       <ChatInputBar
         attachments={[mkAtt('A'), mkAtt('B'), mkAtt('C')]}
         onAttachmentsChange={() => {}}
       />,
     );
-    const addBtn = screen.getByLabelText(/添加附件/);
-    expect(addBtn).toBeDisabled();
+    expect(screen.queryByLabelText(/添加附件/)).toBeNull();
   });
 });

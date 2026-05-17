@@ -217,9 +217,22 @@ export function ReviewCapturePanel({ pendingCapture }: { pendingCapture: Pending
 }
 
 // ── ClarifyPanel ────────────────────────────────────────────────────
+// 业务员点「我自己描述」不能立即 submit —— 服务器收到字面字符串就废了一轮。
+// 点击后就地展开 textarea，输入后真值提交，继续 brainstorm 下一轮。
+// 这些字串匹配「自定义答」选项；server 端 BrainstormingSkill prompt 约定
+// 最后一个 option 固定为「我自己描述」。
+const _FREE_OPTION_PAT = /^(我自己描述|自己描述|自定义|其他|手动输入|让我说)$/;
+
 export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
   const q = state.pendingQuestion;
-  const [free, setFree] = useState('');
+  const [freeMode, setFreeMode] = useState(false);
+  const [freeText, setFreeText] = useState('');
+  // 题目换了（questionId 变）就重置内联编辑状态
+  useEffect(() => {
+    setFreeMode(false);
+    setFreeText('');
+  }, [q?.questionId]);
+
   if (!q) return (
     <section>
       <p className="help">等待澄清问题…</p>
@@ -229,6 +242,13 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
   const reply = (answer: string) => send({
     type: MSG.SUBMIT_ANSWER, requestId: state.id, questionId: q.questionId, answer,
   });
+  const submitFree = () => {
+    const t = freeText.trim();
+    if (!t) return;
+    reply(t);
+    setFreeMode(false);
+    setFreeText('');
+  };
   const totalOptions = q.options?.length ?? 0;
   return (
     <section>
@@ -242,19 +262,64 @@ export function ClarifyPanel({ state }: { state: RequestStateMirror }) {
       <p className="help">这是业务问题，不涉及技术细节。</p>
       {q.options && q.options.length > 0 && (
         <div className="option-row">
-          {q.options.map((opt) => (
-            <button key={opt} className="option" onClick={() => reply(opt)}>{opt}</button>
-          ))}
+          {q.options.map((opt) => {
+            const isFree = _FREE_OPTION_PAT.test(opt);
+            const selected = freeMode && isFree;
+            return (
+              <button
+                key={opt}
+                className={`option${selected ? ' option--selected' : ''}`}
+                onClick={() => (isFree ? setFreeMode(true) : reply(opt))}
+              >
+                {opt}
+              </button>
+            );
+          })}
         </div>
       )}
-      <label className="field">
-        <span className="label"><span>或直接回答</span></span>
-        <input value={free} onChange={(e) => setFree(e.target.value)} />
-      </label>
+      {freeMode && (
+        <div className="clarify-freeform">
+          <textarea
+            autoFocus
+            rows={3}
+            maxLength={500}
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
+            placeholder="具体说说你想要的样子……⌘↵ 提交"
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                submitFree();
+              }
+            }}
+          />
+          <div className="clarify-freeform__actions">
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => { setFreeMode(false); setFreeText(''); }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-small"
+              disabled={!freeText.trim()}
+              onClick={submitFree}
+            >
+              提交补充 →
+            </button>
+          </div>
+        </div>
+      )}
       <div className="btn-row">
-        <button className="btn btn-ghost" onClick={() => reply('')}>跳过</button>
-        <button className="btn btn-primary" onClick={() => reply(free)} disabled={!free.trim()}>
-          回答 →
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          onClick={() => reply('__STOP_CLARIFY__')}
+          title="不再问，按现在的理解直接开干"
+        >
+          ✓ 够了，直接干
         </button>
       </div>
       <LogFeed logs={state.logs} compact maxRows={20} />

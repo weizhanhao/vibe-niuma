@@ -494,6 +494,43 @@ code { font-family: var(--mono); font-size: 0.9em; }
   border-radius: 3px;
   letter-spacing: 0.04em;
 }
+.option--selected {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+}
+
+/* ── clarify free-form input (业务员选「我自己描述」后内联展开） ── */
+.clarify-freeform {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--accent) 4%, var(--surface-2));
+}
+.clarify-freeform textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.clarify-freeform textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.clarify-freeform__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ── progress trail (status panel) ─────────────────────────────── */
 .trail {

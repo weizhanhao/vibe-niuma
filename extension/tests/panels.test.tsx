@@ -61,7 +61,7 @@ describe('ClarifyPanel', () => {
     expect(screen.getByRole('button', { name: 'A' })).toBeInTheDocument();
   });
 
-  it('skip sends empty answer', () => {
+  it('「够了直接干」sends STOP_CLARIFY sentinel to end loop', () => {
     const sent: unknown[] = [];
     vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
       sent.push(m);
@@ -69,8 +69,40 @@ describe('ClarifyPanel', () => {
     });
     const state = { ...base, pendingQuestion: { questionId: 'q1', question: '?', options: null } };
     render(<ClarifyPanel state={state} />);
-    fireEvent.click(screen.getByRole('button', { name: '跳过' }));
-    expect(sent[0]).toMatchObject({ type: 'SUBMIT_ANSWER', questionId: 'q1', answer: '' });
+    fireEvent.click(screen.getByRole('button', { name: /够了/ }));
+    expect(sent[0]).toMatchObject({
+      type: 'SUBMIT_ANSWER', questionId: 'q1', answer: '__STOP_CLARIFY__',
+    });
+  });
+
+  it('「我自己描述」expands inline textarea instead of submitting literal string', () => {
+    const sent: unknown[] = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((m) => {
+      sent.push(m);
+      return Promise.resolve();
+    });
+    const state = {
+      ...base,
+      pendingQuestion: {
+        questionId: 'q1',
+        question: '想换成什么？',
+        options: ['横排按钮', '顶部 tab', '我自己描述'],
+      },
+    };
+    render(<ClarifyPanel state={state} />);
+    // 点「我自己描述」不应立即发请求
+    fireEvent.click(screen.getByRole('button', { name: '我自己描述' }));
+    expect(sent.length).toBe(0);
+    // 应展开 textarea
+    const ta = screen.getByPlaceholderText(/具体说说你想要的样子/);
+    expect(ta).toBeInTheDocument();
+    // 输入真实需求并点提交补充 → 才发请求
+    fireEvent.change(ta, { target: { value: '换成像 stripe 那种 segmented 控件' } });
+    fireEvent.click(screen.getByRole('button', { name: /提交补充/ }));
+    expect(sent[0]).toMatchObject({
+      type: 'SUBMIT_ANSWER', questionId: 'q1',
+      answer: '换成像 stripe 那种 segmented 控件',
+    });
   });
 });
 

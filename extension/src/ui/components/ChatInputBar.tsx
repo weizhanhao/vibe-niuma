@@ -11,7 +11,6 @@
 // 走 SUBMIT_MESSAGE。框选保留 UI_START_CAPTURE 是因为 overlay 还在那条链路上工作。
 // props 都可选 —— App.tsx 改造完成前老调用 `<ChatInputBar />` 仍能跑（空 attachments）。
 import { useMemo, useState } from 'react';
-import { MAX_ATTACHMENTS } from '../../lib/attachments';
 import { classifyIntent } from '../../lib/intent';
 import { MSG, type Message } from '../../lib/messages';
 import type { Attachment, IntentMode } from '../../lib/types';
@@ -65,7 +64,6 @@ export function ChatInputBar({
   );
 
   const disabled = !text.trim();
-  const atLimit = attachments.length >= MAX_ATTACHMENTS;
 
   const submit = async () => {
     if (disabled) return;
@@ -166,16 +164,8 @@ export function ChatInputBar({
         </div>
       )}
       <div className="chat-input-row">
-        <button
-          type="button"
-          aria-label="添加附件"
-          className="btn btn-ghost btn-small"
-          disabled={atLimit}
-          title={atLimit ? `最多 ${MAX_ATTACHMENTS} 个附件` : '添加附件'}
-          // 实际选择器接入留给 Task 17 MainShell（DOM 层 file input + 剪贴板事件）
-        >
-          +
-        </button>
+        {/* 老的「+」附件按钮已删 —— 是个死按钮，没接 file input；后续随
+            截图+标注工具一起重做。框选按钮在右侧仍可用。 */}
         <textarea
           aria-label="业务需求"
           className="chat-input-textarea"
