@@ -125,6 +125,8 @@ export function createOrchestratorClient(baseUrl: string, _token?: string): Orch
         };
         es.addEventListener('status', dispatch('status') as EventListener);
         es.addEventListener('question', dispatch('question') as EventListener);
+        // Plan 10：多题表单（推荐版）—— BrainstormingSkill 用 questions[] 时发这个
+        es.addEventListener('form', dispatch('form') as EventListener);
         es.addEventListener('variants', dispatch('variants') as EventListener);
         // Phase F：流式 log 行，phase=clarifying|locating|coding|building|...
         es.addEventListener('log', dispatch('log') as EventListener);
