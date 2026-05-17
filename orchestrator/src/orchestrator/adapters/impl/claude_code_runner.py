@@ -85,9 +85,17 @@ class ClaudeCodeDevRunner:
 def build_prompt(ctx: DevContext) -> str:
     """把 DevContext 拼成给 claude 的非交互 prompt。
 
-    强调：① 业务意图来自 brief；② 入口源文件路径已知；③ 截图说明 + 框选
-    坐标提供视觉锚点；④ 改完后 commit（共用层会兜底再 commit 一次保险）。
+    Plan 10 Task 6：按 ctx.mode 分支：
+      - 'new' (默认) → 完整 prompt（含入口文件 dump）
+      - 'refine' → 续改 ctx.base_branch；不 dump 入口文件；提示用 git diff 看上轮改动
     """
+    if getattr(ctx, "mode", "new") == "refine":
+        return _build_refine_prompt(ctx)
+    return _build_new_prompt(ctx)
+
+
+def _build_new_prompt(ctx: DevContext) -> str:
+    """new_cr 路径：现状（不破）。"""
     parts: list[str] = []
     parts.append("你是一个改代码的 AI 工程师。请按下面的业务需求修改本仓库的代码：")
     parts.append("")
@@ -121,5 +129,61 @@ def build_prompt(ctx: DevContext) -> str:
     parts.append("【要求】")
     parts.append("- 在当前 git 分支上修改文件，保持现有风格 / 命名 / 结构。")
     parts.append("- 改完自行用 `git add -A && git commit -m '...'` 提交。")
+    parts.append("- 如果有构建/类型错误，自己修到通过。")
+    return "\n".join(parts)
+
+
+def _build_refine_prompt(ctx: DevContext) -> str:
+    """refine_cr 路径：业务员追加反馈（「字号大一点」），续改 base_branch。
+
+    跟 new_cr 不同点：
+      - 不 dump 入口文件全内容（节省 token；runner 用 git diff 看上轮改动）
+      - 明确告诉 runner 「你已经在分支 X 上做过一轮改动」+ 「在当前分支续 commit，不新建分支」
+      - 带 chat_history 让 runner 看到业务员之前怎么说的
+    """
+    parts: list[str] = []
+    base = ctx.base_branch or "（未知 base）"
+    parts.append(
+        f"你是一个改代码的 AI 工程师。你已经在分支 {base} 上做过一轮改动，"
+        f"现在业务员追加了反馈，请在**当前分支**（已存在）上续改、续 commit："
+    )
+    parts.append("")
+    parts.append("【业务员追加的反馈（本轮需求）】")
+    parts.append(ctx.brief.original_text or "")
+
+    if ctx.chat_history:
+        parts.append("")
+        parts.append("【之前的对话历史（按时间顺序）】")
+        for m in ctx.chat_history:
+            t = m.get("type", "?")
+            c = (m.get("content") or "").strip()
+            if c:
+                parts.append(f"[{t}] {c}")
+
+    if ctx.brief.clarifications:
+        parts.append("")
+        parts.append("【本轮澄清问答】")
+        for c in ctx.brief.clarifications:
+            parts.append(f"- Q: {c.get('question')}")
+            parts.append(f"  A: {c.get('answer')}")
+
+    parts.append("")
+    parts.append("【相关入口文件（之前已经改过；这次按业务员追加的反馈微调）】")
+    for path in ctx.locate_result.entry_files:
+        parts.append(f"- {path}")
+    parts.append("")
+    parts.append(
+        "用 `git diff` 看上一轮你自己改了什么，然后按业务员的追加反馈"
+        "在**已存在的当前分支**上继续 commit。"
+    )
+
+    if ctx.box_coords:
+        parts.append("")
+        parts.append(f"【本轮框选区域】坐标 {ctx.box_coords}")
+
+    parts.append("")
+    parts.append("【要求】")
+    parts.append("- **不要新建 git 分支**——已经在 base branch 上了，直接 `git add -A && git commit -m '...'` 续 commit。")
+    parts.append("- 保持现有风格 / 命名 / 结构。")
     parts.append("- 如果有构建/类型错误，自己修到通过。")
     return "\n".join(parts)
