@@ -30,6 +30,8 @@ class ChangeRequestRepository:
             state=State.CREATED.value,
             retry_of=retry_of,
             conversation_id=conversation_id,
+            # Plan 10 Task 9：多图持久化（schema 已有 attachments JSON 列）
+            attachments=list(raw.attachments) if raw.attachments else None,
         )
         self._db.add(cr)
         self._db.commit()

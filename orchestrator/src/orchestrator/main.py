@@ -297,12 +297,16 @@ async def create_change_request(
     payload: CreateChangeRequestIn, db: Session = Depends(get_db)
 ) -> ChangeRequestOut:
     repo = ChangeRequestRepository(db)
+    # Plan 10 Task 9：normalize_attachments 把老 single screenshot_b64 / 新
+    # attachments[] 统一成 dict list，dataclass RawRequest 直接吃。
+    normalized = payload.normalize_attachments()
     raw = RawRequest(
         url=payload.url,
         screenshot_b64=payload.screenshot_b64,
         box_coords=payload.box_coords,
         viewport=payload.viewport,
         request_text=payload.request_text,
+        attachments=[a.model_dump() for a in normalized] if normalized else [],
     )
     # Plan 9 Task 3：conversation_id 缺省时自动 create 一个新对话
     conv_repo = ConversationRepository(db)
@@ -486,6 +490,7 @@ async def retry_change_request(
         box_coords=cr.box_coords,
         viewport=cr.viewport,
         request_text=cr.request_text,
+        attachments=list(cr.attachments or []),
     )
     new_cr = repo.create(raw, retry_of=cr.id)
     pipeline = app_state.build_pipeline(db)

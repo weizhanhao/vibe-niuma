@@ -257,6 +257,7 @@ class Pipeline:
                 box_coords=cr.box_coords,
                 viewport=cr.viewport,
                 request_text=cr.request_text,
+                attachments=list(cr.attachments or []),
             )
             await _phase_log("clarifying", "▸ 问视觉模型判断业务意图（流式输出 ↓）...")
             clarify_log = _make_log_sink(bus, request_id, "clarifying")
@@ -539,6 +540,7 @@ class Pipeline:
                 box_coords=cr.box_coords,
                 viewport=cr.viewport,
                 request_text=cr.request_text,
+                attachments=list(cr.attachments or []),
             )
             brief = RequestBrief(
                 original_text=cr.request_text,

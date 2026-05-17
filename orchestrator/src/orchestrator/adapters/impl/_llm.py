@@ -77,6 +77,41 @@ class LLMClient:
         body = self._vision_body(prompt, image_b64, model=model, mime=mime, stream=True)
         return await self._stream_chat(body, on_token)
 
+    # Plan 10 Task 9：多图 vision —— 一次塞 ≤3 张图。pydantic schema 那层
+    # MAX_ATTACHMENTS_PER_MESSAGE=3 是「业务上限」；这里不二次限制，让客户端
+    # 自己决定怎么处理（误传 100 张 vision API 会自己拒）。
+    async def complete_vision_multi(
+        self, prompt: str, images: list[tuple[str, str]], *,
+        model: str | None = None,
+    ) -> str:
+        body = self._vision_multi_body(prompt, images, model=model, stream=False)
+        return await self._post_chat(body)
+
+    async def complete_vision_multi_stream(
+        self, prompt: str, images: list[tuple[str, str]],
+        on_token: OnTokenCallback, *, model: str | None = None,
+    ) -> str:
+        body = self._vision_multi_body(prompt, images, model=model, stream=True)
+        return await self._stream_chat(body, on_token)
+
+    def _vision_multi_body(
+        self, prompt: str, images: list[tuple[str, str]], *,
+        model: str | None, stream: bool,
+    ) -> dict:
+        content: list[dict] = [{"type": "text", "text": prompt}]
+        for mime, b64 in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            })
+        body: dict = {
+            "model": model or settings.vision_model,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if stream:
+            body["stream"] = True
+        return body
+
     def _vision_body(
         self, prompt: str, image_b64: str, *, model: str | None,
         mime: str | None, stream: bool,

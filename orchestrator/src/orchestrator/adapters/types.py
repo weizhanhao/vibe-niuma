@@ -14,13 +14,33 @@ async def _noop_log(_: str) -> None:
 
 @dataclass
 class RawRequest:
-    """业务员的原始捕获 —— 扩展 POST 上来的负载。"""
+    """业务员的原始捕获 —— 扩展 POST 上来的负载。
+
+    Plan 10 Task 9：业务员一次输入可带 0-3 张图（截图 / 贴图 / 框选）。
+    attachments 是 list[dict]，每条至少含 `mime` + `b64`，可选 `box` / `url`
+    / `viewport` / `name`。老 single screenshot_b64 字段保留向后兼容；
+    images() 方法是统一视图。
+    """
 
     url: str
     screenshot_b64: str
     box_coords: dict
     viewport: dict
     request_text: str
+    attachments: list[dict] = field(default_factory=list)
+
+    def images(self) -> list[tuple[str, str]]:
+        """挑所有 image/* 附件返 [(mime, b64), ...]；空 attachments 时回落到
+        single screenshot_b64（向后兼容老 single-image 路径）。"""
+        if self.attachments:
+            return [
+                (a["mime"], a["b64"])
+                for a in self.attachments
+                if str(a.get("mime", "")).startswith("image/") and a.get("b64")
+            ]
+        if self.screenshot_b64:
+            return [("image/png", self.screenshot_b64)]
+        return []
 
 
 @dataclass

@@ -173,8 +173,14 @@ class BrainstormingSkill:
     ) -> dict:
         prompt = self._build_plan_prompt(raw, repo_doc, prev_answers=prev_answers or [])
         log = getattr(channel, "log", None) if channel is not None else None
+
+        # Plan 10 Task 9：多图（>1）走 complete_vision_multi；单图走原 single 接口
+        # （保留旧测试 + 老 client 路径不变）。raw.images() 已统一兜底逻辑。
+        images = raw.images()
+        use_multi = len(images) > 1
+
         # 优先流式（cursor-like 体验）：每个 token chunk 经 channel.log 回灌 SSE。
-        # 上游不支持 stream 或网络出错时降级到非流式 complete_vision，最终再失败才退降级 plan。
+        # 上游不支持 stream 或网络出错时降级到非流式，最终再失败才退降级 plan。
         if callable(log):
             try:
                 buf: list[str] = []
@@ -188,9 +194,14 @@ class BrainstormingSkill:
                         await log(joined.replace("\n", " ").strip())
                         buf.clear()
 
-                text = await self._llm.complete_vision_stream(
-                    prompt, raw.screenshot_b64, on_token=_on_token,
-                )
+                if use_multi:
+                    text = await self._llm.complete_vision_multi_stream(
+                        prompt, images, on_token=_on_token,
+                    )
+                else:
+                    text = await self._llm.complete_vision_stream(
+                        prompt, raw.screenshot_b64, on_token=_on_token,
+                    )
                 # flush 残余
                 tail = "".join(buf).strip()
                 if tail:
@@ -206,7 +217,10 @@ class BrainstormingSkill:
                     pass
 
         try:
-            text = await self._llm.complete_vision(prompt, raw.screenshot_b64)
+            if use_multi:
+                text = await self._llm.complete_vision_multi(prompt, images)
+            else:
+                text = await self._llm.complete_vision(prompt, raw.screenshot_b64)
         except Exception:
             return {"weight": "light", "questions": []}
         return _safe_parse_json(text)
