@@ -1093,15 +1093,19 @@ code { font-family: var(--mono); font-size: 0.9em; }
 /* ── settings panel ────────────────────────────────────────────── */
 .settings-panel { display: grid; gap: 12px; }
 .settings-status-bar {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  /* 3 child（上次同步 / 服务端版本 / 重置按钮）：用 flex-wrap 让窄屏自动换行，
+     避免按钮被父 card 顶/底裁掉的 bug。 */
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 10px 16px;
   padding: 10px 12px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-soft);
 }
+.settings-status-bar > div { flex: 0 1 auto; min-width: 0; }
+.settings-status-bar > button { margin-left: auto; flex: 0 0 auto; }
 .settings-status-bar .k {
   display: block;
   font-size: 9.5px;
