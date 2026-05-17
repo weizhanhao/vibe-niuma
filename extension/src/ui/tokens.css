@@ -1519,3 +1519,85 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   display: grid;
   gap: 6px;
 }
+
+/* ── Plan 10 Task 14: AgentTabBar + HistoryDropdown ─────────── */
+.agent-tab-bar {
+  display: flex; align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+  min-height: 36px;
+  padding: 0 6px;
+  gap: 4px;
+  overflow: hidden;
+}
+.agent-tab-bar__tabs {
+  display: flex; align-items: stretch;
+  gap: 2px; flex: 1; overflow-x: auto; min-width: 0;
+}
+.agent-tab-bar__empty {
+  display: flex; align-items: center;
+  color: var(--ink-mute); font-size: 11.5px; padding: 0 8px;
+}
+.agent-tab {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 8px 5px 10px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  font-size: 12px; color: var(--ink-soft);
+  cursor: pointer; user-select: none;
+  border: 1px solid transparent; border-bottom: none;
+  max-width: 160px;
+}
+.agent-tab:hover { background: var(--surface-2); }
+.agent-tab.is-active {
+  background: var(--surface-0); color: var(--ink-strong);
+  border-color: var(--line);
+  font-weight: 500;
+}
+.agent-tab__title {
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.agent-tab__close {
+  appearance: none; border: none; background: transparent;
+  color: var(--ink-mute); font-size: 14px; line-height: 1;
+  padding: 0 4px; cursor: pointer; border-radius: 3px;
+}
+.agent-tab__close:hover { background: var(--surface-3); color: var(--ink-strong); }
+.agent-tab-bar__actions {
+  display: flex; align-items: center; gap: 2px; padding: 0 2px;
+}
+.agent-tab-bar__icon-btn {
+  appearance: none; border: 1px solid transparent; background: transparent;
+  color: var(--ink-soft); font-size: 14px; line-height: 1;
+  width: 28px; height: 28px; border-radius: var(--r-sm); cursor: pointer;
+}
+.agent-tab-bar__icon-btn:hover {
+  background: var(--surface-2); color: var(--ink-strong); border-color: var(--line);
+}
+
+.history-dropdown {
+  position: absolute;
+  top: 100%; right: 4px; z-index: 30;
+  background: var(--surface-0); border: 1px solid var(--line-hard);
+  border-radius: var(--r-md); box-shadow: var(--shadow-lg);
+  min-width: 220px; max-width: 320px;
+  max-height: 360px; overflow: auto;
+  padding: 6px;
+}
+.history-dropdown__hint {
+  padding: 12px; color: var(--ink-mute); font-size: 12px; text-align: center;
+}
+.history-dropdown__list { list-style: none; padding: 0; margin: 0; }
+.history-dropdown__item {
+  width: 100%; appearance: none; border: none;
+  background: transparent; text-align: left; cursor: pointer;
+  padding: 8px 10px; border-radius: var(--r-sm);
+  display: flex; gap: 8px; align-items: center;
+  color: var(--ink-strong); font-size: 12.5px;
+}
+.history-dropdown__item:hover { background: var(--surface-2); }
+.history-dropdown__title {
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.history-dropdown__time {
+  flex-shrink: 0; color: var(--ink-mute); font-size: 11px; font-family: var(--mono);
+}
