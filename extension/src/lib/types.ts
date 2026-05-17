@@ -110,3 +110,70 @@ export interface PendingCapture {
   viewport: Viewport;
   requestText: string;
 }
+
+// ── Plan 10 Task 11+：多附件 + cursor-like 对话 tab + 意图模式 ──────
+
+/**
+ * 业务员一次输入携带的附件（≤3 张）。kind 对齐后端 pydantic AttachmentKind：
+ * - framed_region：业务员在 demo 页面拖框出的精确区域（带 box + url）
+ * - screenshot_active_tab：SW 截当前 tab，全屏，box 留空
+ * - pasted_image：剪贴板 / 文件选择器贴的图，box / url 一般留空
+ * - attached_file：PDF 等非图文件
+ */
+export type AttachmentKind =
+  | 'framed_region'
+  | 'screenshot_active_tab'
+  | 'pasted_image'
+  | 'attached_file';
+
+export interface Attachment {
+  kind: AttachmentKind;
+  mime: string;
+  b64: string;
+  url?: string;
+  box?: BoxCoords;
+  viewport?: Viewport;
+  name?: string;
+}
+
+/**
+ * 意图模式 —— 客户端 mirror 后端 IntentMode。
+ * - new_cr：新需求 / 新动作动词 → 跑完整 pipeline
+ * - refine_cr：调整上一次刚做完的修改（追加修饰词）→ 复用 base branch
+ * - chat_only：业务员在讨论 / 提问 / 评价 → LLM 文字回复，不进 pipeline
+ */
+export type IntentMode = 'new_cr' | 'refine_cr' | 'chat_only';
+
+/**
+ * conversation.messages JSON 里每条 message 的 shape。
+ * 与后端 schemas.MessageOut 对齐。id 由 server 写入（user msg 在 POST /messages
+ * 时分配；ai/summary 由 chat_responder / compaction 分配）。
+ */
+export type MessageType = 'user' | 'ai' | 'summary' | 'system';
+
+export interface ConversationMessage {
+  id: string;
+  ts: string;
+  type: MessageType;
+  content: string;
+  attachments?: Attachment[];
+  cr_id?: string;
+  cr_mode?: IntentMode;
+  // summary 类型时由 compaction 写入
+  replaces_count?: number;
+  replaces_token_estimate?: number;
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * AgentTabBar 顶部「当前打开的」对话 tab。不是历史里所有会话 ——
+ * 历史走 HistoryDropdown 拉 GET /conversations。这里是 LRU 缓存。
+ */
+export interface TabsState {
+  /** AgentTabBar 渲染顺序（左 → 右） */
+  openTabIds: string[];
+  /** 当前选中的 tab，null = 没有 open 的 tab（业务员新开会话或全关了） */
+  activeTabId: string | null;
+  /** LRU 用：tabId → 最后被 setActiveTab 的时间戳（epoch ms） */
+  lastUsedAt: Record<string, number>;
+}
