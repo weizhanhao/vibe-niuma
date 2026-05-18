@@ -1,390 +1,278 @@
-# doskill
+# 🐂 vibe-niuma · doskill
 
-AI 原生低代码平台 MVP。业务员在 web 产品页面上**框选一块区域** + 自然语言说需求 → 浏览器扩展捕获 → Orchestrator 跑 AI dev runner 在隔离分支上改代码 → Docker 预览 → 业务员看效果 → 确认合并回 main → main demo 站自动重建。
+> **业务员在浏览器里画个框 + 说人话，AI 直接改你产品的代码、起预览给他看、一键合并回 main。**
+>
+> 程序员只维护「可编辑表面」与平台本身，不再逐条处理业务员的小改动。
+>
+> 仓库代号 `vibe-niuma`（业务时代的牛马），产品代号 `doskill`。
 
 ```
-[业务员 / Chrome 扩展]
-  框选 + 「加个搜索框」
-        │
-        ▼
-[Orchestrator FastAPI]                   ┌─ LiteLLM ─→ DeepSeek v4-flash
-  clarify  (Qwen-VL streaming) ─────────┤
-  locate   (route 表)                    └─ Qwen-VL-Plus
-  coding   (opencode CLI 改代码 + commit)
-  building (vite build + docker run)
-  preview-ready ──→ http://ECS:5xxx     业务员看预览
-        │
-        ▼ 「确认合并」
-  git rebase + ff-merge → main          main demo @ :5199 自动重建
+[业务员的 Chrome]                            [ECS 上的 vibe-niuma]
+                                          ┌──────────────────────────┐
+  📍 框一块区域 + 「订单徽章改红色」  ───►│ Orchestrator (FastAPI)   │
+                                          │   ① 截图 + URL 进澄清    │
+                                          │   ② AI 看图判业务意图    │──► DeepSeek
+                                          │   ③ opencode 真改代码    │──► Qwen-VL
+                                          │   ④ vite build + docker  │
+                                          │   ⑤ 起隔离预览容器       │
+                                          └──────────────────────────┘
+                                                       │
+              👀 看预览满意 ──► 「确认合并」 ──► main 自动重建 :5199
 ```
 
-设计文档：[`docs/superpowers/specs/2026-05-14-ai-native-low-code-design.md`](docs/superpowers/specs/2026-05-14-ai-native-low-code-design.md)
+---
 
 ## 目录
 
+- [这是什么](#这是什么)
+- [一个真实例子](#一个真实例子30-秒看完)
+- [核心特性](#核心特性)
 - [架构](#架构)
 - [快速开始](#快速开始)
-- [E2E 跑一条 CR](#e2e-跑一条-cr)
-- [日常运维](#日常运维)
-- [踩过的坑 ⚠️（务必看一遍）](#踩过的坑-务必看一遍)
+- [使用流程 E2E](#使用流程-e2e)
+- [配置](#配置)
 - [项目结构](#项目结构)
 - [开发](#开发)
+- [相关文档](#相关文档)
+
+---
+
+## 这是什么
+
+传统低代码的核心假设是「拖拽组件比写代码快」。在 AI 时代，瓶颈不再是 UI 拼装，而是**业务意图的表达**。
+
+vibe-niuma 把这条链路完整接起来：
+
+1. **捕获**：业务员在他每天用的产品页面上框选一块区域 + 用自然语言说需求。
+2. **理解**：AI 看截图判断业务意图，不确定就问澄清问题。
+3. **改代码**：在隔离分支上让 AI dev runner（opencode / claude-code）真的改源码 + commit。
+4. **预览**：每条变更起一个独立 Docker 容器，业务员在浏览器看效果。
+5. **合并**：业务员点「确认合并」→ rebase 回 main → main demo 站自动重建。
+
+整个 MVP 跑在一台阿里云 ECS 上，没有任务队列、没有 K8s、没有微服务 —— 一个 FastAPI 单体 + 4 个干净的 Adapter 接口包住「与栈相关」的所有代码。
+
+---
+
+## 一个真实例子（30 秒看完）
+
+业务员小王打开公司订单管理后台 `:5199/orders`，发现「未发货」徽章颜色不够醒目。
+
+1. 点扩展图标 → 📍 框选那个徽章 → 输入「**未发货状态徽章改成红色 + 字号大一点**」→ 提交。
+2. 侧边栏开始滚 SSE 日志：
+   ```
+   ▸ 澄清意图...   AI: "未发货徽章改红色，字号加大。是否同时改 hover 态？"
+   ◀ 业务员答：     "✓ 够了直接干"
+   ▸ 定位到入口源文件：demo/frontend/src/pages/Orders.tsx
+   ▸ opencode 改代码...
+     - frontend/src/pages/Orders.tsx
+     + className="badge badge-danger text-lg"
+   ▸ vite build... ✓ 2.1s
+   ▸ 起预览容器 :5147... ✓
+   ✅ 预览就绪 →  http://<ECS>:5147/orders
+   ```
+3. 点「↗ 新标签打开」看预览：徽章已经变成红色 + 加大字号。
+4. 满意 → 点「确认合并 →」→ 几秒后 `:5199/orders` 自动刷新，新 UI 上线。
+
+整个过程小王没碰 git、没碰 IDE、没找开发同事；程序员事后 `git log` 能看到这条 commit 是谁、改了什么、为什么改。
+
+---
+
+## 核心特性
+
+- 🎯 **框选 + 自然语言** —— 不会写代码也不影响表达，截图自带坐标，AI 一眼定位入口源文件
+- 💬 **真多轮澄清** —— 不限轮数，AI 觉得没问清就继续问，业务员一句「✓ 够了直接干」立即中断
+- 🧠 **意图自动路由** —— 一条消息 LLM 判断是「新需求 / 续改 / 闲聊」自动分流（new_cr / refine_cr / chat_only）
+- 🌱 **隔离分支 + 隔离容器** —— 每条变更一个 `cr/<id>` 分支 + 一个独立 Docker 预览，互不污染
+- 🔄 **refine 续改秒级反馈** —— 「字号再大一点」复用同分支同容器，Vite 热重载
+- 🛟 **失败自愈** —— LLM 决定 retry / retry_with_revised_prompt / escalate，最多 2 次自动恢复 transient 错
+- 📸 **多附件 vision** —— 一条 message 可附 0-3 张图（框选 / 粘贴 / 整页 / 文件），多图一次塞 vision API
+- 🗂️ **多项目** —— 扩展可在多个独立产品间切换，每项目自带 orchestrator 地址 / token / 模型配置
+- 🎙️ **Cursor 式持续对话** —— conversation 持久化 + 动态压缩（超 40k tokens 自动 summarize 老消息）
+- 🎩 **AI 引导部署** —— 装好扩展只填一个 DeepSeek API key，剩下「服务器买哪、命令怎么跑」由 AI 用对话引导
+- 🔌 **4 个 Adapter 接口** —— 换栈 / 换 dev runner / 换预览方式只动一个文件，主体逻辑不变
 
 ---
 
 ## 架构
 
-**4 个 Adapter**（`orchestrator/src/orchestrator/adapters/interfaces.py`）：
+```
+┌─────────────────────┐         ┌──────────────────── 阿里云 ECS ────────────────────┐
+│  浏览器扩展 (MV3)    │  HTTPS  │  ┌──────────────────────────────────────────┐      │
+│  · 框选 + 截图       │ ──────► │  │  Orchestrator (FastAPI 单体)              │      │
+│  · 输入需求          │  REST   │  │   REST API + SSE + 状态机 + 任务编排     │      │
+│  · 澄清问答          │ ◄────── │  │  ┌────────────┐┌─────────┐┌──────────┐  │      │
+│  · 实时状态 (SSE)    │  SSE    │  │  │Interaction ││ Stack   ││ Preview  │  │      │
+│  · 看预览 / 合并     │         │  │  │   Skill    ││ Adapter ││  Adapter │  │      │
+└─────────────────────┘         │  │  └────────────┘└─────────┘└──────────┘  │      │
+                                │  │  ┌────────────────────────┐              │      │
+                                │  │  │   DevRunner Adapter    │              │      │
+                                │  │  └────────────────────────┘              │      │
+                                │  └──────────────────────────────────────────┘      │
+                                │       │           │              │           │     │
+                                │       ▼           ▼              ▼           ▼     │
+                                │  ┌─────────┐┌─────────┐┌─────────────┐┌─────────┐  │
+                                │  │demo repo││分支cr/id││预览容器集合 ││ MySQL   │  │
+                                │  └─────────┘└─────────┘└─────────────┘└─────────┘  │
+                                └────────────────────────────────────────────────────┘
+```
+
+### 4 个 Adapter
 
 | Adapter | 干什么 | 当前实现 |
 |---|---|---|
 | `InteractionSkill` | 看截图 + 项目知识，判断业务意图、出澄清问题 | `BrainstormingSkill` + Qwen-VL streaming |
-| `StackAdapter` | URL → 源文件，打包代码上下文，跑构建 | `ReactViteStackAdapter`（vite build） |
+| `StackAdapter` | URL → 源文件，打包代码上下文，跑构建 | `ReactViteStackAdapter`（Vite build） |
 | `DevRunnerAdapter` | 业务 brief → 真改代码 + commit | `OpenCodeDevRunner`（opencode CLI + DeepSeek） |
-| `PreviewAdapter` | 分支 → 隔离预览容器 | `DockerPreviewAdapter`（vite dev :5173） |
+| `PreviewAdapter` | 分支 → 隔离预览容器 | `DockerPreviewAdapter`（vite dev :5xxx） |
 
-**FSM**：`created → clarifying → located → coding → building → preview-ready → merged / discarded / failed`。`preview-ready` 是非终态（仍占配额），由 merge / discard / TTL 释放。
+`interfaces.py` 是契约，主体逻辑只依赖 Protocol。换栈 / 换 dev runner / 换预览方式只动 `adapters/impl/` 对应文件。
 
-**SSE 事件类型**：`status` / `question` / `variants` / `log` / `question-resolved`。扩展端 mirror reducer 在 `extension/src/background/request-store.ts`。
+### 状态机
+
+```
+created → clarifying → located → coding → building → preview-ready ─┬─► merged
+                          ↑          │                              ├─► discarded
+                          └──────────┘ (refine)                     └─► failed
+```
+
+- `preview-ready` 是**非终态**（仍占配额），由 merge / discard / TTL 释放。
+- 每个 phase 失败都进 `failed`，self_heal 会决定要不要 retry。
+- SSE 事件类型：`status` / `question` / `variants` / `log` / `question-resolved`。
+
+### 模型 / 数据流
+
+- **澄清模型 + 视觉**：`qwen-vl-plus`（DashScope，看截图判业务意图）
+- **dev runner 模型**：`deepseek-v4-pro`（**当前 ECS 实际跑的**，代码能力强）；`deepseek-v4-flash`（出厂 `env.example` 默认，便宜快但偶尔需要 self-heal 重试）
+- **聊天 / refine 文本**：同上 dev_model，走 LiteLLM
+- **切换**：改 `deploy/.env` 的 `DEV_MODEL`（`deepseek/deepseek-v4-pro` 或 `deepseek/deepseek-v4-flash`）→ `systemctl restart doskill-orchestrator`。LiteLLM 路由表（`deploy/llm-proxy/config.yml`）里两个都 wire 上了，无需改 proxy 配置。
+- **数据库**：MySQL 8（orchestrator 表 + demo 业务表，各自独立 schema）
+- **预览**：每个 CR 一个 docker 容器，端口段 `5100-5199`，TTL 30min 闲置回收
 
 ---
 
 ## 快速开始
 
-**Plan 7 之后**：装好扩展只填一个 DeepSeek API Key，剩下「服务器买哪、命令怎么跑、token 怎么填」由 AI 助手用**对话**引导你完成。下面的「一次性部署 ECS」+「自助配 API key」是**老路径**，仍然 work，懒得跟 AI 唠的话可以走。Plan 7 助手跑完后自动隐藏，再开扩展直接进框选 / CR 主流程（跟 v0.2.0 起的 Plan 6 一样）。
+按你身份选一条路径。下面 3 条都能跑通，区别在「谁来管服务器」。
 
-两条部署路径（任选其一，助手会问你）：
-- **Path A 本地 Docker**：`bash deploy/local.sh` —— 在自己的 Mac/Linux/WSL 上起一套，先试一下。
-- **Path B 阿里云 ECS**：ssh 进 ECS 跑 `curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-XXXX --dashscope-key sk-YYYY` —— 一条命令装齐所有依赖 + 起服务。
+### 路径 A · 业务员一键装（推荐）
 
-下面是**老路径** —— 一次性部署 ECS + 用扩展自助配模型 / API key。Plan 6 之后，日常改模型 / 换 key 都在扩展里点点鼠标完成，不用再 ssh。
+业务员自己只点扩展、填 DeepSeek API key、跟着助手对话答几个问题；剩下的 AI 引导他完成。
 
-### 一次性部署 ECS
+1. **业务员**：[下载扩展](#加载-chrome-扩展) → 装好 → 填 `sk-...`（DeepSeek API key）。
+2. **AI 助手**接管对话，问业务员：「你要本地试试 还是 阿里云 ECS？」
+3. 业务员选**本地**：助手让他贴 `docker --version` 输出 → 引导跑 `bash deploy/local.sh`。
+4. 业务员选 **ECS**：助手让他贴 ECS 公网 IP + SSH 私钥（**只存浏览器内存，关浏览器即清**），帮他拼一条 `ssh root@<IP> 'curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-XXXX'` 让他在终端跑。
+5. 助手等部署完，自动把 orchestrator URL + admin token 填进扩展，验证健康检查 11/11 通过 → 业务员进框选主流程。
 
-#### 1. 准备依赖
+整个过程业务员不需要懂 docker / git / ssh，只需要在终端复制粘贴命令、把命令输出贴回助手。
 
-**本地**（部署机）：
-- Python 3.11+，Node 22+，Docker
-- `opencode` CLI（`brew install sst/tap/opencode` 或 [opencode.ai](https://opencode.ai)）
-- SSH 私钥能登 ECS
-
-**ECS**（推荐阿里云 Alibaba Cloud Linux 4 / 8 GiB / Docker 已装）：
-- 安全组开放：22 / 8000 / 8787 / 9000 / 5100-5199（预览端口段）
-- 装好 git、bash、python3-venv
-
-#### 2. 写 deploy/.env
+### 路径 B · 开发者本地 Docker（试一下）
 
 ```bash
+# 1. clone
+git clone https://github.com/weizhanhao/vibe-niuma.git doskill && cd doskill
+
+# 2. 准备 .env
 cp deploy/env.example deploy/.env
-```
+# 编辑 deploy/.env，至少填 LLM_API_KEY=sk-deepseek...
+#                       ECS_HOST=127.0.0.1
+#                       PREVIEW_HOST=localhost
 
-只必填两个**部署级**字段（API key / 模型 / 项目路径都在扩展里改，不用动这里）：
+# 3. 跑本地部署
+bash deploy/local.sh    # 起 mysql + orchestrator + llm-proxy + main demo
 
-```bash
-ECS_HOST=<你的 ECS 公网 IP>
-ECS_SSH_KEY=~/.ssh/id_ed25519        # 能登 ECS 的私钥
-PREVIEW_HOST=<同上 ECS 公网 IP>      # 拼预览 URL 用
-```
-
-其它字段保持 `env.example` 默认即可 —— 扩展走 `system_config` 表（Plan 6）会覆盖运行时配置。
-
-> ⚠️ 注释只能独占一行，不能写在 `KEY=value` 同一行（看「踩过的坑」#1）
-
-#### 3. 部署 + 体检
-
-```bash
-bash deploy/deploy.sh        # rsync 代码 + 装依赖 + 起容器 + systemd 重启
+# 4. 验证
 bash deploy/healthcheck.sh   # 期望「通过 11 · 失败 0」
+
+# 5. 拿 admin token
+cat ~/doskill/admin.token
+
+# 6. 扩展 Setup Wizard 填 http://localhost:9000 + token
 ```
 
-`deploy.sh` 末尾会打印 admin token 的拿法，长这样：
+### 路径 C · 自己运维 ECS（生产推荐）
 
-```
-[deploy] ✓ 完成
-[deploy] 第一次部署？跑这条拿 Admin Token：
-[deploy]   ssh root@<ECS> 'cat /opt/doskill/admin.token'
-[deploy] 把它粘到扩展的引导向导 Step 2
-```
+ECS 至少 4C / 8 GiB，安全组放行 `22 / 9000 / 5100-5199`（SSH + orchestrator + 预览端口段；LLM proxy 8787 和 demo backend 8000 都只在本机/容器网络，不对外）。预装 git 即可。
 
-把 token 复制出来备用。
-
-第一次跑会触发 `/init`（让 opencode 扫 demo 仓库写 `AGENTS.md`，约 60-120s）：
+**一条命令搞定**（在 ECS 上跑，不在本机）：
 
 ```bash
-curl http://ECS:9000/repo/status
-# 期望最终 {"status":"ready","doc_exists":true,...}
+curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh \
+  | sudo bash -s -- \
+      --deepseek-key sk-deepseekXXXXXXXX \
+      [--dashscope-key sk-dashscopeYYYY]    # 可选，视觉模型用
 ```
 
-### 用扩展配置（自助）
+脚本自动：装 git/docker/python3 → clone 源码到 `/opt/doskill` → 写 `.env` → 起 mysql 容器 → systemd 起 orchestrator + llm-proxy → 起 main demo → 打印 admin token + orchestrator URL。
 
-#### 4. 加载 Chrome 扩展
+末尾你会看到：
+
+```
+════════════════════════════════════════════════════════
+  doskill 部署完成
+  Orchestrator URL: http://<公网 IP>:9000
+  Admin Token: <一行长字符串>
+════════════════════════════════════════════════════════
+```
+
+把这两项填进扩展即可。详细的 ECS 准备清单 + 老式手动部署见 `deploy/README.md`。
+
+### 加载 Chrome 扩展
 
 ```bash
 cd extension && npm install && npm run build
 ```
 
-`chrome://extensions/` → 打开「开发者模式」 → 「加载已解压的扩展程序」 → 选 `extension/dist/`。
+`chrome://extensions/` → 开「开发者模式」→「加载已解压的扩展程序」→ 选 `extension/dist/`。
 
 扩展图标右键 → 「打开侧边栏」。
 
-#### 5. 走 4 步引导向导
-
-第一次打开侧边栏会看到 **SetupWizardPanel**，4 步走完：
-
-| 步骤 | 填什么 | 怎么验证 |
-|---|---|---|
-| **Step 1** Orchestrator URL | `http://<ECS>:9000` | 点「测试连接」，期望「连接成功」（命中 `/health`） |
-| **Step 2** Admin Token | 上一段 `deploy.sh` 打印的 token | 点「验证」，期望「令牌有效」（命中 `/admin/config` 200） |
-| **Step 3** API Key | DeepSeek + DashScope，从下面两个控制台拿 | 点「保存并下一步」，PUT 200 + LiteLLM 自动重启 |
-| **Step 4** 完成 | 点「开始使用 doskill」 | 路由进 CapturePanel，可以开始框选了 |
-
-API key 在哪拿：
-
-- **DeepSeek**：[platform.deepseek.com](https://platform.deepseek.com)（dev runner + 澄清模型，`deepseek-v4-flash` 够用）
-- **DashScope / 通义**：[bailian.console.aliyun.com](https://bailian.console.aliyun.com)（视觉模型 `qwen-vl-plus`）
-
-#### 6. 之后改配置
-
-侧边栏右上角齿轮 → **SettingsPanel** 四个折叠分组：
-- 服务器连接（URL + admin token，本地）
-- AI 模型（dev_runner / dev_model / vision_model）
-- API key（改了会自动重启 LiteLLM）
-- 项目路径（demo_repo_path / preview_backend_url）
-
-每个字段右边的 **❓** 都是 HelpBubble，点开有详细说明 + 排障指引。
-
-不用再 ssh ECS / 改 `.env` / 重启服务。
-
 ---
 
-## E2E 跑一条 CR
+## 使用流程 E2E
 
-1. 浏览器打开 `http://ECS:5199/orders`（main demo 样板间）
-2. 侧边栏输需求「加个搜索框」→ 点 📍 框选（或直接「→ 直接提交」）
-3. 框选要改的区域 → Review 页确认蓝框位置 → 「确认提交」
-4. 看流式日志：澄清 → 路由解析 → opencode 改代码（每行实时滚动）→ npm build → docker run → 预览就绪
-5. 第 5 步点「新标签打开」看预览，OK 就「确认合并 →」
-6. 合并后会自动重建 main demo 站，刷新 `:5199` 就看到新 UI
+1. **打开 main demo** —— 浏览器到 `http://<部署地址>:5199/orders`（业务员的「样板间」）。
+2. **输入需求** —— 侧边栏底部输入框打字，例：「未发货徽章改红色」。
+3. **加附件 / 框选**（可选）—— 点 📍 框选改的区域，或粘贴图片，或附文件。最多 3 张。
+4. **提交** —— 扩展把截图 + URL + 坐标 + 需求 POST 到 orchestrator。
+5. **看 SSE 流式日志** —— 澄清问答 → 路由解析 → opencode 改代码（行级实时滚动）→ vite build → docker 起预览 → 预览就绪。
+6. **看预览** —— 「↗ 新标签打开」检查效果。觉得没改对就直接说「字号再大一点」继续 refine。
+7. **合并** —— 满意点「确认合并 →」→ rebase 回 main + 重建 main demo → `:5199` 自动刷出新 UI。
 
 中间任何阶段卡住，看 SSE log 里的「⏳ ... 已 Xs」心跳判断是 LLM 慢 / runner 跑得久 / 真死了。
 
 ---
 
-## 日常运维
+## 配置
 
-### 看服务状态
+### 部署级配置（`deploy/.env`，少改）
 
-```bash
-# 一键全检
-bash deploy/healthcheck.sh
-
-# 单看 orchestrator 实时日志
-ssh root@ECS "journalctl -u doskill-orchestrator -f"
-
-# 单看 LiteLLM 代理日志
-ssh root@ECS "journalctl -u doskill-llm-proxy -f"
-```
-
-### 重启服务
+只 3 个字段必填，其它保持 `env.example` 默认：
 
 ```bash
-ssh root@ECS "systemctl restart doskill-orchestrator"
-ssh root@ECS "systemctl restart doskill-llm-proxy"
+LLM_API_KEY=sk-deepseek...    # DeepSeek API key（dev runner + 澄清模型都用这个走 LiteLLM）
+ECS_HOST=<公网 IP 或 127.0.0.1>
+PREVIEW_HOST=<同上，拼预览 URL 用>
 ```
 
-### 改 .env 后
+⚠️ `.env` 注释**只能独占一行**，不能写在 `KEY=value` 同一行（详见 [TROUBLESHOOTING #1](docs/TROUBLESHOOTING.md#1-env-行内--注释被-systemd-当成-value-字面量)）。
 
-```bash
-bash deploy/deploy.sh       # rsync 新 .env + systemctl restart
-```
+### 运行时配置（扩展 Settings Panel，常改）
 
-### 清孤儿预览容器
+侧边栏右上角齿轮 → 4 个折叠分组：
 
-正常情况 merge/discard 会自动拆容器。手动兜底：
+| 分组 | 改什么 | 备注 |
+|---|---|---|
+| 服务器连接 | Orchestrator URL + admin token | 本地存 chrome.storage |
+| AI 模型 | dev_runner / dev_model / vision_model | PUT `/admin/config` 写 DB |
+| API key | DeepSeek + DashScope | 改了自动重启 LiteLLM |
+| 项目路径 | demo_repo_path / preview_backend_url | DB 字段，无 ssh 即改即生效 |
 
-```bash
-ssh root@ECS "docker ps --filter 'name=doskill-preview' -q | xargs -r docker rm -f"
-```
+每个字段右边 ❓ 是 HelpBubble，点开有详细说明 + 排障引导。日常运维不再 ssh ECS / 改 `.env` / 手动重启。
 
-### 强制重做 /init（AGENTS.md 想让 AI 重写）
+### 多项目切换
 
-```bash
-curl -X POST http://ECS:9000/repo/init
-curl http://ECS:9000/repo/status   # 等 ready
-```
-
-### 重建 main demo（手工）
-
-正常合并后 orchestrator 会异步触发，手工兜底：
-
-```bash
-ssh root@ECS "cd /opt/doskill && bash deploy/main-demo.sh --rebuild"
-```
-
----
-
-## 踩过的坑 ⚠️（务必看一遍）
-
-> 这一节是 MVP 跑通过程中**每一个**导致小时级停摆的坑。每一条都有过 PR / commit，写下来是为了「下次不要再上同一个钩」。
-
-### 部署 / 配置类
-
-#### 1. `.env` 行内 `#` 注释被 systemd 当成 value 字面量
-
-**症状**：opencode rc=1，LiteLLM 报「Invalid model name passed in model=deepseek/deepseek-v4-flash   # opencode 要 ...」。
-**根因**：`systemd` 的 `EnvironmentFile=` **不剥** 行内 `#` 注释（跟 bash `set -a && . .env` 不一样）。
-**修**：注释必须独占一行。
-
-```bash
-# WRONG
-DEV_MODEL=deepseek/deepseek-v4-flash   # opencode 要 provider/model 格式
-
-# CORRECT
-# opencode 要 provider/model 格式
-DEV_MODEL=deepseek/deepseek-v4-flash
-```
-
-#### 2. systemd 不传 `HOME`，opencode rc=1 空 stderr
-
-**症状**：`/init CLI 非 0 退出 (rc=1)`，stderr 完全空白。手动 ssh 登录跑 `opencode run "..."` 又完全正常。
-**根因**：systemd 默认不设 `HOME`；opencode 读 `~/.config/opencode/`，找不到就直接退出且不打错。
-**修**：systemd unit 显式 `Environment=HOME=/root`（见 `deploy/systemd/doskill-orchestrator.service`）。
-
-#### 3. 嵌套 heredoc 同名 `EOF` 提前关掉外层
-
-**症状**：`deploy.sh` 输出 `warning: here-document delimited by end-of-file` + `chmod: .env: No such file or directory`；后面的 systemd restart 步骤悄无声息被跳过 → 改了代码部署没生效。
-**根因**：
-
-```bash
-ssh ... bash <<EOF        # 外层
-  cat > .env <<EOF        # 内层 — 同名 EOF 在这里就关掉了外层！
-  KEY=value
-  EOF
-  ... 后面全没执行 ...
-EOF
-```
-
-**修**：内层用不同 delimiter，例如 `<<INNER_ENV`。
-
-#### 4. `rsync --delete` 没排 `.git`，每次 deploy 擦光 demo git 历史
-
-**症状**：用户在扩展点「确认合并」后 sidebar 显示「合并成功」，回 `:5199` 刷新页面还是老 UI；ECS `cd /opt/doskill/demo && git log` 只有「demo init」一条 commit，所有 cr/ 分支消失。
-**根因**：本机 `demo/` 没有自己的 `.git/`（它是 doskill 主仓的子目录），ECS 的 `.git/` 是 orchestrator pipeline 自己 init 的。`rsync --delete` 会把目的端有、源端没有的文件全删掉 → ECS 的 `.git/` 被擦 → 接着 deploy 脚本「无 .git 就 git init」重建空 repo → 历史全丢。
-**修**：`rsync` 加 `--exclude '.git' --exclude 'AGENTS.md'`，并把 `--delete` 改成 `--update`，避免本机老源码盖掉 dev runner 改过的工作树。
-
-#### 5. LiteLLM `load_dotenv()` 向上爬，捞到 orchestrator 的 `DATABASE_URL`
-
-**症状**：`doskill-llm-proxy` 启动时 prisma crash，报数据库连接错。
-**根因**：LiteLLM 启动会 `load_dotenv()` 从 CWD 一路向上找 `.env`，会找到 `/opt/doskill/.env` 里给 orchestrator 用的 `DATABASE_URL`，触发 prisma 初始化。
-**修**：在 LiteLLM 工作目录单独放一份只含 provider key 的 `.env`（deploy.sh 自动生成），并在 systemd unit 用 `ExecStart=/usr/bin/env -u DATABASE_URL ...`。
-
----
-
-### Pipeline / Orchestrator 类
-
-#### 6. `Pipeline.run()` 只 catch `_PhaseError`，git / DB 异常被吞掉
-
-**症状**：CR 卡在 `located` 状态不动，扩展端无任何 SSE 状态更新，quota 永远不释放。
-**根因**：外层 `except _PhaseError` 之外的异常（`git_manager.create_branch` 失败、DB 异常、CancelledError、编程 bug）默默逃逸，CR 永远不会到失败终态。
-**修**：加 `except BaseException` 兜底 mark_failed + release quota + 发 FAILED status；`CancelledError` 重抛保留 asyncio 取消语义。
-
-#### 7. `_spawn` 沉默吞后台 task exception
-
-**症状**：跟 #6 关联 —— 上层异常根本没机会写到 journalctl，凭空消失。
-**修**：`_spawn` 加 `task.add_done_callback`，遇到非 cancelled 异常 `logger.exception` 出去。
-
-#### 8. dev runner 启动期 30+s 完全无输出 → 看着像死了
-
-**症状**：扩展端 log 只有「▸ 起 dev runner...」，30s 后还是没动静。
-**根因**：opencode 启动初期不打 stdout（在初始化 session / 加载 prompt），用户以为卡死了。
-**修**：`stream_subprocess(heartbeat_seconds=5)` —— 子进程超过 5s 静默就发一条 `⏳ runner 静默 Xs（累计 Ys）...`。
-
-#### 9. LLM HTTP 调用全程黑盒
-
-**症状**：clarifying 阶段「▸ 问视觉模型判断业务意图」之后 10-30s 完全静默；体验非常差。
-**根因**：`complete_vision` 用 buffered POST，等服务端完整返回才有数据。
-**修**：
-- `LLMClient.complete_vision_stream(on_token=)` 走 OpenAI SSE，每个 delta.content chunk 回调一次。
-- `BrainstormingSkill._plan` 检测到 `channel.log` 就走流式，每 32 字符或换行 flush 一行。
-- 兜底心跳：`_with_heartbeat()` wrap clarify / locate / context_pack 这些没 stdout 流的 awaitable。
-
-#### 10. merge / discard 端点不广播 SSE，扩展 mirror 卡 preview-ready
-
-**症状**：点「确认合并」后端 200 返回成功，sidebar 还是 preview-ready 状态；再点合并就 409「已是终态」+ UI 静默无反应。
-**根因**：端点只 `repo.transition(MERGED)` 写 DB，没 publish status event。扩展 mirror 永远不知道 CR 状态变了。
-**修**：merge/discard/conflict 都补 `event_bus.publish(Event(type="status", data={"state": "merged/...", ...}))`。
-
-#### 11. `preview_url` / `branch` 是 DB 字段，不在事件里 → mirror 永远 null
-
-**症状**：第 5 步「预览地址」字段空白，「新标签打开」无效，但 `curl ECS:9000/change-requests/<id>` 显示 `preview_url` 是对的。
-**根因**：`pipeline._set_state(PREVIEW_READY)` 默认只发 `{state}`；`set_preview` 写完 DB 后这两个字段没 piggyback 到 SSE。扩展 `applyEvent('status')` 也不读这俩。
-**修**：preview-ready / coding 转换直接发自带 `preview_url + branch` 的 status 事件；`applyEvent('status')` 用 `??` 合并这两个字段。
-
-#### 12. `merge_to_main` 被 build 阶段的脏工作树挡住，误报 conflict
-
-**症状**：fail_phase=`merging` / reason=`conflict`，看着像代码冲突。
-**根因**：commit_all 之后 `npm run build` 又产生新的 `dist/` 文件，工作树脏。`git rebase main` 拒绝：「cannot rebase: You have unstaged changes」。这不是真的冲突。
-**修**：`merge_to_main` 进入时先 `git stash push -u`（含 untracked），merge 完 `git stash drop`。build artifact 是临时产物，丢掉无所谓。
-
-#### 13. 终态后预览容器泄漏，端口段被吃满
-
-**症状**：跑了几条 CR 后 5100-5199 端口段被 stale 容器占满，新预览分不到端口。
-**根因**：reaper 只清 `preview-ready` 状态的容器；`merged / discarded / failed-with-preview` 的容器永远在那。
-**修**：merge / discard 成功后 `_spawn(_teardown_preview_after_terminal)`，异步拆容器 + 释放端口。`app_state.preview` 改成 lifespan 单例，reaper / pipeline / teardown 共用同一份 `_used_ports`。
-
-#### 14. `RepoInitializer.wait_ready` 在 FAILED 也死等 timeout
-
-**症状**：`/init` 失败后，下一条 CR 在 clarifying 阶段干等 120s 才进入降级模式。
-**修**：`wait_ready` 头一行检查 `self._status == FAILED` 就立刻返回 `False`，不进 `wait_for`。同时把 `_INIT_WAIT_SECONDS` 从 120 → 30。
-
----
-
-### 浏览器扩展类
-
-#### 15. MV3 content script 只在「扩展加载之后才打开/刷新的页」自动注入
-
-**症状**：用户重载扩展后，到已经开着的 demo 页点「📍 框选」毫无反应。
-**根因**：MV3 的「静态 content_scripts」只对加载之后才打开/刷新的 tab 生效。已经开着的 tab 里没有 content script，SW 的 `chrome.tabs.sendMessage` 静默 reject。
-**修**：SW 在 `UI_START_CAPTURE` 时先 sendMessage 探测；catch 到「receiver not found」就 `chrome.scripting.executeScript({ files: <从 runtime manifest 取> })` 按需注入，然后 retry。
-**注意**：注入路径必须从 `chrome.runtime.getManifest().content_scripts[0].js[0]` 取，**不能** hardcode `src/content/content-entry.js` —— crxjs 会把它哈希成 `assets/content-entry.ts-loader-XXX.js`。
-
-#### 16. `captureVisibleTab` 返回的 PNG 太大（5-10MB）→ POST 卡 35s+
-
-**症状**：点「确认提交」后请求一直 pending，30s+ 才回 200。
-**根因**：Retina 屏幕的 `chrome.tabs.captureVisibleTab` 返回未压缩 PNG，base64 编码后 ~13MB。中国家用网络上传慢死。
-**修**：SW 里用 `OffscreenCanvas` 把图压成 JPEG@75% / max-width 1280，典型 <300KB。
-
-#### 17. SW 30s 闲置死亡，长跑 CR SSE 断流
-
-**症状**：CR 跑了几分钟后 SSE 自然断开，扩展端不再收事件。
-**根因**：MV3 service worker 默认 30s 没活动就被回收。
-**修**：`chrome.alarms` 每 30s 触发一次 keepalive；alarm 触发时若有 in-flight CR 就重新 attach SSE 订阅。
-
----
-
-### 数据 / 模型 / 网络类
-
-#### 18. MySQL `TEXT` 64KB 装不下截图 base64
-
-**症状**：POST `/change-requests` 写库时报 `Data too long for column 'screenshot_b64'`。
-**修**：`models.py` 用 `Text().with_variant(LONGTEXT, "mysql")`。`fail_log` 同款修。
-
-#### 19. 预览容器只起前端 → 页面没数据
-
-**症状**：预览容器 UI 改对了，但「订单」列表是空的。
-**根因**：`DockerPreviewAdapter` 只 `docker build frontend/`，没起 backend；vite proxy 把 `/api` 转给 `localhost:8000`，预览容器里啥都没有。
-**修**：预览容器 `--network doskill-net` + `-e VITE_API_URL=http://doskill-demo-backend:8000`，vite dev server 把 `/api` 反代到 main demo 后端，复用 `demo` schema 真数据。
-
-#### 20. 合并后 main demo 容器还跑老镜像
-
-**症状**：sidebar 显示「合并成功 刷新原页面就能看到效果」，回 `:5199` 刷新还是老 UI。
-**根因**：merge 端点只 `git merge`，没人重建 `doskill-demo-frontend` 容器。容器还在跑部署时 build 的旧镜像。
-**修**：merge 成功后 `_spawn(_refresh_main_demo)`，异步跑 `deploy/main-demo.sh --rebuild`，stdout 行级回灌到 SSE log。脚本路径走 `MAIN_DEMO_REFRESH_SCRIPT` env（空串则跳过 = 本地开发）。
-
-#### 21. claude-code CLI 跟 DeepSeek thinking mode 协议不兼容
-
-**症状**：claude-code 调 `deepseek-*` 系列 400 拒收（缺 `reasoning_content`）。
-**修**：默认 `DEV_RUNNER=opencode`。claude-code 留着兼容路径，但需要 Anthropic 真 key + Claude 系列模型才稳。
+扩展头部下拉切项目，每个项目自带独立的 orchestrator 地址 / token / 模型配置。新项目走「Create Project」走 AI 助手部署流程。
 
 ---
 
@@ -394,66 +282,92 @@ EOF
 demo/             被改的目标产品（订单管理 mini app）
   backend/        FastAPI + SQLAlchemy + MySQL
   frontend/       React 19 + Vite 6 + react-router 7
-  AGENTS.md       /init 自动生成的项目知识文档（业务员看不见，给 LLM 用）
+  AGENTS.md       /init 自动生成的项目知识文档（给 LLM 用，业务员看不见）
 
-orchestrator/     FastAPI 单体
+orchestrator/     FastAPI 单体（386 项 pytest 通过）
   src/orchestrator/
-    main.py             REST + SSE + lifespan + _spawn
-    pipeline.py         FSM 驱动器 + _phase_start/_phase_done + _with_heartbeat
-    git_manager.py      create_branch / merge_to_main（带 stash 兜底）
-    repo_init.py        opencode 扫仓库写 AGENTS.md
-    interaction_channel.py  SSE 桥接 + question-resolved 广播
-    repository.py       DB 层（SQLAlchemy）
-    events.py           EventBus（按 request_id 分发 + 重连回放）
-    quota.py            槽位管理
-    reaper.py           闲置 CR 回收
-    history_writer.py   spec/plan/result 沉淀到 .doskill/history
+    main.py                REST + SSE + lifespan
+    admin.py               /admin/config CRUD + LiteLLM 自动重启
+    auth.py                admin token 校验中间件
+    pipeline.py            FSM 驱动器 + heartbeat + _spawn 后台 task
+    git_manager.py         create_branch / merge_to_main（带 stash 兜底）
+    repo_init.py           opencode 扫仓库写 AGENTS.md
+    interaction_channel.py SSE 桥接 + question-resolved 广播
+    repository.py          DB 层（SQLAlchemy）
+    models.py              ORM models（change_request / conversation / system_config）
+    events.py              EventBus（按 request_id 分发 + 重连回放）
+    quota.py               槽位管理（QUOTA_SIZE=5）
+    reaper.py              闲置 CR 回收（IDLE_TTL=1800s）
+    compaction.py          对话动态压缩（>40k tokens 自动 summarize 老消息）
+    intent_classifier.py   new_cr / refine_cr / chat_only LLM 路由
+    chat_responder.py      chat_only 路径回复器（不进 pipeline）
+    self_heal.py           失败后 LLM 决定 retry / revise / escalate（MAX=2）
+    conversation.py        多轮对话持久化
+    multi_repo.py          多项目支持
+    system_config.py       运行时配置（dev_model / api_key / repo path 等）
+    states.py              FSM 状态常量
+    schemas.py             Pydantic（MAX_ATTACHMENTS_PER_MESSAGE=3）
+    history_writer.py      spec/plan/result 沉淀到 .doskill/history
+    config.py              Settings（preview_port_min=5100 / max=5199）
     adapters/
-      interfaces.py     4 个 Protocol
+      interfaces.py        4 个 Protocol
       impl/
-        brainstorming_skill.py    InteractionSkill 真实实现
-        react_vite_stack.py       StackAdapter
-        opencode_runner.py        DevRunner（默认）
-        claude_code_runner.py     DevRunner（备选）
-        docker_preview.py         PreviewAdapter
-        _llm.py                   complete / complete_vision / complete_vision_stream
-        _dev_runner_common.py     stream_subprocess + commit_all
-  tests/                  unit + 契约 + 集成（148 项）
+        brainstorming_skill.py   InteractionSkill（_HARD_ROUND_CAP=12，业务员按「✓ 够了」可提前停）
+        react_vite_stack.py      StackAdapter（vite build）
+        ui_label_extractor.py    实时 grep 前端源码拿真实 UI 标签喂澄清 prompt
+        opencode_runner.py       DevRunner（默认）
+        claude_code_runner.py    DevRunner（备选，跟 DeepSeek thinking mode 不兼容）
+        docker_preview.py        PreviewAdapter（每 CR 一个容器，端口 5100-5199）
+        _llm.py                  complete / complete_vision / complete_vision_stream
+        _dev_runner_common.py    stream_subprocess + commit_all
 
-extension/        Chrome MV3 扩展
+extension/        Chrome MV3 扩展（292 项 vitest 通过 + 9 skipped）
   src/
     background/
-      service-worker.ts   多 CR 镜像 + SSE 订阅 + alarms keepalive + 按需注入
+      service-worker.ts   多 CR 镜像 + SSE 订阅 + chrome.alarms keepalive（30s 心跳防回收）
       request-store.ts    纯 reducer + chrome.storage 持久化
     content/
-      content-entry.ts    监听 START_CAPTURE
-      capture-overlay.ts  框选 overlay
+      capture-overlay.ts  框选 overlay + OffscreenCanvas JPEG@0.75 压缩
     ui/
-      index.tsx / App.tsx
-      panels.tsx          所有 7 个 panel（Capture / Review / Question / Variants / Status / Preview / Failed）
-      components/ConversationList.tsx
+      App.tsx             顶层 shell：根据 config / FSM 状态路由到具体面板
+      panels/             高层面板（项目级 / 配置级）
+        ChatPanel.tsx                主对话流（输入 + 多附件 + SSE 实时回灌）
+        DeploymentAssistantPanel.tsx Plan 7 AI 助手引导部署（DeepSeek 对话 + ActionCard）
+        CreateProjectPanel.tsx       新建项目 step 1 项目名 → step 2 跳 DeploymentAssistant
+        ProjectSelectorPanel.tsx     首次安装选已有项目
+        SettingsPanel.tsx            日常配置（4 折叠分组：服务器 / 模型 / API key / 路径）
+        SetupWizardPanel.tsx         ⚠ 老 4 步向导，已不被 App 路由（被 DeploymentAssistant 取代）
+      panels.tsx          按 CR FSM 状态切换的 body 面板
+        ClarifyPanel / FormPanel / VariantsPanel / StatusPanel / FailedPanel
+        CapturePanel / ReviewCapturePanel / PreviewPanel（Plan 10 后框选走 chip 路径，部分降级）
+      components/         AgentTabBar / HistoryDropdown / AttachmentTray / PreviewDock / ChatInputBar / ChatStream ...
+    ai/                   部署助手（Plan 7）
+      DeepSeekClient.ts   ↔ DeepSeek REST + streaming
+      DeploymentState.ts  对话 FSM（gathering_key → choosing_path → ... → done）
+      actions.ts          ActionCard 类型（copy_command / capture_field / validate / transition）
+      prompts/            path-local.md / path-ecs.md / examples-good.md / systemPrompt
     lib/
-      messages.ts         所有 SW ↔ UI 消息常量
-      types.ts            SSEEvent / RequestStateMirror / PendingCapture
       orchestrator-client.ts  REST + SSE 客户端
-  tests/                  78 项 vitest
+      attachments.ts          MAX_ATTACHMENTS=3
+      tabs.ts                 MAX_OPEN_TABS=8（LRU evict）
+      config.ts               扩展 config schema（出厂 devModel=flash）
 
-deploy/           ECS 部署
-  deploy.sh           主部署脚本（rsync + 装依赖 + systemd restart）
-  healthcheck.sh      10 项验证
-  main-demo.sh        起 / 重建 main demo 容器（业务员看的「样板间」）
-  provision.sh        新 ECS 首次开荒（装 Docker / Node / opencode 等）
-  systemd/
-    doskill-orchestrator.service
-    doskill-llm-proxy.service
-  llm-proxy/
-    config.yml          LiteLLM 路由（deepseek-v4-flash / qwen-vl-plus）
+deploy/           ECS / 本地部署
+  ecs-bootstrap.sh    🆕 业务员一键装（curl + sudo bash）
+  local.sh            🆕 本地 docker 一键起
+  deploy.sh           老式 rsync + ssh + systemd（开发者发新版本用）
+  healthcheck.sh      11 项验证
+  main-demo.sh        起 / 重建 main demo 容器
+  rollback.sh         回滚到上一个版本
+  systemd/            doskill-orchestrator + doskill-llm-proxy
+  llm-proxy/          LiteLLM 路由配置
 
 docs/
-  superpowers/specs/   设计文档
-  superpowers/plans/   5 个阶段的实现计划
-  mockups/             静态 HTML demo（无后端体验）
-  RUNBOOK.md           运维记录
+  superpowers/specs/  设计文档
+  superpowers/plans/  5 个阶段的实现计划
+  RUNBOOK.md          ECS 日常运维
+  TROUBLESHOOTING.md  21 个踩过的坑（每条带根因 + 修法）
+  mockups/            静态 HTML demo（无后端，看 UI 流）
 ```
 
 ---
@@ -466,11 +380,11 @@ docs/
 # orchestrator
 cd orchestrator
 python3 -m venv venv && venv/bin/pip install -e ".[dev]"
-venv/bin/pytest                          # 148 项
+venv/bin/pytest                          # 386 项
 
 # extension
 cd extension
-npm install && npm test                  # 78 项 vitest
+npm install && npm test                  # 292 项 vitest（9 skipped）
 npm run build                            # 产物在 dist/
 
 # demo
@@ -478,22 +392,33 @@ cd demo/backend && python3 -m venv venv && venv/bin/pip install -e .
 cd demo/frontend && npm install
 ```
 
-### 本地手玩（无 ECS）
+### 不起 ECS 看 UI
 
 ```bash
-open docs/mockups/doskill-extension-demo.html
+open docs/mockups/doskill-extension-demo.html    # 静态 HTML 体验扩展交互流
 ```
+
+### 设计原则
+
+- **状态机驱动**：每条 CR 在 FSM 上跑一遍，状态写 DB + 广播 SSE，前端是 mirror reducer。
+- **分支 + 容器即隔离单位**：每条 CR 占一个 `cr/<id>` 分支 + 一个独立预览容器。
+- **Adapter 是唯一的「栈相关」代码**：换栈不动 Orchestrator 主体。
+- **OUT of scope**（设计 §8）：多角色 / 多租户 / 多栈 / 鉴权权限 / 复杂 RBAC —— MVP 不做。
 
 ### 改 adapter
 
 换 dev runner / 换栈 / 换预览方式只动 `orchestrator/src/orchestrator/adapters/impl/` 里对应文件。`interfaces.py` 是契约，Pipeline 主体 + 测试都不用改。
 
-### 设计原则
+---
 
-- **状态机驱动**：每条 CR 在 FSM 上跑一遍，状态写 DB + 广播 SSE。
-- **分支 + 容器即隔离单位**：每条 CR 占一个 `cr/<id>` 分支 + 一个独立预览容器。
-- **Adapter 是唯一的「栈相关」代码**：换栈不动 Orchestrator 主体。
-- **OUT of scope**（设计 §8）：多角色 / 多租户 / 多栈 / 鉴权权限 / 复杂 RBAC —— MVP 不做。
+## 相关文档
+
+- 📐 [设计文档](docs/superpowers/specs/2026-05-14-ai-native-low-code-design.md) —— 决策记录 + 完整架构推导
+- 📋 [更新日志](CHANGELOG.md) —— 版本历史 + 每个 Plan 的变更
+- 🚀 [部署手册](deploy/README.md) —— ECS 部署细节 + 回滚步骤
+- 🛠️ [运维 RUNBOOK](docs/RUNBOOK.md) —— 日志 / 重启 / 改配置生效
+- 🪤 [踩过的坑](docs/TROUBLESHOOTING.md) —— 21 个真实问题 + 根因 + 修法
+- 🎬 [扩展静态 demo](docs/mockups/doskill-extension-demo.html) —— 不起后端看交互流
 
 ---
 
