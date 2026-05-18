@@ -246,9 +246,9 @@ describe('Plan 6 全流程：主面板齿轮 → SettingsPanel → 关闭回主�
     });
     fireEvent.click(screen.getByLabelText('设置'));
 
-    // SettingsPanel 顶部 h3「配置 doskill」（panels/SettingsPanel.tsx 标题）
+    // SettingsPanel 顶部 h3「配置 vibe-niuma」（panels/SettingsPanel.tsx 标题）
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '配置 doskill' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '配置 vibe-niuma' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByLabelText('关闭设置'));

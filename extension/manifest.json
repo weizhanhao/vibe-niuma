@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "doskill",
+  "name": "vibe-niuma",
   "version": "0.6.0",
-  "description": "AI 原生低代码扩展：框选页面区域、用自然语言提需求、看预览、确认合并。",
+  "description": "vibe-niuma · AI 原生低代码扩展：框选页面区域、用自然语言提需求、看预览、确认合并。",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel", "alarms"],
   "host_permissions": ["<all_urls>"],
-  "action": { "default_title": "doskill" },
+  "action": { "default_title": "vibe-niuma" },
   "side_panel": { "default_path": "src/ui/index.html" },
   "background": { "service_worker": "src/background/service-worker.ts", "type": "module" },
   "content_scripts": [

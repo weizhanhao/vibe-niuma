@@ -338,9 +338,9 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
     return (
       <div className="app">
         <header className="app-head">
-          <span className="app-logo">d</span>
+          <span className="app-logo" aria-label="vibe-niuma">🐂</span>
           <div className="app-title">
-            <div>DO<em>SKILL</em></div>
+            <div>VIBE-<em>NIUMA</em></div>
             <span className="muted">settings</span>
           </div>
           <div className="app-status"><span className="pulse" />SETTINGS</div>
@@ -412,7 +412,7 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
   return (
     <div className="app">
       <header className="app-head">
-        <span className="app-logo">d</span>
+        <span className="app-logo" aria-label="vibe-niuma">🐂</span>
         <ProjectSwitcher
           active={project}
           onSwitch={onSwitch}

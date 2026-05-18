@@ -117,8 +117,8 @@ describe('App routing — first install / configured / partial config', () => {
     // 点齿轮 → SettingsPanel
     fireEvent.click(screen.getByLabelText('设置'));
     await waitFor(() => {
-      // 新 SettingsPanel 顶部 h3 是「配置 doskill」
-      expect(screen.getByRole('heading', { name: '配置 doskill' })).toBeInTheDocument();
+      // 新 SettingsPanel 顶部 h3 是「配置 vibe-niuma」
+      expect(screen.getByRole('heading', { name: '配置 vibe-niuma' })).toBeInTheDocument();
     });
     // 关闭按钮（aria-label="关闭设置"）回主面板
     fireEvent.click(screen.getByLabelText('关闭设置'));

@@ -384,7 +384,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   return (
     <section className="settings-panel">
       <div className="eyebrow">设置</div>
-      <h3 className="title">配置 doskill</h3>
+      <h3 className="title">配置 vibe-niuma</h3>
 
       {/* 顶部状态栏（不能用 .card —— .card 有 overflow:hidden 会裁内容） */}
       <div className="settings-status-bar">
