@@ -191,3 +191,84 @@ def put_admin_config(
         "version": updated.version,
         "restartedServices": restarted_services,
     }
+
+
+# ── Plan 11 · M2.T12 阿里云 ECS 自动开机端点 ──────────────────────
+
+
+class ProvisionEcsIn(BaseModel):
+    """业务员的 access key 直接进 body —— 只在本次请求里活，不入 DB。
+
+    UI 上业务员粘到 wizard 表单 → 立即 POST 这里 → 后续都用拿回来的
+    public_ip + admin_token，access key 销毁。
+    """
+    access_key_id: str = Field(min_length=1)
+    access_key_secret: str = Field(min_length=1)
+    region_id: str = Field(default="cn-hangzhou", min_length=1)
+    instance_type: str | None = Field(
+        default=None,
+        description="ECS 规格；缺省 ecs.t6-c1m4.large (4C8G)",
+    )
+
+
+@router.post("/provision-ecs")
+def provision_ecs(payload: ProvisionEcsIn) -> dict:
+    """用业务员的 access key 自动开一台 ECS：
+    create_instance → 等 Running → 分配公网 IP → 配安全组 22/9000/5100-5199。
+    返回 instance_id + public_ip + 临时 root 密码（业务员 / 后续 ssh 用，跑完 bootstrap 销毁）。
+
+    失败任何阶段：
+    - T15 会接到这里做自动 rollback（DeleteInstance）
+    - 错误归一化成 4xx：401 auth / 422 quota / 500 unknown
+    """
+    from orchestrator.aliyun_provisioner import (
+        AliyunAuthError,
+        AliyunCredentials,
+        AliyunProvisioner,
+        AliyunQuotaError,
+        AliyunSDKNotInstalled,
+        EcsSpec,
+        ProvisionError,
+    )
+
+    try:
+        creds = AliyunCredentials(
+            access_key_id=payload.access_key_id,
+            access_key_secret=payload.access_key_secret,
+            region_id=payload.region_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    spec_kwargs: dict = {}
+    if payload.instance_type:
+        spec_kwargs["instance_type"] = payload.instance_type
+    spec = EcsSpec(**spec_kwargs)
+
+    provisioner = AliyunProvisioner(creds)
+
+    try:
+        result = provisioner.provision(spec)
+    except AliyunSDKNotInstalled as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except AliyunAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except AliyunQuotaError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except ProvisionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("provision-ecs 未知错误")
+        raise HTTPException(status_code=500, detail=f"开机失败：{exc}")
+
+    # 注意：返了密码！调用方（扩展 wizard）拿到后立即 ssh 跑 bootstrap，
+    # 完成后业务员侧把密码从内存里清。不入 DB，不进 log。
+    return {
+        "instance_id": result.instance_id,
+        "public_ip": result.public_ip,
+        "region_id": result.region_id,
+        "root_password": result.password,
+        "open_ports": result.open_ports,
+        "next_step": "ssh root@<public_ip> 然后跑 ecs-bootstrap.sh"
+                     "（扩展 wizard 会自动接力做这步）",
+    }

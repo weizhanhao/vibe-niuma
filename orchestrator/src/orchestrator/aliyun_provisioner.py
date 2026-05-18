@@ -52,11 +52,16 @@ class EcsSpec:
     password: str = ""   # 跑 bootstrap 用；wizard 自动生成强密码
 
     @staticmethod
-    def with_random_password() -> "EcsSpec":
+    def _generate_password() -> str:
+        """生成符合阿里云规则的密码（8-30 字符，含大小写+数字+特殊符号）。"""
         import secrets
-        # 阿里云密码规则：8-30 字符，含大写 + 小写 + 数字 + 特殊（避开 ' " ~ % \）
+        # 避开阿里云不接受的 ' " ~ % \ 等字符
         chars = "Aa1!" + secrets.token_urlsafe(20).replace("-", "x").replace("_", "y")[:16]
-        return EcsSpec(password=chars[:24])
+        return chars[:24]
+
+    @staticmethod
+    def with_random_password() -> "EcsSpec":
+        return EcsSpec(password=EcsSpec._generate_password())
 
 
 @dataclass
@@ -165,7 +170,9 @@ class AliyunProvisioner:
         """开机 → 等 Running → 分配公网 IP → 配安全组 → 返结果。"""
         client = self._get_client()
         if not spec.password:
-            spec = EcsSpec.with_random_password()
+            # 用 dataclasses.replace 保留 instance_type / image_id 等其他字段
+            import dataclasses
+            spec = dataclasses.replace(spec, password=EcsSpec._generate_password())
         open_ports = ports if ports is not None else self.DEFAULT_PORTS
 
         logger.info("provision: create_instance type=%s region=%s",
