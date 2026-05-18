@@ -31,6 +31,9 @@ export const ConfigSchema = z.object({
   adminToken: z.string().min(20),
   configVersion: z.number().int().default(0),
   repos: z.array(RepoConfigSchema).default([]),
+  // Plan 11 M3.T23：业务员配的告警 webhook URL（钉钉/飞书/Discord）。
+  // 可选 —— 没配时 ReportToDevButton 禁用。
+  alertWebhookUrl: z.string().default(''),
   server: z.object({
     devRunner: z.enum(['opencode', 'claude-code']).default('opencode'),
     devModel: z.string().default('deepseek/deepseek-v4-flash'),
