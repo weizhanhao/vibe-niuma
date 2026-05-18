@@ -19,6 +19,12 @@ MYSQL_CONTAINER="${MAIN_DEMO_MYSQL_CONTAINER:-vibe-niuma-mysql}"
 ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-demopass}"
 DB_NAME="${MAIN_DEMO_DB:-demo}"
 
+# Plan 11：业务员合并目标分支可配。
+# 旧 demo（单仓直接合 main）→ MAIN_DEMO_BRANCH=main（默认，行为不变）
+# 多仓 + targetBranch 流程 → 设成 vibe-niuma/dev，让 main demo 站显示
+# 业务员合过的累积效果 + 程序员合到 main 的部分（dev 包含 main + 业务员改动）
+MAIN_DEMO_BRANCH="${MAIN_DEMO_BRANCH:-main}"
+
 REBUILD=0
 [ "${1:-}" = "--rebuild" ] && REBUILD=1
 
@@ -33,6 +39,22 @@ log "ensure mysql schema '$DB_NAME'"
 docker exec "$MYSQL_CONTAINER" mysql -uroot -p"$ROOT_PASSWORD" \
   -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` DEFAULT CHARACTER SET utf8mb4;" 2>&1 \
   | grep -v "Using a password" || true
+
+# 2.5) 切到指定分支（Plan 11：业务员合到 vibe-niuma/dev 后这里 build dev 不是 main）
+# DEMO_PATH 可能尚未 init 成 git repo（首次部署）→ 这种情况跳过 checkout
+if [ -d "$DEMO_PATH/.git" ]; then
+  log "checkout $MAIN_DEMO_BRANCH in $DEMO_PATH"
+  # 防 dirty work tree（build artifact 可能残留）：先 reset --hard，分支不存在的话报警继续
+  git -C "$DEMO_PATH" reset --hard >/dev/null 2>&1 || true
+  git -C "$DEMO_PATH" fetch --quiet origin "$MAIN_DEMO_BRANCH" >/dev/null 2>&1 || \
+    log "fetch origin/$MAIN_DEMO_BRANCH 失败（无 origin 或离线）—— 用本地分支"
+  if git -C "$DEMO_PATH" rev-parse --verify "$MAIN_DEMO_BRANCH" >/dev/null 2>&1; then
+    git -C "$DEMO_PATH" checkout "$MAIN_DEMO_BRANCH" >/dev/null
+    git -C "$DEMO_PATH" reset --hard "origin/$MAIN_DEMO_BRANCH" >/dev/null 2>&1 || true
+  else
+    log "分支 $MAIN_DEMO_BRANCH 不存在，跳过 checkout（build 当前 working tree）"
+  fi
+fi
 
 # 3) build / refresh images
 if [ "$REBUILD" = "1" ] || ! docker image inspect vibe-niuma-demo-backend:latest >/dev/null 2>&1; then
@@ -78,4 +100,4 @@ for i in $(seq 1 30); do
 done
 [ "$ok" = "1" ] || { log "frontend 未就绪，看日志：docker logs vibe-niuma-demo-frontend"; exit 1; }
 
-log "✓ main demo up @ http://${PREVIEW_HOST:-localhost}:$FRONTEND_PORT/"
+log "✓ main demo up @ http://${PREVIEW_HOST:-localhost}:$FRONTEND_PORT/ (branch=$MAIN_DEMO_BRANCH)"
