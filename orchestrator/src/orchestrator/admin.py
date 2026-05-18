@@ -201,6 +201,9 @@ class ProvisionEcsIn(BaseModel):
 
     UI 上业务员粘到 wizard 表单 → 立即 POST 这里 → 后续都用拿回来的
     public_ip + admin_token，access key 销毁。
+
+    Plan 11 M2.T14：可选 bootstrap=True 时，开机后自动 ssh 跑 ecs-bootstrap.sh，
+    返回里直接带 admin_token / orchestrator_url —— 业务员一步到位。
     """
     access_key_id: str = Field(min_length=1)
     access_key_secret: str = Field(min_length=1)
@@ -209,6 +212,10 @@ class ProvisionEcsIn(BaseModel):
         default=None,
         description="ECS 规格；缺省 ecs.t6-c1m4.large (4C8G)",
     )
+    # Plan 11 M2.T14 —— 链式 bootstrap
+    bootstrap: bool = Field(default=False, description="开机后自动 ssh 跑 ecs-bootstrap.sh")
+    deepseek_api_key: str | None = Field(default=None, min_length=1)
+    dashscope_api_key: str | None = Field(default=None, min_length=1)
 
 
 @router.post("/provision-ecs")
@@ -261,6 +268,43 @@ def provision_ecs(payload: ProvisionEcsIn) -> dict:
         logger.exception("provision-ecs 未知错误")
         raise HTTPException(status_code=500, detail=f"开机失败：{exc}")
 
+    # Plan 11 M2.T14 —— 链式自动 bootstrap
+    bootstrap_payload: dict = {}
+    if payload.bootstrap:
+        if not payload.deepseek_api_key:
+            raise HTTPException(
+                status_code=422,
+                detail="bootstrap=true 必须传 deepseek_api_key",
+            )
+        from orchestrator.ecs_bootstrap import (
+            BootstrapError,
+            EcsBootstrapper,
+            ParamikoNotInstalled,
+            SshTarget,
+        )
+        try:
+            bootstrapper = EcsBootstrapper()
+            br = bootstrapper.bootstrap(
+                SshTarget(
+                    host=result.public_ip,
+                    username="root",
+                    password=result.password,
+                ),
+                deepseek_key=payload.deepseek_api_key,
+                dashscope_key=payload.dashscope_api_key,
+                public_host=result.public_ip,
+            )
+            bootstrap_payload = {
+                "ok": br.ok,
+                "admin_token": br.admin_token,
+                "orchestrator_url": br.orchestrator_url,
+            }
+        except ParamikoNotInstalled as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+        except BootstrapError as exc:
+            # 业务员需要看到 ECS 起来了但 bootstrap 失败 —— 返 200 + bootstrap 失败详情
+            bootstrap_payload = {"ok": False, "error": str(exc)}
+
     # 注意：返了密码！调用方（扩展 wizard）拿到后立即 ssh 跑 bootstrap，
     # 完成后业务员侧把密码从内存里清。不入 DB，不进 log。
     return {
@@ -269,6 +313,10 @@ def provision_ecs(payload: ProvisionEcsIn) -> dict:
         "region_id": result.region_id,
         "root_password": result.password,
         "open_ports": result.open_ports,
-        "next_step": "ssh root@<public_ip> 然后跑 ecs-bootstrap.sh"
-                     "（扩展 wizard 会自动接力做这步）",
+        "bootstrap": bootstrap_payload,
+        "next_step": (
+            "扩展 wizard 已自动 bootstrap 完成"
+            if bootstrap_payload.get("ok")
+            else "ssh root@<public_ip> 然后跑 ecs-bootstrap.sh"
+        ),
     }

@@ -21,6 +21,11 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
 ]
+bootstrap = [
+    # Plan 11 M2.T14：ssh 进新 ECS 跑 ecs-bootstrap.sh 用。
+    # 走 paramiko 而不是 subprocess(ssh)：纯 Python，避免业务员机器没装 sshpass。
+    "paramiko>=3.4",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

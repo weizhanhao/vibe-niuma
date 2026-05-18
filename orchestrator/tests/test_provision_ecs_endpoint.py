@@ -164,6 +164,143 @@ def test_provision_ecs_422_when_empty_access_key(client_with_fake_aliyun, admin_
 # ── 失败传播 ──────────────────────────────────────────────────────
 
 
+# ── M2.T14 bootstrap 链 ───────────────────────────────────────────
+
+
+@dataclass
+class _FakeSSH:
+    """与 test_ecs_bootstrap.FakeSSH 同形；inline 避免跨 test 文件 import。"""
+    default_result: tuple[int, str, str] = (0, "", "")
+    calls: list[tuple[str, tuple]] = field(default_factory=list)
+
+    def connect(self, target, timeout):
+        self.calls.append(("connect", (target.host, target.username, timeout)))
+
+    def exec(self, command, timeout):
+        self.calls.append(("exec", (command, timeout)))
+        return self.default_result
+
+    def close(self):
+        self.calls.append(("close", ()))
+
+
+def test_provision_ecs_with_bootstrap_chains_ssh(monkeypatch, admin_token):
+    """bootstrap=true 时端点应自动 ssh 跑 ecs-bootstrap.sh 并返 admin_token。"""
+    from orchestrator import aliyun_provisioner, ecs_bootstrap
+
+    # 阿里云 fake：开机成功
+    fake_aliyun = FakeClient()
+    monkeypatch.setattr(
+        aliyun_provisioner,
+        "_default_client_factory",
+        lambda creds: fake_aliyun,
+    )
+    monkeypatch.setattr(aliyun_provisioner.AliyunProvisioner, "POLL_INTERVAL_SECONDS", 0.0)
+
+    # ssh fake：返回带 Admin Token 的 stdout
+    fake_ssh = _FakeSSH(default_result=(0,
+        "vibe-niuma 部署完成\n"
+        "Orchestrator URL: http://47.96.88.1:9000\n"
+        "Admin Token: bootstrap-token-xyz\n", ""))
+    monkeypatch.setattr(
+        ecs_bootstrap, "_default_ssh_factory",
+        lambda: fake_ssh,
+    )
+
+    from orchestrator.main import app
+    client = TestClient(app)
+    resp = client.post(
+        "/admin/provision-ecs",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "access_key_id": "LTAIfake",
+            "access_key_secret": "fakefake",
+            "region_id": "cn-hangzhou",
+            "bootstrap": True,
+            "deepseek_api_key": "sk-deepseek-xxx",
+            "dashscope_api_key": "sk-dashscope-yyy",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["bootstrap"]["ok"] is True
+    assert body["bootstrap"]["admin_token"] == "bootstrap-token-xyz"
+    assert body["bootstrap"]["orchestrator_url"] == "http://47.96.88.1:9000"
+
+    # ssh 被打了：连接 + exec ecs-bootstrap.sh
+    methods = [c[0] for c in fake_ssh.calls]
+    assert methods[0] == "connect"
+    exec_calls = [c for c in fake_ssh.calls if c[0] == "exec"]
+    cmd_text = " ".join(c[1][0] for c in exec_calls)
+    assert "ecs-bootstrap.sh" in cmd_text
+    assert "sk-deepseek-xxx" in cmd_text
+
+
+def test_provision_ecs_bootstrap_requires_deepseek_key(monkeypatch, admin_token):
+    """bootstrap=true 但没传 deepseek_api_key → 422。"""
+    from orchestrator import aliyun_provisioner
+
+    monkeypatch.setattr(
+        aliyun_provisioner,
+        "_default_client_factory",
+        lambda creds: FakeClient(),
+    )
+    monkeypatch.setattr(aliyun_provisioner.AliyunProvisioner, "POLL_INTERVAL_SECONDS", 0.0)
+
+    from orchestrator.main import app
+    client = TestClient(app)
+    resp = client.post(
+        "/admin/provision-ecs",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "access_key_id": "x",
+            "access_key_secret": "y",
+            "bootstrap": True,
+            # 故意没传 deepseek_api_key
+        },
+    )
+    assert resp.status_code == 422
+    assert "deepseek_api_key" in resp.json()["detail"]
+
+
+def test_provision_ecs_bootstrap_failure_returns_200_with_error(monkeypatch, admin_token):
+    """bootstrap 失败时不应整个请求 500 —— ECS 已经开了，业务员要看到失败原因。"""
+    from orchestrator import aliyun_provisioner, ecs_bootstrap
+
+    monkeypatch.setattr(
+        aliyun_provisioner,
+        "_default_client_factory",
+        lambda creds: FakeClient(),
+    )
+    monkeypatch.setattr(aliyun_provisioner.AliyunProvisioner, "POLL_INTERVAL_SECONDS", 0.0)
+
+    failing_ssh = _FakeSSH(default_result=(1, "", "apt-get failed: 网络不通"))
+    monkeypatch.setattr(
+        ecs_bootstrap, "_default_ssh_factory",
+        lambda: failing_ssh,
+    )
+
+    from orchestrator.main import app
+    client = TestClient(app)
+    resp = client.post(
+        "/admin/provision-ecs",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "access_key_id": "x",
+            "access_key_secret": "y",
+            "bootstrap": True,
+            "deepseek_api_key": "sk-x",
+        },
+    )
+    assert resp.status_code == 200  # ECS 起来了，端点不该 500
+    body = resp.json()
+    assert body["bootstrap"]["ok"] is False
+    assert "网络不通" in body["bootstrap"]["error"]
+    # 但 ECS 信息要全 —— 业务员还能手动 ssh 上去重试
+    assert body["public_ip"] == "47.96.88.1"
+    assert body["root_password"]
+
+
 def test_provision_ecs_500_on_provision_error(monkeypatch, admin_token):
     """provisioner 抛 ProvisionError → 500 + detail。"""
     from orchestrator import aliyun_provisioner
