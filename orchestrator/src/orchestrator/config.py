@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     repo_init_timeout_seconds: int = 600        # 扫仓库 → 生成 CLAUDE.md
     repo_init_doc_filename: str = "AGENTS.md"   # 仓库根目录的项目知识文件（agents.md 跨厂商约定）
 
+    # —— Plan 11 多仓 sync ——
+    # 业务员配的 N 个 GitHub 仓 clone 到这下面：<workspaces_root>/<project_id>/<repo_name>/
+    # 默认放 /opt/vibe-niuma/workspaces；本地开发覆写到 tmp。
+    workspaces_root: str = "/opt/vibe-niuma/workspaces"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

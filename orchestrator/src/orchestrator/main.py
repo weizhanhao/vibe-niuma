@@ -15,6 +15,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
 from orchestrator.admin import router as admin_router
 from orchestrator.adapters.fakes import FakePreviewAdapter  # 仅 reaper 用（fallback）
 from orchestrator.adapters.interfaces import PreviewAdapter
@@ -30,6 +34,7 @@ from orchestrator.conversation import ConversationRepository
 from orchestrator.db import Base, engine, get_db
 from orchestrator.events import Event, EventBus
 from orchestrator.git_manager import GitConflictError, GitManager
+from orchestrator.multi_repo_sync import RepoSpec, sync_repos as run_sync_repos
 from orchestrator.pipeline import Pipeline
 from orchestrator.quota import QuotaManager
 from orchestrator.repo_init import RepoInitializer, RepoInitStatus
@@ -819,4 +824,68 @@ def _conv_out(conv) -> dict:
         "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
         "archived_at": conv.archived_at.isoformat() if conv.archived_at else None,
         "messages": conv.messages or [],
+    }
+
+
+# ── Plan 11 · M1.T4 多仓 sync 端点 ─────────────────────────────────
+
+
+class RepoSpecIn(BaseModel):
+    url: str = Field(min_length=1, description="git URL：https://github.com/o/r 或 git@github.com:o/r")
+    main_branch: str = Field(default="main", min_length=1, description="rebase 起点")
+    target_branch: str = Field(
+        default="vibe-niuma/dev", min_length=1,
+        description="业务员 CR 合并目标分支；程序员从这条分支提 PR 到 main",
+    )
+
+
+class SyncReposIn(BaseModel):
+    repos: list[RepoSpecIn] = Field(default_factory=list)
+    pat: str | None = Field(
+        default=None,
+        description="GitHub Personal Access Token（不入 DB，仅本次请求用）",
+    )
+
+
+@app.post("/projects/{project_id}/sync-repos")
+async def sync_project_repos(project_id: str, payload: SyncReposIn) -> dict:
+    """业务员配完仓库后，扩展调这个端点：
+    - 不存在 → clone 到 <workspaces_root>/<project_id>/<repo_name>/
+    - 已存在 → git fetch + reset --hard origin/<target_branch>
+    - target_branch 不存在 remote → 从 mainBranch 切 + push -u
+    全程幂等。一个仓挂掉不影响其他仓。
+    """
+    # project_id 仅做路径安全校验（防 ../../ 跑出 workspaces_root）
+    safe = project_id.replace("/", "_").replace("..", "_")
+    if not safe or safe != project_id:
+        raise HTTPException(status_code=400, detail=f"非法 project_id: {project_id!r}")
+
+    specs = [
+        RepoSpec(url=r.url, main_branch=r.main_branch, target_branch=r.target_branch)
+        for r in payload.repos
+    ]
+    workspaces_root = Path(settings.workspaces_root)
+    result = await run_sync_repos(
+        specs,
+        project_id=project_id,
+        pat=payload.pat,
+        workspaces_root=workspaces_root,
+    )
+    return {
+        "project_id": project_id,
+        "synced": [
+            {
+                "name": s.name,
+                "url": s.url,
+                "work_dir": s.work_dir,
+                "head_sha": s.head_sha,
+                "target_branch": s.target_branch,
+                "target_branch_created": s.target_branch_created,
+            }
+            for s in result.synced
+        ],
+        "failed": [
+            {"url": f.url, "error_kind": f.error_kind, "error_message": f.error_message}
+            for f in result.failed
+        ],
     }
