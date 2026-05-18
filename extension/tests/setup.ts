@@ -13,6 +13,7 @@ interface FakeStorage {
 }
 
 const _storage: FakeStorage = { area: {} };
+const _session: FakeStorage = { area: {} };  // Plan 11 M1.T2: chrome.storage.session mock
 const _msgListeners: Listener[] = [];
 const _runtimeListeners: Listener[] = [];
 const _storageChangeListeners: StorageChangedListener[] = [];
@@ -97,6 +98,29 @@ const fakeChrome = {
         if (idx >= 0) _storageChangeListeners.splice(idx, 1);
       }),
     },
+    // Plan 11 M1.T2: session 存储（关浏览器即清；放 GitHub PAT / SSH 私钥）
+    session: {
+      get: vi.fn((key?: string | string[] | null) => {
+        if (key === undefined || key === null) return Promise.resolve(_session.area);
+        if (typeof key === 'string') return Promise.resolve({ [key]: _session.area[key] });
+        const out: Record<string, unknown> = {};
+        for (const k of key) out[k] = _session.area[k];
+        return Promise.resolve(out);
+      }),
+      set: vi.fn((vals: Record<string, unknown>) => {
+        Object.assign(_session.area, vals);
+        return Promise.resolve();
+      }),
+      remove: vi.fn((keys: string | string[]) => {
+        const list = Array.isArray(keys) ? keys : [keys];
+        for (const k of list) delete _session.area[k];
+        return Promise.resolve();
+      }),
+      clear: vi.fn(() => {
+        _session.area = {};
+        return Promise.resolve();
+      }),
+    },
   },
   sidePanel: { open: vi.fn(), setOptions: vi.fn() },
 };
@@ -120,6 +144,7 @@ const fakeChrome = {
 
 beforeEach(() => {
   _storage.area = {};
+  _session.area = {};
   _msgListeners.length = 0;
   _storageChangeListeners.length = 0;
 });
