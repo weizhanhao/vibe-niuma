@@ -6,8 +6,10 @@ Plan 2 用 fake adapter 装配（见 AppState.build_pipeline）；Plan 3 在 bui
 import asyncio
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger("orchestrator.main")
 
@@ -50,6 +52,10 @@ class AppState:
     """进程内单例：事件总线、配额、Pipeline、后台任务集、可注入 session factory。"""
 
     def __init__(self) -> None:
+        # Plan 11 M3.T18：/health 算 uptime_seconds 用
+        self.start_time_monotonic: float = time.monotonic()
+        # Plan 11 M3.T18：最近一次后台失败的简述（供 /health.last_error）
+        self.last_error: Optional[str] = None
         self.event_bus = EventBus()
         self.quota = QuotaManager(capacity=settings.quota_size)
         # 每个变更请求一条 Pipeline —— 单槽会让并发请求互相覆盖、串掉 /answer 路由
@@ -290,8 +296,28 @@ def _spawn(coro) -> None:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict:
+    """Plan 11 M3.T18：业务员 UI 用的健康指示灯 + 报告给程序员按钮。
+
+    services 探测 timeout=2s/service，总时长 ~4s 内（mysql + 两个 HTTP）。
+    """
+    from orchestrator.health import build_health_payload
+
+    payload = await build_health_payload(
+        start_time_monotonic=app_state.start_time_monotonic,
+        session_factory=app_state.session_factory,
+        llm_proxy_url=getattr(settings, "llm_proxy_health_url", ""),
+        main_demo_url=getattr(settings, "main_demo_health_url", ""),
+        last_error=app_state.last_error,
+    )
+    return {
+        "status": payload.status,
+        "services": payload.services,
+        "uptime_seconds": payload.uptime_seconds,
+        "last_cr_at": payload.last_cr_at,
+        "last_error": payload.last_error,
+        "version": payload.version,
+    }
 
 
 @app.get("/repo/status")

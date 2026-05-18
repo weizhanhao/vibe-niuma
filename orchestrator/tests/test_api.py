@@ -25,7 +25,13 @@ def _wait_state(client, request_id, target, timeout=5.0):
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    # Plan 11 M3.T18：/health 扩展成 services + uptime + last_cr 结构
+    body = client.get("/health").json()
+    assert body["status"] in ("ok", "yellow", "red")
+    assert "services" in body
+    assert body["services"]["orchestrator"] == "ok"
+    assert "uptime_seconds" in body
+    assert "last_cr_at" in body
 
 
 def test_create_change_request_returns_record(client):
