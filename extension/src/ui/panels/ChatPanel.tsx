@@ -21,6 +21,10 @@ export interface ChatPanelProps {
   onAssistantComplete?: (full: string) => void;
   disabled?: boolean;
   onAuthError?: () => void;
+  /** mount 时如果 history 是空，自动发这条 user message 触发 AI 开口
+   *  （bootstrap）。业务员看到的是 AI 主动给第二步指引而不是空白板。
+   *  只触发一次；history 一旦非空就不再触发。 */
+  autoSendOnEmpty?: string;
 }
 
 interface ErrorState {
@@ -30,6 +34,7 @@ interface ErrorState {
 
 export function ChatPanel({
   client, systemPrompt, history, onAppend, onAssistantComplete, disabled, onAuthError,
+  autoSendOnEmpty,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState('');
@@ -37,15 +42,17 @@ export function ChatPanel({
   const [error, setError] = useState<ErrorState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [history, streaming]);
 
-  const send = async () => {
-    const text = input.trim();
+  // overrideText 用于 autoSendOnEmpty bootstrap，不读 input state 也不清空输入框
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || isStreaming || disabled) return;
-    setInput('');
+    if (overrideText === undefined) setInput('');
     setError(null);
     const userMsg: ChatMessage = { role: 'user', content: text };
     onAppend(userMsg);
@@ -82,6 +89,19 @@ export function ChatPanel({
       abortRef.current = null;
     }
   };
+
+  // Bootstrap：mount 时如果 history 是空 + autoSendOnEmpty 存在，自动发一条
+  // user message 让 AI 主动开口给第二步指引。业务员不必先开口。
+  // 用 ref 保证只触发一次（避免 React StrictMode 双调或 history 变化时再触发）。
+  useEffect(() => {
+    if (autoSentRef.current) return;
+    if (!autoSendOnEmpty) return;
+    if (history.length > 0) return;
+    if (isStreaming || disabled) return;
+    autoSentRef.current = true;
+    void send(autoSendOnEmpty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSendOnEmpty, history.length, isStreaming, disabled]);
 
   const abort = () => abortRef.current?.abort();
 

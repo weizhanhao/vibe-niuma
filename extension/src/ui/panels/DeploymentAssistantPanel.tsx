@@ -312,6 +312,7 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
         systemPrompt={systemPrompt}
         history={history}
         onAppend={onAppend}
+        autoSendOnEmpty="我已经填好 DeepSeek API Key，告诉我接下来该做什么。"
       />
       {actions.length > 0 && (
         <div className="actions-list">
