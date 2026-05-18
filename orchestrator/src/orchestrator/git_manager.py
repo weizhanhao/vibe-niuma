@@ -34,13 +34,17 @@ class GitManager:
             text=True,
         )
 
-    def create_branch(self, branch: str) -> None:
-        """从 main 切一个新分支并切过去。
+    def create_branch(self, branch: str, *, base_branch: str = "main") -> None:
+        """从 base_branch 切一个新分支并切过去。
+
+        Plan 11：base_branch 默认 "main"（旧 demo 单仓行为不变），Plan 11
+        多仓 + targetBranch 流程会传业务员配的 target_branch（典型
+        "vibe-niuma/dev"），让 CR 基于已合过的业务员改动起步。
 
         防御：上一个 CR 的 pipeline 可能在 dev_runner 写完文件还没 commit 时
         被 orchestrator restart / crash 打断，工作树留下未提交改动 + 留在
-        feature branch 上。直接 `git checkout main` 会被 git 拒绝（dirty work
-        tree）。这里先 stash + clean 把工作区强制回到 main 干净态再切。
+        feature branch 上。直接 `git checkout <base>` 会被 git 拒绝（dirty work
+        tree）。这里先 stash + clean 把工作区强制回到 base 干净态再切。
         stash 不丢，可以 `git stash list` 找回。
         """
         status = self._git("status", "--porcelain").stdout
@@ -55,7 +59,7 @@ class GitManager:
         if residual.strip():
             self._git("reset", "--hard", "HEAD", check=False)
             self._git("clean", "-fd", check=False)
-        self._git("checkout", "main")
+        self._git("checkout", base_branch)
         self._git("checkout", "-b", branch)
 
     def has_changes(self, branch: str) -> bool:
@@ -71,18 +75,38 @@ class GitManager:
         self._git("commit", "-m", message)
         return self._git("rev-parse", "HEAD").stdout.strip()
 
-    def merge_to_main(self, branch: str) -> None:
-        """先把 branch rebase 到最新 main，再 fast-forward 合并进 main。
+    def merge_to_target(
+        self,
+        branch: str,
+        *,
+        target: str = "main",
+        push_remote: bool = False,
+        push_pat: str | None = None,
+    ) -> None:
+        """先把 branch rebase 到最新 target，再 fast-forward 合并进 target。
+
         rebase 或 merge 冲突 → 回滚到干净状态并抛 GitConflictError。
 
         Plan 8：多仓项目（self._sub_repos 非空）→ 委托给 merge_to_main_atomic，
         全 N 仓「要么都成功要么都回滚」。单仓沿用本地两阶段实现。
+
+        Plan 11：
+        - target 默认 "main"（旧 demo 行为）；多仓 + targetBranch 流程传
+          "vibe-niuma/dev"，业务员的 CR 汇聚到这条专用分支。
+        - push_remote=True 时合并完 push 到 origin/<target>，让程序员从
+          GitHub 看得到（auto_pr 维护 long-running PR 也依赖这个 push）。
+        - push_pat：private repo 鉴权用的 PAT；公开仓 / 已 cache 凭证可为 None。
         """
         if self._sub_repos:
             try:
                 asyncio.run(merge_to_main_atomic(self._sub_repos, branch))
             except MultiRepoConflictError as exc:
                 raise GitConflictError(str(exc)) from exc
+            if push_remote:
+                # 多仓：每个子仓都 push 一遍 target
+                from orchestrator.github_client import push as gh_push
+                for sub in self._sub_repos:
+                    gh_push(sub, target, pat=push_pat)
             return
 
         status = self._git("status", "--porcelain").stdout
@@ -92,14 +116,14 @@ class GitManager:
             stashed = True
         try:
             self._git("checkout", branch)
-            rebase = self._git("rebase", "main", check=False)
+            rebase = self._git("rebase", target, check=False)
             if rebase.returncode != 0:
                 self._git("rebase", "--abort", check=False)
-                self._git("checkout", "main")
+                self._git("checkout", target)
                 raise GitConflictError(
                     f"rebase conflict: {rebase.stdout}{rebase.stderr}"
                 )
-            self._git("checkout", "main")
+            self._git("checkout", target)
             merge = self._git("merge", "--ff-only", branch, check=False)
             if merge.returncode != 0:
                 raise GitConflictError(
@@ -109,6 +133,16 @@ class GitManager:
             if stashed:
                 # build artifact stash 不再需要 —— 直接 drop。
                 self._git("stash", "drop", check=False)
+
+        if push_remote:
+            from pathlib import Path
+            from orchestrator.github_client import push as gh_push
+            gh_push(Path(self._repo), target, pat=push_pat)
+
+    # 老 API 别名 —— 保持 main.py / tests 现有调用不破。
+    def merge_to_main(self, branch: str) -> None:
+        """Deprecated alias for merge_to_target(branch, target='main')."""
+        self.merge_to_target(branch, target="main")
 
     def delete_branch(self, branch: str) -> None:
         """删除分支（强制）。先确保不在该分支上。"""

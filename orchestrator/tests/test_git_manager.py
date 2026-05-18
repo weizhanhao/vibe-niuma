@@ -160,3 +160,98 @@ def test_delete_branch(temp_repo):
         ["git", "branch"], cwd=temp_repo, capture_output=True, text=True
     ).stdout
     assert "cr/abc" not in branches
+
+
+# ── Plan 11 · M1.T6 —— target_branch 参数化 + push ────────────────
+
+
+@pytest.fixture
+def temp_repo_with_target_branch(temp_repo) -> Path:
+    """在 temp_repo 上预先建一个 vibe-niuma/dev 分支（基于 main）。"""
+    run = lambda *a: subprocess.run(["git", *a], cwd=temp_repo, check=True, capture_output=True)
+    run("checkout", "-b", "vibe-niuma/dev", "main")
+    (temp_repo / "dev_only.txt").write_text("已合过的业务员改动\n")
+    run("add", "dev_only.txt")
+    run("commit", "-m", "previous business merge")
+    run("checkout", "main")
+    return temp_repo
+
+
+def test_create_branch_from_custom_base(temp_repo_with_target_branch):
+    """Plan 11：CR 从 target_branch 切，不从 main 切 —— 拿到老业务员合过的改动。"""
+    gm = GitManager(str(temp_repo_with_target_branch))
+    gm.create_branch("cr/xyz", base_branch="vibe-niuma/dev")
+    # 应该能看到 dev_only.txt（从 dev 继承）
+    assert (temp_repo_with_target_branch / "dev_only.txt").exists()
+
+
+def test_merge_to_target_custom_branch(temp_repo_with_target_branch):
+    """Plan 11：merge_to_target 合到 vibe-niuma/dev 而不是 main。"""
+    repo = temp_repo_with_target_branch
+    gm = GitManager(str(repo))
+    gm.create_branch("cr/m1", base_branch="vibe-niuma/dev")
+    (repo / "new_business.txt").write_text("新业务改动\n")
+    gm.commit_all("cr/m1", "cr: 新业务")
+    gm.merge_to_target("cr/m1", target="vibe-niuma/dev")
+
+    # 验证：dev 上有新文件，main 上**没有**
+    dev_files = subprocess.run(
+        ["git", "ls-tree", "--name-only", "vibe-niuma/dev"],
+        cwd=repo, capture_output=True, text=True,
+    ).stdout
+    assert "new_business.txt" in dev_files
+    main_files = subprocess.run(
+        ["git", "ls-tree", "--name-only", "main"],
+        cwd=repo, capture_output=True, text=True,
+    ).stdout
+    assert "new_business.txt" not in main_files
+
+
+def test_merge_to_main_alias_still_works(temp_repo):
+    """老调用者 (main.py / 旧 test) 用 merge_to_main 仍应合到 main。"""
+    gm = GitManager(str(temp_repo))
+    gm.create_branch("cr/old-api")
+    (temp_repo / "x.txt").write_text("via old api\n")
+    gm.commit_all("cr/old-api", "old-api change")
+    gm.merge_to_main("cr/old-api")  # 调老 API 名
+    main_files = subprocess.run(
+        ["git", "ls-tree", "--name-only", "main"], cwd=temp_repo, capture_output=True, text=True,
+    ).stdout
+    assert "x.txt" in main_files
+
+
+def test_merge_to_target_with_push_pushes_to_remote(tmp_path):
+    """push_remote=True 时合并完应该 push 到 origin。验证 remote 真收到更新。"""
+    # 搭一个 bare 当 remote
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
+
+    # clone 出本地 work tree + seed main
+    repo = tmp_path / "local"
+    subprocess.run(["git", "clone", str(remote), str(repo)], check=True, capture_output=True)
+    run = lambda *a: subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    run("config", "user.email", "t@x")
+    run("config", "user.name", "t")
+    (repo / "init.txt").write_text("init\n")
+    run("add", "init.txt")
+    run("commit", "-m", "init")
+    # 强制 main 名（git 默认可能是 master）
+    current = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"], cwd=repo, capture_output=True, text=True,
+    ).stdout.strip()
+    if current != "main":
+        run("branch", "-M", "main")
+    run("push", "-u", "origin", "main")
+
+    # 起 CR + 合 + push
+    gm = GitManager(str(repo))
+    gm.create_branch("cr/pushtest")
+    (repo / "pushed.txt").write_text("pushed via merge_to_target\n")
+    gm.commit_all("cr/pushtest", "cr: push test")
+    gm.merge_to_target("cr/pushtest", target="main", push_remote=True)
+
+    # 验证：remote 上的 main 真有 pushed.txt
+    remote_files = subprocess.run(
+        ["git", "ls-tree", "--name-only", "main"], cwd=remote, capture_output=True, text=True,
+    ).stdout
+    assert "pushed.txt" in remote_files
