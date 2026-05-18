@@ -162,12 +162,12 @@ Attachment {
 ### extension chrome.storage.local
 
 ```
-doskill_tabs_v1: {
+vibe_niuma_tabs_v1: {
   openTabIds: string[]                       -- conversation id 数组，顺序 = tab 显示顺序
   activeTabId: string | null
 }                                            -- 上限 8 个；超出 LRU evict 最老未活跃
 
-doskill_conversation_state_v1: Record<conversationId, {
+vibe_niuma_conversation_state_v1: Record<conversationId, {
   inputDraft: string                         -- 输入框未发送的草稿
   attachmentDrafts: Attachment[]             -- 未发送的附件
   scrollPosition: number                     -- chat 流滚动位置
@@ -237,7 +237,7 @@ doskill_conversation_state_v1: Record<conversationId, {
   - `test_respond_includes_repo_doc_in_prompt`
 - [ ] **Step 2 实现**：
   - `chat_responder.py`：`ChatResponder` 类，`respond(conversation_id, user_message) → str`
-  - prompt：「你是 doskill 助手。业务员在跟你聊 web 改造。回答以下消息，不要写代码、不要承诺改东西，只回答业务问题或建议」
+  - prompt：「你是 vibe-niuma 助手。业务员在跟你聊 web 改造。回答以下消息，不要写代码、不要承诺改东西，只回答业务问题或建议」
   - 调 `_llm.LLMClient.complete()`（不带视觉，纯文本）
   - 写一条 `type=ai` message 到 `conversation.messages`
 - [ ] **Step 3 GREEN**

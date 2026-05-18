@@ -221,8 +221,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
       // chrome.storage 里有可能存了 lastSyncedAt（loadConfig 不识别该字段，单独读一次原始 storage）
       try {
-        const raw = await chrome.storage.local.get('doskill_config_v2');
-        const stored = raw?.doskill_config_v2 as { lastSyncedAt?: string } | undefined;
+        const raw = await chrome.storage.local.get('vibe_niuma_config_v2');
+        const stored = raw?.vibe_niuma_config_v2 as { lastSyncedAt?: string } | undefined;
         if (!cancelled) setLastSyncedAt(stored?.lastSyncedAt);
       } catch {
         // ignore
@@ -328,10 +328,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         },
       });
       // lastSyncedAt 不在 zod schema 里，单独 set
-      const stored = await chrome.storage.local.get('doskill_config_v2');
-      const cfg = (stored?.doskill_config_v2 ?? {}) as Record<string, unknown>;
+      const stored = await chrome.storage.local.get('vibe_niuma_config_v2');
+      const cfg = (stored?.vibe_niuma_config_v2 ?? {}) as Record<string, unknown>;
       await chrome.storage.local.set({
-        doskill_config_v2: { ...cfg, lastSyncedAt: now },
+        vibe_niuma_config_v2: { ...cfg, lastSyncedAt: now },
       });
     } catch (err) {
       setSaveStatus({ kind: 'error', message: describeError(err) });
@@ -557,7 +557,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <p className="wizard-success" role="status">
             ✓ 已同步 · 服务端版本 v{saveStatus.version}
           </p>
-          {saveStatus.restarted.includes('doskill-llm-proxy') && (
+          {saveStatus.restarted.includes('vibe-niuma-llm-proxy') && (
             <p className="wizard-success" role="status">
               ⏳ LiteLLM 正在重启，约 5s 后恢复服务
             </p>

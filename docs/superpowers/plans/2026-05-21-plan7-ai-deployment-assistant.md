@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把「装好扩展 → 跑通第一条 CR」之间的所有空白由一个**对话式 AI 助手**填上。用户装好扩展、只填一个 DeepSeek API key，剩下「在哪买服务器、怎么 ssh、怎么把 doskill 部署到 ECS、怎么把自己的 git 仓库接进来」全部由助手用自然语言引导完成。助手用 DeepSeek 直连（不依赖 orchestrator，因为这时候 orchestrator 还没起），输出**带结构化 action 的对话**：每一条「拷这条命令到你电脑跑」「打开这个网页注册」「把刚才命令的输出贴回来」都是一个可点击/可粘贴的卡片，而不是埋在 markdown 里要用户自己挖。
+**Goal:** 把「装好扩展 → 跑通第一条 CR」之间的所有空白由一个**对话式 AI 助手**填上。用户装好扩展、只填一个 DeepSeek API key，剩下「在哪买服务器、怎么 ssh、怎么把 vibe-niuma 部署到 ECS、怎么把自己的 git 仓库接进来」全部由助手用自然语言引导完成。助手用 DeepSeek 直连（不依赖 orchestrator，因为这时候 orchestrator 还没起），输出**带结构化 action 的对话**：每一条「拷这条命令到你电脑跑」「打开这个网页注册」「把刚才命令的输出贴回来」都是一个可点击/可粘贴的卡片，而不是埋在 markdown 里要用户自己挖。
 
 **助手的退出条件（核心契约）：** 当 orchestrator URL + admin token + DeepSeek key + git 仓库路径 4 项配齐、`/admin/config` PUT 成功、healthcheck 11/11 通过、第一条 CR 在 demo 仓库跑通预览，助手 panel **自动隐藏**，扩展进入 Plan 6 已有的正常流程（sidebar 列 CR + 框选 + 自然语言下单）。用户的原话：*「等部署所有的都搞完后，这个部署助手也就可以结束流程了，后续就是现在的功能了」*。
 
@@ -11,9 +11,9 @@
 - **对话状态机** `DeploymentState`：`gathering_deepseek_key → choosing_path → collecting_info → executing → verifying → done`。状态机不替代 LLM 的判断，只做**软约束**：当 `done` 时隐藏 panel；当 `executing` 时禁用「重启对话」防误操作。
 - **Action 协议**：DeepSeek 通过 system prompt 被约束输出 **`<actions>...</actions>` JSON 块** 夹在自然语言之间。前端解析这个块，渲染成可交互卡片：`copy_command`（一键复制 + 提示用户回贴输出）、`open_url`（在新窗口打开外链）、`capture_field`（直接写 chrome.storage）、`request_output`（要求用户粘贴命令输出，把贴的内容回喂给下一轮 LLM）、`validate`（前端去打 `/healthz` / `/admin/config` 验证）、`transition`（状态机跳转）。
 - **两条预置「部署路径」对话**：Path A *本地 Docker*（适合先在自己机器试一下）、Path B *阿里云 ECS*（生产推荐）。Path A/B 的核心区别全在 system prompt 里 —— 同一个 LLM 客户端 + 不同 prompt = 不同向导。
-- **沉淀知识库**：`extension/src/ai/prompts/*.md` —— `doskill-handbook.md`（一篇约 800 字的「doskill 是什么、为什么、配齐什么算成功」）+ `action-protocol.md`（约束输出格式）+ `path-local.md` + `path-ecs.md` + `examples-good.md` + `examples-bad.md`（few-shot）。Prompt 全部 bundle 进 dist，运行时拼接，不在网络上传。
+- **沉淀知识库**：`extension/src/ai/prompts/*.md` —— `vibe-niuma-handbook.md`（一篇约 800 字的「vibe-niuma 是什么、为什么、配齐什么算成功」）+ `action-protocol.md`（约束输出格式）+ `path-local.md` + `path-ecs.md` + `examples-good.md` + `examples-bad.md`（few-shot）。Prompt 全部 bundle 进 dist，运行时拼接，不在网络上传。
 - **安全**：DeepSeek API key 存 `chrome.storage.local`（同 Plan 6）。SSH 私钥**只接受 paste**，存 `chrome.storage.session`（浏览器关掉就丢），永远不发到任何远端，纯展示用「请把这个私钥放到 ~/.ssh/，跑 chmod 600」。**助手永远不在浏览器里 `exec`**，只生成命令交给用户拷贝。
-- **重入**：用户中途关掉 panel / 浏览器，`doskill_deployment_state` 已存 chrome.storage，下次开扩展自动续上，DeepSeek 上下文从 `history` 数组复原（截掉最早的，保留最近 16 轮）。
+- **重入**：用户中途关掉 panel / 浏览器，`vibe_niuma_deployment_state` 已存 chrome.storage，下次开扩展自动续上，DeepSeek 上下文从 `history` 数组复原（截掉最早的，保留最近 16 轮）。
 - **退场**：`isConfigured() && isDeploymentVerified()` → App.tsx 把助手 panel 从路由表里摘掉。chrome.storage 留一个 flag `deploymentAssistantCompletedAt: number`，方便后续 telemetry。
 
 **Tech Stack:** 扩展端 React + Vite + zod + react-markdown（已在 Plan 6 引入）。新加：DeepSeek SDK 不引入，纯 fetch + SSE 解析（避免一个临时依赖永久占用 bundle）。Prompt 用 `?raw` import bundle 成字符串。测试用 vitest + msw（mock DeepSeek SSE 响应）。
@@ -41,7 +41,7 @@ extension/
       DeploymentState.ts            # 状态机定义 + transition 函数（纯函数）
       systemPrompt.ts               # 把 *.md 拼成最终 system prompt
       prompts/
-        doskill-handbook.md         # 「doskill 是什么 + 验收标准」
+        vibe-niuma-handbook.md         # 「vibe-niuma 是什么 + 验收标准」
         action-protocol.md          # action JSON schema 描述（给 LLM 看的）
         path-local.md               # 本地 Docker 向导脚本
         path-ecs.md                 # 阿里云 ECS 向导脚本
@@ -163,9 +163,9 @@ type AiAction =
 ### Task 4 — Prompt 拼装 + handbook 撰写
 
 - [ ] **Step 1: 写 6 篇 prompt markdown**（人类写作，不需要测试）：
-  - `doskill-handbook.md`：800 字以内，告诉 LLM 「doskill 是给业务员用的低代码工具，部署完后用户在浏览器框选页面区域、说自然语言、AI 改代码、看预览、点合并。你的工作是把『装好扩展』到『跑通第一条 CR』之间的事情用对话形式完成」。明确**配齐什么算成功**（4 项 + healthcheck）。
+  - `vibe-niuma-handbook.md`：800 字以内，告诉 LLM 「vibe-niuma 是给业务员用的低代码工具，部署完后用户在浏览器框选页面区域、说自然语言、AI 改代码、看预览、点合并。你的工作是把『装好扩展』到『跑通第一条 CR』之间的事情用对话形式完成」。明确**配齐什么算成功**（4 项 + healthcheck）。
   - `action-protocol.md`：把上面「Action 协议契约」用自然语言重述给 LLM 看，强调「每条回复必带 `<actions>`」「绝不在浏览器里 exec」「需要用户拷贝命令时用 `copy_command`」。
-  - `path-local.md`：本地 Docker 流程脚本（git clone doskill → deploy/local.sh → 健康检查）。注意：本 plan **不**要求实现 local.sh，先让 LLM 引导用户跑现有的 deploy.sh（指向 localhost）。
+  - `path-local.md`：本地 Docker 流程脚本（git clone vibe-niuma → deploy/local.sh → 健康检查）。注意：本 plan **不**要求实现 local.sh，先让 LLM 引导用户跑现有的 deploy.sh（指向 localhost）。
   - `path-ecs.md`：阿里云 ECS 流程（买 ECS → 拿 IP/key → ssh → `bash <(curl -s ...)` bootstrap → 健康检查）。明确「SSH 私钥粘贴只用一次、永不发到任何地方」。
   - `examples-good.md`：3 段 few-shot 对话片段（用户「我刚装好扩展」→ 助手第 1 轮回复、用户回贴命令输出 → 助手第 2 轮回复 等）。
   - `examples-bad.md`：反例 —— 「不要这样：忘加 `<actions>`/把私钥写到 prompt 里/一次性甩 200 行命令让用户跑」。
@@ -226,8 +226,8 @@ type AiAction =
 ### Task 9 — Path B：ECS 路径联通
 
 - [ ] **Step 1: bootstrap 一键脚本** —— `deploy/ecs-bootstrap.sh`（**只能** ssh 进 ECS 后执行，不在 chrome 里跑）：
-  - `curl -L https://raw.githubusercontent.com/<user>/doskill/main/deploy/ecs-bootstrap.sh | bash` （提示用户拷贝命令，不在浏览器里 exec）
-  - 装 git/docker/python3 → git clone doskill → cp deploy/env.example deploy/.env → 引导用户编辑 → bash deploy.sh --full。
+  - `curl -L https://raw.githubusercontent.com/<user>/vibe-niuma/main/deploy/ecs-bootstrap.sh | bash` （提示用户拷贝命令，不在浏览器里 exec）
+  - 装 git/docker/python3 → git clone vibe-niuma → cp deploy/env.example deploy/.env → 引导用户编辑 → bash deploy.sh --full。
 - [ ] **Step 2: 手动跑一次** —— 在一台**新开的** ECS（114.55.171.64 之外、最好是一台干净的 ESC 实例）上让助手把我引导一遍。卡 30 秒以上的地方都回到 `path-ecs.md` 改 prompt。
 - [ ] **Step 3: 提交** — `feat(deploy): Plan 7 Task 9 — ECS bootstrap 一键脚本 + path-ecs prompt 调优`
 

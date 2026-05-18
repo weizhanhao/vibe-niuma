@@ -150,7 +150,7 @@ async def test_compact_calls_llm_with_chinese_summary_prompt():
 
     assert len(llm.prompts) == 1
     p = llm.prompts[0]
-    assert "doskill" in p.lower()
+    assert "vibe-niuma" in p.lower()
     assert "对话压缩" in p or "压成" in p
     assert "ai-resp-0-" in p
 
@@ -171,5 +171,5 @@ async def test_compact_preserves_marked_ai_messages():
 
 def test_compaction_prompt_template_constant_exposed():
     assert isinstance(COMPACTION_PROMPT, str)
-    assert "doskill" in COMPACTION_PROMPT.lower()
+    assert "vibe-niuma" in COMPACTION_PROMPT.lower()
     assert "{messages}" in COMPACTION_PROMPT

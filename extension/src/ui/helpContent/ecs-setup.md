@@ -1,4 +1,4 @@
-**ECS 是部署 orchestrator 的服务器**。doskill 需要一台能跑 Docker 的 Linux 机器（≥ 4 GiB 内存，≥ 40 GiB 硬盘）。
+**ECS 是部署 orchestrator 的服务器**。vibe-niuma 需要一台能跑 Docker 的 Linux 机器（≥ 4 GiB 内存，≥ 40 GiB 硬盘）。
 
 **新手推荐**（按价格升序）：
 

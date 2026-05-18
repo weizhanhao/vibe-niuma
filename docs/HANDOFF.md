@@ -18,10 +18,10 @@ Plans 1–5 已全部开发完。下面是**你需要一次性提供的全部输
 
 | 键 | 含义 | 例子 |
 |---|---|---|
-| `ECS_HOST` | 公网 IP 或域名 | `47.x.y.z` 或 `doskill.example.com` |
+| `ECS_HOST` | 公网 IP 或域名 | `47.x.y.z` 或 `vibe-niuma.example.com` |
 | `ECS_USER` | SSH 登录用户 | `root` / `ecs-user` |
 | `ECS_SSH_KEY` | 本机私钥路径 | `~/.ssh/id_ed25519` |
-| `DEPLOY_ROOT` | ECS 部署根目录 | `/opt/doskill`（默认） |
+| `DEPLOY_ROOT` | ECS 部署根目录 | `/opt/vibe-niuma`（默认） |
 | OS 版本 + 预装情况 | 影响 `provision.sh` 跳过哪些 | `Alibaba Cloud Linux 3` / `Ubuntu 22.04` |
 | sudo 权限 | provision 需要装 docker / node / python | 确认 |
 
@@ -65,7 +65,7 @@ MVP 不强求；不填就用 `http://<ECS_IP>:9000`，扩展 Settings 里填这�
 |---|---|---|
 | `DEMO_GIT_REMOTE` | demo 仓库 git 远端 | 空 = rsync 投递 + ECS 上 `git init`（推荐 MVP）；填 URL = ECS 上 `git clone` |
 
-doskill 项目本身（这个 repo）是否推 GitHub/Gitee 由你定，**对部署本身没影响**（deploy.sh 是从本机 rsync）。
+vibe-niuma 项目本身（这个 repo）是否推 GitHub/Gitee 由你定，**对部署本身没影响**（deploy.sh 是从本机 rsync）。
 
 ### G. 网络可达性
 
@@ -88,7 +88,7 @@ doskill 项目本身（这个 repo）是否推 GitHub/Gitee 由你定，**对部
 2. `cp deploy/llm-proxy/config.example.yml deploy/llm-proxy/config.yml` → 把模型 key 填进去（或单独让你把 key 放到 ECS 的环境变量，更安全）。
 3. `bash deploy/deploy.sh --full` → 第一次完整部署。
 4. `bash deploy/healthcheck.sh` → 体检全绿。
-5. `ssh ... "cd /opt/doskill/orchestrator && DOSKILL_E2E=1 venv/bin/pytest -m e2e -v -s"` → 真实闭环冒烟。
+5. `ssh ... "cd /opt/vibe-niuma/orchestrator && VIBE_NIUMA_E2E=1 venv/bin/pytest -m e2e -v -s"` → 真实闭环冒烟。
 6. 把扩展 `dist/` 给你加载到 Chrome，对着 ECS demo 站走一遍框选 → 澄清 → 预览 → 合并。
 7. 把验证结果回填到 `docs/RUNBOOK.md` 的「风险假设的真实验证」一节。
 

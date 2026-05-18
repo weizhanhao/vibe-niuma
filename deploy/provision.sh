@@ -8,7 +8,7 @@ set -euo pipefail
 
 log() { printf '\n\033[1;36m[provision]\033[0m %s\n' "$*"; }
 
-DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/doskill}"
+DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/vibe-niuma}"
 
 # ── 检测发行版 ─────────────────────────────────────────────────────
 if [ -r /etc/os-release ]; then . /etc/os-release; fi

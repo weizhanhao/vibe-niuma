@@ -35,8 +35,8 @@ def test_get_or_create_returns_singleton_with_defaults_on_first_call(cfg_repo, d
     assert cfg.deepseek_api_key is None
     assert cfg.dashscope_api_key is None
     assert cfg.anthropic_api_key is None
-    assert cfg.demo_repo_path == "/opt/doskill/demo"
-    assert cfg.preview_backend_url == "http://doskill-demo-backend:8000"
+    assert cfg.demo_repo_path == "/opt/vibe-niuma/demo"
+    assert cfg.preview_backend_url == "http://vibe-niuma-demo-backend:8000"
 
     # 副作用：commit 进了 DB —— 用新 session 实例化的 repo 也能看到
     from orchestrator.models import SystemConfig
@@ -90,6 +90,6 @@ def test_update_partial_preserves_other_fields(cfg_repo):
     assert updated.vision_model == "qwen-vl-plus"
     assert updated.dashscope_api_key is None
     assert updated.anthropic_api_key is None
-    assert updated.demo_repo_path == "/opt/doskill/demo"
-    assert updated.preview_backend_url == "http://doskill-demo-backend:8000"
+    assert updated.demo_repo_path == "/opt/vibe-niuma/demo"
+    assert updated.preview_backend_url == "http://vibe-niuma-demo-backend:8000"
     assert updated.version == 1

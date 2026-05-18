@@ -251,8 +251,8 @@ class RepoInitializer:
         # 配 safe.directory 避免 alien-ownership 报错
         _git(self.repo_path, "config", "--global", "--add",
              "safe.directory", str(self.repo_path))
-        _git(self.repo_path, "config", "user.email", "doskill-init@local")
-        _git(self.repo_path, "config", "user.name", "doskill /init")
+        _git(self.repo_path, "config", "user.email", "vibe-niuma-init@local")
+        _git(self.repo_path, "config", "user.name", "vibe-niuma /init")
         _git(self.repo_path, "add", self.doc_path.name)
         _git(self.repo_path, "commit", "-q", "-m",
-             "chore: doskill /init - regenerate AGENTS.md")
+             "chore: vibe-niuma /init - regenerate AGENTS.md")

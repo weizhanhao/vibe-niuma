@@ -92,7 +92,7 @@ def _stash_if_dirty(repo: Path) -> bool:
     rc, out = _run(repo, "status", "--porcelain")
     if not out.strip():
         return False
-    _run(repo, "stash", "push", "-u", "-m", "doskill-multi-repo-merge", check=True)
+    _run(repo, "stash", "push", "-u", "-m", "vibe-niuma-multi-repo-merge", check=True)
     return True
 
 

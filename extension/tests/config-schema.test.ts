@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { isConfigured, loadConfig, saveConfig } from '../src/lib/config';
 
-const STORAGE_KEY = 'doskill_config_v2';
+const STORAGE_KEY = 'vibe_niuma_config_v2';
 
 function fakeStorage(): Record<string, unknown> {
   return (globalThis as unknown as { __fakeChrome: { storage: { area: Record<string, unknown> } } })
@@ -25,8 +25,8 @@ const VALID = {
     deepseekApiKey: 'sk-test',
     dashscopeApiKey: undefined,
     anthropicApiKey: undefined,
-    demoRepoPath: '/opt/doskill/demo',
-    previewBackendUrl: 'http://doskill-demo-backend:8000',
+    demoRepoPath: '/opt/vibe-niuma/demo',
+    previewBackendUrl: 'http://vibe-niuma-demo-backend:8000',
   },
 };
 
@@ -44,7 +44,7 @@ describe('config schema · loadConfig', () => {
     expect(got?.adminToken).toBe('abcdefghijklmnopqrstuvwxyz');
     expect(got?.configVersion).toBe(3);
     expect(got?.server.devRunner).toBe('opencode');
-    expect(got?.server.demoRepoPath).toBe('/opt/doskill/demo');
+    expect(got?.server.demoRepoPath).toBe('/opt/vibe-niuma/demo');
   });
 
   it('returns null when stored URL is invalid (zod rejects)', async () => {
@@ -70,7 +70,7 @@ describe('config schema · saveConfig', () => {
     expect(saved.adminToken).toBe('aaaaaaaaaaaaaaaaaaaaaaaa');
     // server 拿默认值
     expect(saved.server.devRunner).toBe('opencode');
-    expect(saved.server.demoRepoPath).toBe('/opt/doskill/demo');
+    expect(saved.server.demoRepoPath).toBe('/opt/vibe-niuma/demo');
     expect(saved.configVersion).toBe(0);
     expect(fakeStorage()[STORAGE_KEY]).toBeDefined();
   });

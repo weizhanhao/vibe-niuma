@@ -85,8 +85,8 @@ def test_get_returns_defaults_on_first_call(admin_client, auth_headers):
     assert cfg["dev_runner"] == "opencode"
     assert cfg["dev_model"] == "deepseek/deepseek-v4-flash"
     assert cfg["vision_model"] == "qwen-vl-plus"
-    assert cfg["demo_repo_path"] == "/opt/doskill/demo"
-    assert cfg["preview_backend_url"] == "http://doskill-demo-backend:8000"
+    assert cfg["demo_repo_path"] == "/opt/vibe-niuma/demo"
+    assert cfg["preview_backend_url"] == "http://vibe-niuma-demo-backend:8000"
     # 密钥字段空 → 值 null + set flag false
     assert cfg["deepseek_api_key"] is None
     assert cfg["deepseek_api_key_set"] is False
@@ -187,7 +187,7 @@ def test_put_with_invalid_dev_runner_value_returns_422(admin_client, auth_header
 def test_put_triggers_litellm_restart_when_provider_key_changed(
     admin_client, auth_headers, monkeypatch
 ):
-    """任一 *_api_key 字段变了 → subprocess.run 调 systemctl restart doskill-llm-proxy。"""
+    """任一 *_api_key 字段变了 → subprocess.run 调 systemctl restart vibe-niuma-llm-proxy。"""
     from orchestrator import admin as admin_mod
 
     calls: list[tuple] = []
@@ -212,17 +212,17 @@ def test_put_triggers_litellm_restart_when_provider_key_changed(
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert "doskill-llm-proxy" in body["restartedServices"]
+    assert "vibe-niuma-llm-proxy" in body["restartedServices"]
     # 密钥脱敏依然生效
     assert body["config"]["deepseek_api_key"] is None
     assert body["config"]["deepseek_api_key_set"] is True
 
-    # subprocess.run 被调一次，args 含 systemctl restart doskill-llm-proxy
+    # subprocess.run 被调一次，args 含 systemctl restart vibe-niuma-llm-proxy
     assert len(calls) == 1
     argv = calls[0][0]
     assert "systemctl" in argv
     assert "restart" in argv
-    assert "doskill-llm-proxy" in argv
+    assert "vibe-niuma-llm-proxy" in argv
 
 
 def test_put_changing_model_does_not_restart(
@@ -281,7 +281,7 @@ def test_put_partial_preserves_other_fields(admin_client, auth_headers):
     # 其它字段不变
     assert cfg["dev_runner"] == "opencode"
     assert cfg["dev_model"] == "deepseek/deepseek-v4-flash"
-    assert cfg["demo_repo_path"] == "/opt/doskill/demo"
+    assert cfg["demo_repo_path"] == "/opt/vibe-niuma/demo"
 
 
 def test_get_after_put_reflects_new_values(admin_client, auth_headers):

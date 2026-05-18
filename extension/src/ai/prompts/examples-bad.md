@@ -25,10 +25,10 @@
 **助手（错的）：**
 
 ```
-ssh root@<your-server-ip> 'cat /opt/doskill/admin.token'
+ssh root@<your-server-ip> 'cat /opt/vibe-niuma/admin.token'
 ```
 
-<actions>[{"type":"copy_command","label":"拿 admin token","command":"ssh root@<your-server-ip> 'cat /opt/doskill/admin.token'","expectsOutput":true}]</actions>
+<actions>[{"type":"copy_command","label":"拿 admin token","command":"ssh root@<your-server-ip> 'cat /opt/vibe-niuma/admin.token'","expectsOutput":true}]</actions>
 
 **为什么不行：** 非程序员用户看到 `<your-server-ip>` 不一定知道要替换，会原封不动复制粘贴，命令立刻失败。**正确做法**：缺信息**永远**先用 `request_output { placeholder: "ECS 公网 IP（在阿里云控制台首页能看到）" }` 问，拿到值后下一回合再发拼好的完整命令 `ssh root@47.96.1.2 'cat ...'`。
 
@@ -58,6 +58,6 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAA...（完整内容）
 
 好的，请按顺序跑下面这些命令，跑完一起贴结果回来：
 
-<actions>[{"type":"copy_command","label":"装 git","command":"sudo apt install -y git","expectsOutput":false},{"type":"copy_command","label":"装 docker","command":"curl -fsSL https://get.docker.com | sh","expectsOutput":false},{"type":"copy_command","label":"clone","command":"git clone ...","expectsOutput":false},{"type":"copy_command","label":"cd","command":"cd doskill","expectsOutput":false},... 还有 16 条]</actions>
+<actions>[{"type":"copy_command","label":"装 git","command":"sudo apt install -y git","expectsOutput":false},{"type":"copy_command","label":"装 docker","command":"curl -fsSL https://get.docker.com | sh","expectsOutput":false},{"type":"copy_command","label":"clone","command":"git clone ...","expectsOutput":false},{"type":"copy_command","label":"cd","command":"cd vibe-niuma","expectsOutput":false},... 还有 16 条]</actions>
 
 **为什么不行：** 用户跑到第 3 条卡住了，前面的输出已经被滚动条吞掉，他根本不知道是哪一条出的错。而且任意一条失败，后面所有命令都白搭。**正确做法**：**一回合一条命令** + `expectsOutput=true` 等回贴，看到「这一步过了」再发下一条。慢一点，但每一步都掌握得住。

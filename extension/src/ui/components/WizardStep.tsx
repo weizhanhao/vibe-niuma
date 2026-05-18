@@ -4,7 +4,7 @@
 //   - 不持有任何业务状态（URL / token / api key 都在父 SetupWizardPanel 里）
 //   - canGoNext 由父传入；按钮 disabled 完全受控
 //   - Step 1 时 isFirstStep=true 隐藏「← 上一步」
-//   - Step 4 时 isLastStep=true 用「开始使用 doskill」作为按钮文案，由父通过 nextLabel 注入
+//   - Step 4 时 isLastStep=true 用「开始使用 vibe-niuma」作为按钮文案，由父通过 nextLabel 注入
 import type { ReactNode } from 'react';
 
 export interface WizardStepProps {
@@ -32,7 +32,7 @@ export function WizardStep({
   isLastStep = false,
   nextLabel,
 }: WizardStepProps) {
-  const computedNextLabel = nextLabel ?? (isLastStep ? '开始使用 doskill' : '下一步 →');
+  const computedNextLabel = nextLabel ?? (isLastStep ? '开始使用 vibe-niuma' : '下一步 →');
   return (
     <section className="wizard-step" aria-label={`第 ${stepNumber} 步`}>
       <div className="eyebrow">第 {stepNumber} 步 / 共 4 步</div>

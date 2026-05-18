@@ -1,8 +1,8 @@
 // Orchestrator 客户端：REST + SSE。
 // Plan 6 Task 10：从 module-level singleton 改成 factory。
 // 之前 `orchestratorClient` 是顶层导出 const，URL 用 getBaseUrl()/setBaseUrl() 读旧 storage key
-// （`doskill.orchestratorBaseUrl`，只存 URL 字符串）。Plan 6 后所有配置走 `lib/config.ts`
-// 的 `doskill_config_v2`（含 URL + adminToken + server 字段），service-worker 自己负责
+// （`vibe-niuma.orchestratorBaseUrl`，只存 URL 字符串）。Plan 6 后所有配置走 `lib/config.ts`
+// 的 `vibe_niuma_config_v2`（含 URL + adminToken + server 字段），service-worker 自己负责
 // 从 config 拿 URL 调 createOrchestratorClient。这样 client 不再依赖 chrome.storage。
 //
 // /change-requests/* 是用户面 API，不要求 admin token；token 参数留着是为以后 SSE 需要

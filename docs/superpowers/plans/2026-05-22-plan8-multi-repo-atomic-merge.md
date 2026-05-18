@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 支持「一个项目 = 一个文件夹，下面 N 个子目录各有自己的 `.git`」的形态（典型：`frontend/.git` + `backend/.git`）。dev runner 把项目当一体看，AGENTS.md 写在项目顶层；git 层各自管理。合并到 main 走**两阶段原子算法**：要么 N 个子仓全部 ff-merge 成功，要么全部 `git update-ref` 回滚到合并前的 SHA，绝不留中间态。预览容器从「只起前端」升级到「docker compose 起前后端一组」，自动加入 doskill-net，业务员看到的是「真数据 + 你的新 UI / API」。
+**Goal:** 支持「一个项目 = 一个文件夹，下面 N 个子目录各有自己的 `.git`」的形态（典型：`frontend/.git` + `backend/.git`）。dev runner 把项目当一体看，AGENTS.md 写在项目顶层；git 层各自管理。合并到 main 走**两阶段原子算法**：要么 N 个子仓全部 ff-merge 成功，要么全部 `git update-ref` 回滚到合并前的 SHA，绝不留中间态。预览容器从「只起前端」升级到「docker compose 起前后端一组」，自动加入 vibe-niuma-net，业务员看到的是「真数据 + 你的新 UI / API」。
 
 **Architecture:**
-- **项目文件夹**：`/opt/doskill/projects/<name>/` 顶层包含 N 个子目录，每个有自己的 `.git/`，外加一个项目级 `AGENTS.md`、`docker-compose.preview.yml`。
+- **项目文件夹**：`/opt/vibe-niuma/projects/<name>/` 顶层包含 N 个子目录，每个有自己的 `.git/`，外加一个项目级 `AGENTS.md`、`docker-compose.preview.yml`。
 - **子仓发现**：`discover_sub_repos(project_path)` 扫顶层目录，凡是含 `.git/` 的都是一个子仓。返回 `list[Path]`（按名字字典序）。
 - **git_manager 多仓改造**：`create_branch` / `commit_all` / `has_changes` / `delete_branch` 全部遍历子仓。每个 cr 分支用同一个 id：`cr/<cr_id>` 在 frontend 和 backend 各建一个。
 - **原子合并**（核心）：`merge_to_main_atomic(sub_repos, branch)`：
   - **Phase 1 dry-rebase**：每仓 stash → rebase main，失败就 abort + 用 `git update-ref` 把所有已 rebase 成功的子仓 cr SHA 还原回保存值，抛 `GitConflictError(repo_name, conflict_files)`。
   - **Phase 2 ff-merge**：每仓 checkout main + `merge --ff-only`，失败（极小概率，e.g. main 被并发推）→ 用 `update-ref refs/heads/main` 还原已 merged 仓 + 还原所有 cr 分支。
   - 任一阶段成功路径最后 `git stash drop`（build artifact 是临时产物）。
-- **`DockerPreviewAdapter` compose 模式**：读项目根的 `docker-compose.preview.yml`（fallback 到老的「只起 frontend」），`docker compose -p doskill-preview-<id> up -d`，分配的 host 端口写回 PreviewInstance；teardown 时 `docker compose down -v`。
+- **`DockerPreviewAdapter` compose 模式**：读项目根的 `docker-compose.preview.yml`（fallback 到老的「只起 frontend」），`docker compose -p vibe-niuma-preview-<id> up -d`，分配的 host 端口写回 PreviewInstance；teardown 时 `docker compose down -v`。
 - **SSE log 粒度**：每个子仓的 git 操作都打 log 行（`[frontend] git rebase main ...`）；冲突时报具体哪个仓的哪个文件。
 
 **Tech Stack:** 沿用现有 —— FastAPI + pytest（多仓 fixture 用 tmp_path + 多次 `git init`）；`docker compose` CLI v2（systemd 默认装的就是）。
@@ -23,7 +23,7 @@
 
 - Plan 6 已合并 main，扩展端能在 SettingsPanel 配置「项目根路径」和「子仓 git URL 列表」。
 - 项目根目录约定：每个子目录顶层有自己的 `.git/`，所有子仓的「主分支」名字统一是 `main`（不支持 `master` 混搭，超出 MVP 范围）。
-- `docker-compose.preview.yml` 是**项目作者**的责任（demo 仓库提供一个范例）：必须有一个名为 `frontend` 的 service，host 端口由 doskill 注入 `${DOSKILL_FRONTEND_PORT}`。
+- `docker-compose.preview.yml` 是**项目作者**的责任（demo 仓库提供一个范例）：必须有一个名为 `frontend` 的 service，host 端口由 vibe-niuma 注入 `${VIBE_NIUMA_FRONTEND_PORT}`。
 - **原子保证只在「本地 main」**：合并不 push remote。push remote 是另一回事（最终一致 + 补偿事务），明确不在本 plan。
 - 业务员在 sidebar 看到的「分支」是逻辑分支 `cr/<id>`，物理上在 N 个子仓各有一份。
 - 在新分支 `plan8-multi-repo-atomic` 上做。
@@ -42,7 +42,7 @@ orchestrator/
       _dev_runner_common.py         # commit_all / has_changes 遍历
       brainstorming_skill.py        # AGENTS.md 路径从子仓 root 改成项目 root
     pipeline.py                     # 用 multi_repo 替单仓调用；SSE log 加子仓前缀
-    history_writer.py               # 写到项目 root/.doskill/history/
+    history_writer.py               # 写到项目 root/.vibe-niuma/history/
     models.py                       # 加 ChangeRequest.repos: JSON（哪些子仓动过）
   tests/
     test_multi_repo.py              # 子仓发现 + happy path 合并
@@ -261,7 +261,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "${DOSKILL_FRONTEND_PORT}:5173"
+      - "${VIBE_NIUMA_FRONTEND_PORT}:5173"
     environment:
       VITE_API_URL: http://backend:8000
     networks:
@@ -269,13 +269,13 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: mysql+pymysql://root:demopass@doskill-mysql:3306/demo
+      DATABASE_URL: mysql+pymysql://root:demopass@vibe-niuma-mysql:3306/demo
     networks:
       - default
-      - doskill-net
+      - vibe-niuma-net
 networks:
   default:
-  doskill-net:
+  vibe-niuma-net:
     external: true
 ```
 
@@ -288,9 +288,9 @@ networks:
 - [ ] **Step 2: RED**
 - [ ] **Step 3: 实现** —
   - 检测 `<project>/docker-compose.preview.yml` 存在 → compose 路径
-  - `docker compose -p doskill-preview-<id> --project-directory <project> up -d --build`
-  - PreviewInstance.handle = `doskill-preview-<id>`（compose project 名）
-  - teardown：`docker compose -p doskill-preview-<id> down -v`
+  - `docker compose -p vibe-niuma-preview-<id> --project-directory <project> up -d --build`
+  - PreviewInstance.handle = `vibe-niuma-preview-<id>`（compose project 名）
+  - teardown：`docker compose -p vibe-niuma-preview-<id> down -v`
 - [ ] **Step 4: GREEN**
 - [ ] **Step 5: 提交** — `feat(orchestrator): DockerPreviewAdapter compose 模式`
 
@@ -380,7 +380,7 @@ server: z.object({
   ...,
   projects: z.array(z.object({
     name: z.string(),                   // "my-product"
-    rootPath: z.string(),                // "/opt/doskill/projects/my-product"
+    rootPath: z.string(),                // "/opt/vibe-niuma/projects/my-product"
     subRepos: z.array(z.object({
       name: z.string(),                  // "frontend" / "backend"
       gitUrl: z.string().optional(),     // 远端 URL（可选，本地 init 时不需要）
@@ -453,7 +453,7 @@ server: z.object({
 
 ## 需要用户提供（运行 Plan 8 前的一次性清单）
 
-1. 决定：`projects_root` 路径默认 `/opt/doskill/projects/`，可改。
+1. 决定：`projects_root` 路径默认 `/opt/vibe-niuma/projects/`，可改。
 2. demo 仓库结构调整：现在是单仓 `demo/`，要重新组织成 `demo/{frontend, backend}/` 各自 git init。需要确认是否在 plan 期间一次性迁移好（推荐）。
 3. `docker-compose.preview.yml` 的范例由 Plan 8 提供，但每个新项目接入时**项目作者需要自己写一份**。Plan 6 的帮助内容里要加一篇 `compose-file.md` 教怎么写。
 4. 远端 git 仓库托管：本 plan 不 push remote，但 SettingsPanel 字段里要不要预留「git URL」？plan 默认预留（schema 已有 `gitUrl` 字段）但 Plan 8 范围内不消费。

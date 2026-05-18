@@ -11,7 +11,7 @@ describe('buildSystemPrompt', () => {
   it('拼接 local 路径时包含 handbook / action-protocol / path-local / 正反例锚点', () => {
     const prompt = buildSystemPrompt('local');
     // handbook
-    expect(prompt).toContain('doskill 部署助手');
+    expect(prompt).toContain('vibe-niuma 部署助手');
     expect(prompt).toContain('4 项配齐');
     // action-protocol
     expect(prompt).toContain('Action 协议');
@@ -37,7 +37,7 @@ describe('buildSystemPrompt', () => {
 
   it('path=null 时省略所有 path-* section，只剩 4 篇通用 prompt', () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain('doskill 部署助手');
+    expect(prompt).toContain('vibe-niuma 部署助手');
     expect(prompt).toContain('Action 协议');
     expect(prompt).toContain('正例对话片段');
     expect(prompt).toContain('反例');

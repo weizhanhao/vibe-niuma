@@ -26,21 +26,21 @@ check() {
   fi
 }
 
-echo "doskill 健康检查 → $ECS_HOST"
+echo "vibe-niuma 健康检查 → $ECS_HOST"
 check "MySQL 端口 ${MYSQL_PORT:-3306} 可连"          "ss -ltn | grep -q ':${MYSQL_PORT:-3306} '"
 check "llm-proxy 端口 ${LLM_PROXY_PORT:-8787} 可连"   "ss -ltn | grep -q ':${LLM_PROXY_PORT:-8787} '"
 check "Orchestrator /health 200"                      "curl -fsS http://127.0.0.1:${ORCHESTRATOR_PORT:-9000}/health | grep -q ok"
-check "demo 仓库存在 + 有 main 分支"                  "test -d ${DEMO_REPO_PATH:-/opt/doskill/demo}/.git && git -C ${DEMO_REPO_PATH:-/opt/doskill/demo} show-ref --verify refs/heads/main"
+check "demo 仓库存在 + 有 main 分支"                  "test -d ${DEMO_REPO_PATH:-/opt/vibe-niuma/demo}/.git && git -C ${DEMO_REPO_PATH:-/opt/vibe-niuma/demo} show-ref --verify refs/heads/main"
 check "docker daemon 可用"                            "docker info >/dev/null"
-check "doskill-orchestrator.service active"           "systemctl is-active doskill-orchestrator.service"
-check "doskill-llm-proxy.service active"              "systemctl is-active doskill-llm-proxy.service"
-check "main demo 容器 doskill-demo-backend up"        "docker inspect -f '{{.State.Running}}' doskill-demo-backend | grep -q true"
-check "main demo 容器 doskill-demo-frontend up"       "docker inspect -f '{{.State.Running}}' doskill-demo-frontend | grep -q true"
+check "vibe-niuma-orchestrator.service active"           "systemctl is-active vibe-niuma-orchestrator.service"
+check "vibe-niuma-llm-proxy.service active"              "systemctl is-active vibe-niuma-llm-proxy.service"
+check "main demo 容器 vibe-niuma-demo-backend up"        "docker inspect -f '{{.State.Running}}' vibe-niuma-demo-backend | grep -q true"
+check "main demo 容器 vibe-niuma-demo-frontend up"       "docker inspect -f '{{.State.Running}}' vibe-niuma-demo-frontend | grep -q true"
 check "main demo 端口 ${MAIN_DEMO_FRONTEND_PORT:-5199} 可连" "ss -ltn | grep -q ':${MAIN_DEMO_FRONTEND_PORT:-5199} '"
 
 # 11. admin API 鉴权通（Plan 6）：用 ECS 上的 admin.token 调 /admin/config，期望 200。
 #     远端跑：避开本机必须能直连 9000 的限制；token 通过命令替换内联进 curl 头部。
-ADMIN_TOKEN_PATH="${DEPLOY_ROOT:-/opt/doskill}/admin.token"
+ADMIN_TOKEN_PATH="${DEPLOY_ROOT:-/opt/vibe-niuma}/admin.token"
 check "admin /admin/config 鉴权 200" \
   "test -s $ADMIN_TOKEN_PATH && curl -fsS -o /dev/null -H \"X-Admin-Token: \$(cat $ADMIN_TOKEN_PATH)\" http://127.0.0.1:${ORCHESTRATOR_PORT:-9000}/admin/config"
 

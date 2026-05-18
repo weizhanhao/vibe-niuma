@@ -19,3 +19,9 @@ dist/
 
 # Claude Code 会话锁（每次启动重写）
 .claude/scheduled_tasks.lock
+
+# Claude Code 临时 worktrees（embedded git repos，不入主仓）
+.claude/worktrees/
+
+# uv 锁文件（orchestrator 用 pip + venv，uv.lock 是无关产物）
+orchestrator/uv.lock

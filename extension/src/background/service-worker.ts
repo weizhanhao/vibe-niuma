@@ -5,6 +5,7 @@
 // Plan 6 Task 10：orchestrator client 不再 module-level hardcode；按 chrome.storage 里的
 // 配置 lazy 构造 + 缓存，监听 chrome.storage.onChanged 在配置改了时 invalidate 重建。
 import { loadConfig } from '../lib/config';
+import { migrateLegacyChromeStorage } from '../lib/legacy-key-migration';
 import { MSG, type Message } from '../lib/messages';
 import type { ChangeRequestOut, PendingCapture, RequestStateMirror, SSEEvent } from '../lib/types';
 import { createOrchestratorClient, type OrchestratorClient } from './orchestrator-client';
@@ -15,9 +16,9 @@ import {
 
 // ── orchestrator client lazy cache ─────────────────────────────────
 // 第一次调时读 chrome.storage 拿 baseUrl + token，构造 client 并缓存。
-// chrome.storage.onChanged 监听到 `doskill_config_v2` 变了就清缓存，下次重新构造。
+// chrome.storage.onChanged 监听到 `vibe_niuma_config_v2` 变了就清缓存，下次重新构造。
 // 缺配置时返回 null：调用点必须 `if (!client) return ...` 才能 noop。
-const CONFIG_STORAGE_KEY = 'doskill_config_v2';
+const CONFIG_STORAGE_KEY = 'vibe_niuma_config_v2';
 let cachedClient: OrchestratorClient | null = null;
 let pendingClientLoad: Promise<OrchestratorClient | null> | null = null;
 
@@ -75,7 +76,7 @@ const session: SessionState = {
 // MV3 service worker 30s 闲置即被 Chrome kill。多轮澄清等用户答题时 SW 必死。
 // 用 chrome.alarms 周期性触发：alarm 投递的副作用就是唤醒 SW；唤醒时全局
 // 作用域重跑、loadAll 重新挂 SSE，所以业务员下一题来得及推过来。
-const KEEPALIVE_ALARM = 'doskill-sse-keepalive';
+const KEEPALIVE_ALARM = 'vibe-niuma-sse-keepalive';
 
 function anyInFlight(mirrors: Record<string, RequestStateMirror>): boolean {
   for (const m of Object.values(mirrors)) if (!isTerminal(m)) return true;
@@ -122,14 +123,17 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   }
 });
 
-// 启动：从 storage 恢复多对话 + activeId，对 active 那条（如果非终态）挂 SSE。
-loadAll().then(({ mirrors, activeId }) => {
-  session.mirrors = mirrors;
-  session.activeId = activeId;
-  const active = activeId ? mirrors[activeId] : null;
-  if (active && !isTerminal(active)) void attachSubscription(active.id);
-  maintainKeepalive(mirrors);
-});
+// 启动：先迁移老品牌 storage key（幂等），再从 storage 恢复多对话 + activeId。
+migrateLegacyChromeStorage()
+  .catch(() => { /* 迁移失败不阻塞 SW 启动 */ })
+  .then(() => loadAll())
+  .then(({ mirrors, activeId }) => {
+    session.mirrors = mirrors;
+    session.activeId = activeId;
+    const active = activeId ? mirrors[activeId] : null;
+    if (active && !isTerminal(active)) void attachSubscription(active.id);
+    maintainKeepalive(mirrors);
+  });
 
 async function broadcastActive() {
   const active = session.activeId ? session.mirrors[session.activeId] ?? null : null;
@@ -186,7 +190,7 @@ async function compressScreenshot(dataUrl: string, maxWidth = 1280, quality = 0.
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return { b64: btoa(binary), mime: 'image/jpeg' };
   } catch (err) {
-    console.warn('[doskill sw] compressScreenshot failed, fallback raw PNG', err);
+    console.warn('[vibe-niuma sw] compressScreenshot failed, fallback raw PNG', err);
     return { b64: dataUrl.replace(/^data:image\/png;base64,/, ''), mime: 'image/png' };
   }
 }
@@ -213,7 +217,7 @@ function detach() {
 chrome.storage?.onChanged?.addListener?.((changes, area) => {
   if (area !== 'local') return;
   if (CONFIG_STORAGE_KEY in changes) {
-    console.log('[doskill sw] config changed, invalidating orchestrator client');
+    console.log('[vibe-niuma sw] config changed, invalidating orchestrator client');
     invalidateClientCache();
     // 当前若有正订阅，断开让它在下次 attach 时用新 client
     detach();
@@ -230,7 +234,7 @@ async function attachSubscription(requestId: string) {
   detach();
   const client = await getOrchestratorClient();
   if (!client) {
-    console.warn('[doskill sw] cannot attach SSE: orchestrator not configured');
+    console.warn('[vibe-niuma sw] cannot attach SSE: orchestrator not configured');
     return;
   }
   session.subscribedId = requestId;
@@ -282,7 +286,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.UI_START_CAPTURE: {
       session.pendingRequestText = msg.requestText;
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      console.log('[doskill sw] UI_START_CAPTURE → tab', tab?.id, tab?.url);
+      console.log('[vibe-niuma sw] UI_START_CAPTURE → tab', tab?.id, tab?.url);
       if (tab?.id === undefined) {
         return { ok: false, error: 'no active tab' };
       }
@@ -294,11 +298,11 @@ async function handleMessage(msg: Message): Promise<unknown> {
       try {
         await chrome.tabs.sendMessage(tab.id, { type: MSG.START_CAPTURE });
       } catch (err) {
-        console.warn('[doskill sw] content script not in tab, injecting...', err);
+        console.warn('[vibe-niuma sw] content script not in tab, injecting...', err);
         const manifest = chrome.runtime.getManifest();
         const files = manifest.content_scripts?.[0]?.js ?? [];
         if (files.length === 0) {
-          console.error('[doskill sw] no content_scripts in manifest');
+          console.error('[vibe-niuma sw] no content_scripts in manifest');
           return { ok: false, error: 'no content_scripts in manifest' };
         }
         try {
@@ -307,9 +311,9 @@ async function handleMessage(msg: Message): Promise<unknown> {
             files,
           });
           await chrome.tabs.sendMessage(tab.id, { type: MSG.START_CAPTURE });
-          console.log('[doskill sw] content script injected + retry ok');
+          console.log('[vibe-niuma sw] content script injected + retry ok');
         } catch (err2) {
-          console.error('[doskill sw] inject + retry failed', err2);
+          console.error('[vibe-niuma sw] inject + retry failed', err2);
           return { ok: false, error: `inject failed: ${String(err2)}` };
         }
       }
@@ -320,7 +324,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       // content script 启全屏标注 overlay。content 用 4 工具标注后烘焙
       // PNG 回 SW（ANNOTATE_RESULT），SW 压缩 + 广播 CAPTURE_ATTACHED。
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      console.log('[doskill sw] UI_START_ANNOTATE → tab', tab?.id);
+      console.log('[vibe-niuma sw] UI_START_ANNOTATE → tab', tab?.id);
       if (tab?.id === undefined || tab.windowId === undefined) {
         return { ok: false, error: 'no active tab' };
       }
@@ -330,7 +334,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       try {
         dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
       } catch (err) {
-        console.error('[doskill sw] captureVisibleTab failed', err);
+        console.error('[vibe-niuma sw] captureVisibleTab failed', err);
         return { ok: false, error: `截图失败：${String(err)}` };
       }
       if (!dataUrl) return { ok: false, error: '截图为空' };
@@ -342,7 +346,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       try {
         await sendStart();
       } catch (err) {
-        console.warn('[doskill sw] content script 未注入，注入后重试', err);
+        console.warn('[vibe-niuma sw] content script 未注入，注入后重试', err);
         const manifest = chrome.runtime.getManifest();
         const files = manifest.content_scripts?.[0]?.js ?? [];
         if (files.length === 0) {
@@ -359,7 +363,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
     }
     case MSG.ANNOTATE_RESULT: {
       // content 烘焙好 PNG 回来。SW 压一下广播给 UI 加到输入栏 chip。
-      console.log('[doskill sw] ANNOTATE_RESULT pngB64.len=', msg.pngB64.length);
+      console.log('[vibe-niuma sw] ANNOTATE_RESULT pngB64.len=', msg.pngB64.length);
       const dataUrl = `data:image/png;base64,${msg.pngB64}`;
       const { b64: screenshotB64, mime } = await compressScreenshot(dataUrl);
       try {
@@ -373,12 +377,12 @@ async function handleMessage(msg: Message): Promise<unknown> {
           },
         });
       } catch (err) {
-        console.warn('[doskill sw] broadcast CAPTURE_ATTACHED failed', err);
+        console.warn('[vibe-niuma sw] broadcast CAPTURE_ATTACHED failed', err);
       }
       return { ok: true };
     }
     case MSG.ANNOTATE_CANCEL: {
-      console.log('[doskill sw] ANNOTATE_CANCEL');
+      console.log('[vibe-niuma sw] ANNOTATE_CANCEL');
       return { ok: true };
     }
     case MSG.RUNTIME_ERROR_REPORT: {
@@ -386,7 +390,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       // 找回对应 CR id（通过 previewUrl origin 匹配），转发给 orchestrator。
       const matched = findCrByPreviewOrigin(msg.pageUrl);
       if (!matched) {
-        // 不是 doskill preview 页（业务员自己浏览的其他网站），忽略
+        // 不是 vibe-niuma preview 页（业务员自己浏览的其他网站），忽略
         return { ok: true, matched: false };
       }
       const client = await getOrchestratorClient();
@@ -398,10 +402,10 @@ async function handleMessage(msg: Message): Promise<unknown> {
           ts: msg.ts,
           pageUrl: msg.pageUrl,
         }]);
-        console.log('[doskill sw] runtime error → orchestrator', matched.id, resp);
+        console.log('[vibe-niuma sw] runtime error → orchestrator', matched.id, resp);
         return { ok: true, matched: true, will_self_heal: resp.will_self_heal };
       } catch (err) {
-        console.warn('[doskill sw] postRuntimeErrors failed', err);
+        console.warn('[vibe-niuma sw] postRuntimeErrors failed', err);
         return { ok: false, error: String(err) };
       }
     }
@@ -409,14 +413,14 @@ async function handleMessage(msg: Message): Promise<unknown> {
       // Plan 10 fix：cursor-like 流。框选完截屏 + 压缩 → 直接广播给 UI 加到
       // 输入栏 chip，不再跳到 ReviewCapturePanel 占满 body。
       // pendingCapture 老路径保留兼容（v0.5），但新 UI 不再走它。
-      console.log('[doskill sw] CAPTURE_RESULT received', msg);
+      console.log('[vibe-niuma sw] CAPTURE_RESULT received', msg);
       session.pendingRequestText = null;
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       const dataUrl = tab?.windowId !== undefined
         ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         : '';
       const { b64: screenshotB64, mime } = await compressScreenshot(dataUrl);
-      console.log('[doskill sw] screenshot compressed:', dataUrl.length, '→', screenshotB64.length, mime);
+      console.log('[vibe-niuma sw] screenshot compressed:', dataUrl.length, '→', screenshotB64.length, mime);
       // 广播 attachment 给 UI；UI 把它加到当前输入栏 chip
       try {
         await chrome.runtime.sendMessage({
@@ -431,7 +435,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
           },
         });
       } catch (err) {
-        console.warn('[doskill sw] broadcast CAPTURE_ATTACHED failed', err);
+        console.warn('[vibe-niuma sw] broadcast CAPTURE_ATTACHED failed', err);
       }
       return { ok: true };
     }
@@ -441,10 +445,10 @@ async function handleMessage(msg: Message): Promise<unknown> {
       const pc = session.pendingCapture;
       if (!pc) return { ok: false, error: 'no pending capture' };
       const finalText = msg.requestText ?? pc.requestText;
-      console.log('[doskill sw] CONFIRM_CAPTURE → POST orchestrator');
+      console.log('[vibe-niuma sw] CONFIRM_CAPTURE → POST orchestrator');
       const client = await getOrchestratorClient();
       if (!client) {
-        console.warn('[doskill sw] CONFIRM_CAPTURE noop: orchestrator not configured');
+        console.warn('[vibe-niuma sw] CONFIRM_CAPTURE noop: orchestrator not configured');
         session.pendingCapture = { ...pc, requestText: finalText };
         await broadcastPendingCapture();
         return { ok: false, error: '请先在设置里配置 orchestrator URL' };
@@ -460,7 +464,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
         });
       } catch (err) {
         // POST 失败：保留 pendingCapture（业务员可重试），把错广播让 UI 显示
-        console.error('[doskill sw] POST failed, keeping pendingCapture', err);
+        console.error('[vibe-niuma sw] POST failed, keeping pendingCapture', err);
         // 把 textarea 编辑过的文本回写进 pendingCapture，免得业务员重输
         session.pendingCapture = { ...pc, requestText: finalText };
         await broadcastPendingCapture();
@@ -468,7 +472,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
       }
       // 成功才清 pendingCapture
       session.pendingCapture = null;
-      console.log('[doskill sw] CR created', cr.id);
+      console.log('[vibe-niuma sw] CR created', cr.id);
       const next = initialState(cr);
       session.mirrors = evictWithLRU(upsertMirror(session.mirrors, next));
       session.activeId = next.id;
@@ -503,7 +507,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
         viewport: { width: 0, height: 0 },
         requestText: msg.requestText,
       };
-      console.log('[doskill sw] SUBMIT_TEXT_ONLY pendingCapture stashed (compressed:', screenshotB64.length, ')');
+      console.log('[vibe-niuma sw] SUBMIT_TEXT_ONLY pendingCapture stashed (compressed:', screenshotB64.length, ')');
       await broadcastPendingCapture();
       return { ok: true };
     }
@@ -518,7 +522,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.SUBMIT_ANSWER: {
       const client = await getOrchestratorClient();
       if (!client) {
-        console.warn('[doskill sw] SUBMIT_ANSWER noop: orchestrator not configured');
+        console.warn('[vibe-niuma sw] SUBMIT_ANSWER noop: orchestrator not configured');
         return { ok: false, error: '请先在设置里配置 orchestrator URL' };
       }
       await client.submitAnswer(msg.requestId, msg.questionId, msg.answer);
@@ -529,7 +533,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.MERGE: {
       const client = await getOrchestratorClient();
       if (!client) {
-        console.warn('[doskill sw] MERGE noop: orchestrator not configured');
+        console.warn('[vibe-niuma sw] MERGE noop: orchestrator not configured');
         return { ok: false, error: '请先在设置里配置 orchestrator URL' };
       }
       const cr = await client.merge(msg.requestId);
@@ -540,7 +544,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.DISCARD: {
       const client = await getOrchestratorClient();
       if (!client) {
-        console.warn('[doskill sw] DISCARD noop: orchestrator not configured');
+        console.warn('[vibe-niuma sw] DISCARD noop: orchestrator not configured');
         return { ok: false, error: '请先在设置里配置 orchestrator URL' };
       }
       const cr = await client.discard(msg.requestId);
@@ -551,7 +555,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
     case MSG.RETRY: {
       const client = await getOrchestratorClient();
       if (!client) {
-        console.warn('[doskill sw] RETRY noop: orchestrator not configured');
+        console.warn('[vibe-niuma sw] RETRY noop: orchestrator not configured');
         return { ok: false, error: '请先在设置里配置 orchestrator URL' };
       }
       const cr = await client.retry(msg.requestId);
@@ -616,7 +620,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
           ...(msg.override_mode ? { override_mode: msg.override_mode } : {}),
         });
       } catch (err) {
-        console.error('[doskill sw] SUBMIT_MESSAGE failed', err);
+        console.error('[vibe-niuma sw] SUBMIT_MESSAGE failed', err);
         return { ok: false, error: String(err) };
       }
       // chat_only：server 已经写入 ai message；UI 拉 GET /conversations 自己刷
@@ -637,7 +641,7 @@ async function handleMessage(msg: Message): Promise<unknown> {
         await broadcastActive();
         await broadcastList();
       } catch (err) {
-        console.warn('[doskill sw] SUBMIT_MESSAGE post-create snapshot failed', err);
+        console.warn('[vibe-niuma sw] SUBMIT_MESSAGE post-create snapshot failed', err);
       }
       return { ok: true, mode: resp.mode, cr_id: resp.cr_id, message_id: resp.message_id };
     }

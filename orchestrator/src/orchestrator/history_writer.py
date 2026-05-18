@@ -1,7 +1,7 @@
 """history_writer —— 把每条变更请求的「规格 / 计划 / 结果」沉淀到磁盘。
 
 Phase D 的目的：让后续 LLM/agent 会话（以及业务员/开发自己）能直接翻阅
-「doskill 对 CR-X 做过什么」，不必再重读全仓库。这一轮只负责**写**历史；
+「vibe-niuma 对 CR-X 做过什么」，不必再重读全仓库。这一轮只负责**写**历史；
 反向喂给下一次 /init 让 AGENTS.md 包含「最近改动摘要」是下一阶段的事。
 
 约束：
@@ -131,13 +131,13 @@ def _matches_large_intent(brief: RequestBrief, raw_request: RawRequest) -> bool:
 
 
 def _history_root(repo_path: str) -> Path:
-    """决定 .doskill/history/ 应落在哪个目录下。
+    """决定 .vibe-niuma/history/ 应落在哪个目录下。
 
     语义规则：
     - 多仓项目（repo_path 下有含 .git/ 的子目录）→ repo_path 本身是项目根，
-      历史落在 <repo_path>/.doskill/history/（不在任一子仓内部）。
+      历史落在 <repo_path>/.vibe-niuma/history/（不在任一子仓内部）。
     - 单仓项目（无子目录含 .git/）→ 保持原有行为，
-      历史同样落在 <repo_path>/.doskill/history/。
+      历史同样落在 <repo_path>/.vibe-niuma/history/。
 
     无论单仓或多仓，路径计算结果相同；区别在语义上——多仓时
     repo_path 是包含 N 个子仓的项目根，单仓时 repo_path 就是 git 根本身。
@@ -146,13 +146,13 @@ def _history_root(repo_path: str) -> Path:
         repo_path: 项目路径（可以是单仓 git 根，也可以是多仓项目顶层目录）。
 
     Returns:
-        Path to .doskill/history/ directory (not yet created).
+        Path to .vibe-niuma/history/ directory (not yet created).
     """
     project_path = Path(repo_path)
     # discover_sub_repos 扫顶层子目录：多仓时非空，单仓时为空。
     # 无论哪种情况，history 都挂在 project_path 下。
     _ = discover_sub_repos(project_path)  # 触发多仓语义检测（结果不影响路径）
-    return project_path / ".doskill" / "history"
+    return project_path / ".vibe-niuma" / "history"
 
 
 def write_history(
@@ -168,7 +168,7 @@ def write_history(
     total_elapsed: float,
     dev_runner_files_changed: list[str] | None,
 ) -> None:
-    """把变更请求的历史落到 <repo>/.doskill/history/cr-<id>/。
+    """把变更请求的历史落到 <repo>/.vibe-niuma/history/cr-<id>/。
 
     - 总是写 result.md（小/中/大 通用）。
     - 仅 large 写 spec.md + plan.md。

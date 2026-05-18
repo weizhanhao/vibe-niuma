@@ -33,7 +33,7 @@
 
 ## ③ 让用户跑一键 bootstrap
 
-`deploy/ecs-bootstrap.sh` 是面向业务员的「全新机器一键起 doskill」脚本，从 doskill 的 GitHub public repo curl 下来 + sudo bash 一条命令搞定（装 git/docker/python3 → git clone doskill → 写 .env 灌 deepseek key + 公网 IP → 起 mysql 容器 → systemd 起 orchestrator + llm-proxy → 打印 admin token + URL）。
+`deploy/ecs-bootstrap.sh` 是面向业务员的「全新机器一键起 vibe-niuma」脚本，从 vibe-niuma 的 GitHub public repo curl 下来 + sudo bash 一条命令搞定（装 git/docker/python3 → git clone vibe-niuma → 写 .env 灌 deepseek key + 公网 IP → 起 mysql 容器 → systemd 起 orchestrator + llm-proxy → 打印 admin token + URL）。
 
 发 `copy_command`（把业务员真实 ECS_USER@ECS_HOST + DeepSeek key 拼进去，**禁止留 `<your-ip>` / `<sk-xxx>`**）：
 
@@ -41,21 +41,21 @@
 ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-deepseekXXXXXXXX'
 ```
 
-label 写「在 ECS 上一键装 doskill（约 5-8 分钟）」。expectsOutput=true，placeholder 写「贴脚本最后 10 行（会看到 doskill 部署完成 + Orchestrator URL + Admin Token）」。
+label 写「在 ECS 上一键装 vibe-niuma（约 5-8 分钟）」。expectsOutput=true，placeholder 写「贴脚本最后 10 行（会看到 vibe-niuma 部署完成 + Orchestrator URL + Admin Token）」。
 
 注意：
 - DeepSeek key 你从 `gathering_deepseek_key` 阶段拿到了，作为 `--deepseek-key` 参数**原文**拼上去。**绝对不要**写成 `<sk-xxx>` 占位。
 - 业务员如果有 DashScope key（截图视觉理解用），可附加 `--dashscope-key sk-YYYY`；**没有就别加**，brainstorm 仍能用 deepseek 文字模型工作（只是看不懂图）。业务员后续在 deploy/.env 手动加也行。
 - SSH 私钥**不出现在命令里**。假设业务员本地 `~/.ssh/id_ed25519` 就是他在 ② 步贴过的那个；如果文件名不一样，业务员自己会知道改 `-i` 路径。
 - 命令本质：本地 ssh → 远程 curl raw.githubusercontent.com 下载 ecs-bootstrap.sh → sudo bash 执行 → 装包 + clone + 启 systemd → 打印 URL + token。
-- ⚠ 远程 curl 要求 doskill 仓库是 public（已确认）。若业务员的 ECS 出墙慢，可建议先 `curl -fsSL <URL> -o bootstrap.sh && sudo bash bootstrap.sh ...` 分两步看下载是否卡住。
+- ⚠ 远程 curl 要求 vibe-niuma 仓库是 public（已确认）。若业务员的 ECS 出墙慢，可建议先 `curl -fsSL <URL> -o bootstrap.sh && sudo bash bootstrap.sh ...` 分两步看下载是否卡住。
 
 ## ④ 等部署 + 看心跳
 
 部署脚本会在 ECS 上跑 5-8 分钟。**告诉用户「这一步耐心一点，咱们一起等」**。如果他焦虑，给他一个**单独的**心跳命令（另开终端 tab）：
 
 ```
-ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'journalctl -u doskill-orchestrator -f'
+ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'journalctl -u vibe-niuma-orchestrator -f'
 ```
 
 label 写「另开一个终端实时看 orchestrator 启动日志（按 Ctrl+C 退出）」。expectsOutput=false。这是给用户安心用的，不强制回贴。
@@ -65,7 +65,7 @@ label 写「另开一个终端实时看 orchestrator 启动日志（按 Ctrl+C �
 部署完后用户回贴里会看到 `[deploy] ✓ 完成`。然后发 `copy_command`：
 
 ```
-ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'cat /opt/doskill/admin.token'
+ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'cat /opt/vibe-niuma/admin.token'
 ```
 
 label 写「拿 admin token」。expectsOutput=true，placeholder 写「贴 token 原文（一行长字符串）」。

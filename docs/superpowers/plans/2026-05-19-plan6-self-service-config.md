@@ -7,7 +7,7 @@
 **Architecture:**
 - 扩展端：`SetupWizardPanel`（首次引导，4 步）+ 扩展后的 `SettingsPanel`（日常编辑）+ `HelpBubble` 通用组件（`?` 圈 → markdown 弹窗）。配置存 `chrome.storage.local`，类型走 zod 校验。
 - Orchestrator 端：新增 `/admin/config` REST GET/PUT，配置以 `system_config` 表持久化；启动时 bootstrap 自 `.env`，运行时可被 PUT 覆盖、热生效。配置带版本号（`config_version`），乐观锁。
-- 鉴权：`/admin/*` 路径必须带 `X-Admin-Token` 头校验。token 在 orchestrator 首次启动时生成（写 `/opt/doskill/admin.token`），用户从 ECS 复制一次到扩展，之后由扩展存。
+- 鉴权：`/admin/*` 路径必须带 `X-Admin-Token` 头校验。token 在 orchestrator 首次启动时生成（写 `/opt/vibe-niuma/admin.token`），用户从 ECS 复制一次到扩展，之后由扩展存。
 - 帮助内容：markdown 文件 bundle 进扩展 dist；指向外部链接（DashScope 控制台、DeepSeek 注册页等），不抄具体步骤文案（容易过期）。
 
 **Tech Stack:** 沿用现有 —— extension 端 React + Vite + `@crxjs/vite-plugin` + vitest；orchestrator 端 FastAPI + SQLAlchemy + pytest。新加：扩展端 `react-markdown` 渲染帮助内容；扩展端 zod 校验配置 schema。
@@ -16,8 +16,8 @@
 
 ## 前置约定（每个任务都假定已满足）
 
-- Plan 1-5 已合并 main，doskill v0.1.0-mvp 跑得通。
-- 用户拿到 ECS 后**至少**还要 ssh 进去拷 `/opt/doskill/admin.token` 一次 —— 这个不能省（扩展没法读 ECS 文件）。其他所有「填表」操作都搬进扩展。
+- Plan 1-5 已合并 main，vibe-niuma v0.1.0-mvp 跑得通。
+- 用户拿到 ECS 后**至少**还要 ssh 进去拷 `/opt/vibe-niuma/admin.token` 一次 —— 这个不能省（扩展没法读 ECS 文件）。其他所有「填表」操作都搬进扩展。
 - 多仓不在本 plan 范围（见 Plan 7）。本 plan 假设 `DEMO_REPO_PATH` 仍是单一目录。
 - 单用户 / 单 ECS / 单 admin token。安全模型与设计文档 §2 一致。
 - 帮助内容用中文撰写，对外链接（控制台 URL）允许英文。
@@ -63,7 +63,7 @@ orchestrator/
     test_admin_auth.py
 
 deploy/
-  systemd/doskill-orchestrator.service  # 启动时生成 /opt/doskill/admin.token
+  systemd/vibe-niuma-orchestrator.service  # 启动时生成 /opt/vibe-niuma/admin.token
   deploy.sh                              # rsync 不擦 admin.token
 ```
 
@@ -74,7 +74,7 @@ deploy/
 const ConfigSchema = z.object({
   // === 本地（扩展独占） ===
   orchestratorUrl: z.string().url(),                  // http://ECS:9000
-  adminToken: z.string().min(20),                     // 从 /opt/doskill/admin.token 拷
+  adminToken: z.string().min(20),                     // 从 /opt/vibe-niuma/admin.token 拷
   configVersion: z.number().int().default(0),         // 服务端版本，PUT 时回带
 
   // === 服务端镜像（拉/推 /admin/config 同步） ===
@@ -88,8 +88,8 @@ const ConfigSchema = z.object({
     dashscopeApiKey: z.string().optional(),
     anthropicApiKey: z.string().optional(),
     // 项目
-    demoRepoPath: z.string().default('/opt/doskill/demo'),
-    previewBackendUrl: z.string().default('http://doskill-demo-backend:8000'),
+    demoRepoPath: z.string().default('/opt/vibe-niuma/demo'),
+    previewBackendUrl: z.string().default('http://vibe-niuma-demo-backend:8000'),
   }),
 });
 ```
@@ -116,13 +116,13 @@ const ConfigSchema = z.object({
 **Files:**
 - Create: `orchestrator/src/orchestrator/auth.py`
 - Create: `orchestrator/tests/test_admin_auth.py`
-- Modify: `deploy/systemd/doskill-orchestrator.service` 启动时 `ExecStartPre` 生成 admin.token
+- Modify: `deploy/systemd/vibe-niuma-orchestrator.service` 启动时 `ExecStartPre` 生成 admin.token
 
 - [ ] **Step 1: 写失败测试** — `test_admin_endpoint_requires_token` / `test_admin_token_wrong_returns_401` / `test_admin_token_correct_passes`
 - [ ] **Step 2: RED**
 - [ ] **Step 3: 实现** —
-  - `verify_admin_token` FastAPI dependency：从 `X-Admin-Token` header 取，对比 `/opt/doskill/admin.token` 内容（首次启动时如不存在则 `secrets.token_urlsafe(32)` 写入并 chmod 600）
-  - systemd unit `ExecStartPre=/bin/bash -c 'test -f /opt/doskill/admin.token || (head -c 24 /dev/urandom | base64 > /opt/doskill/admin.token && chmod 600 /opt/doskill/admin.token)'`
+  - `verify_admin_token` FastAPI dependency：从 `X-Admin-Token` header 取，对比 `/opt/vibe-niuma/admin.token` 内容（首次启动时如不存在则 `secrets.token_urlsafe(32)` 写入并 chmod 600）
+  - systemd unit `ExecStartPre=/bin/bash -c 'test -f /opt/vibe-niuma/admin.token || (head -c 24 /dev/urandom | base64 > /opt/vibe-niuma/admin.token && chmod 600 /opt/vibe-niuma/admin.token)'`
 - [ ] **Step 4: GREEN**
 - [ ] **Step 5: 提交** — `feat(orchestrator): /admin/* token 鉴权`
 
@@ -143,7 +143,7 @@ const ConfigSchema = z.object({
 - [ ] **Step 3: 实现** —
   - `GET /admin/config` → `{config: {...}, version: int}`
   - `PUT /admin/config` body `{config: {...}, expectedVersion: int}` → 409 if mismatch / 200 + new version
-  - 副作用：监测哪些字段变了，决定是否触发 systemd restart：API key 变 → `subprocess.run(["systemctl", "restart", "doskill-llm-proxy"])`；模型名变 → 仅 invalidate settings 缓存（`get_settings.cache_clear()`）
+  - 副作用：监测哪些字段变了，决定是否触发 systemd restart：API key 变 → `subprocess.run(["systemctl", "restart", "vibe-niuma-llm-proxy"])`；模型名变 → 仅 invalidate settings 缓存（`get_settings.cache_clear()`）
   - settings 热重载：把 `Settings()` 调用包装成 `@lru_cache` 的 `get_settings()`，返回最新值
 - [ ] **Step 4: GREEN**
 - [ ] **Step 5: 提交** — `feat(orchestrator): /admin/config GET/PUT + 热重载 + 乐观锁`
@@ -229,7 +229,7 @@ const ConfigSchema = z.object({
 
 例 `ecs-setup.md`：
 ```markdown
-**ECS 是部署 orchestrator 的服务器**。doskill 需要一台能跑 Docker 的 Linux 机器（≥ 4 GiB 内存）。
+**ECS 是部署 orchestrator 的服务器**。vibe-niuma 需要一台能跑 Docker 的 Linux 机器（≥ 4 GiB 内存）。
 
 **新手推荐**：
 - [阿里云轻量应用服务器](https://www.aliyun.com/product/swas)（最便宜，~60 元/月）
@@ -328,7 +328,7 @@ const ConfigSchema = z.object({
 
 - [ ] **Step 1: 改 deploy.sh** —
   - rsync `--exclude 'admin.token'`
-  - 部署完成提示「Admin Token: ssh ECS 'cat /opt/doskill/admin.token'」
+  - 部署完成提示「Admin Token: ssh ECS 'cat /opt/vibe-niuma/admin.token'」
 - [ ] **Step 2: 改 healthcheck.sh** —
   - 第 11 项：admin API 鉴权通
 - [ ] **Step 3: 改 README**
@@ -369,7 +369,7 @@ const ConfigSchema = z.object({
 
 ## 需要用户提供（运行 Plan 6 前的一次性清单）
 
-1. 决定：admin token 的存储方式 —— `/opt/doskill/admin.token` 文本文件（plan 默认）还是环境变量？选默认即可。
+1. 决定：admin token 的存储方式 —— `/opt/vibe-niuma/admin.token` 文本文件（plan 默认）还是环境变量？选默认即可。
 2. （可选）帮助内容外链清单复查 —— 中国地区可访问的 DeepSeek 控制台、阿里 DashScope 控制台 URL。
 3. UI 风格：`?` 帮助气泡用 hover-on 还是 click-on？plan 默认 click-on（移动端友好）。可改。
 4. 是否在 Wizard 第 0 步加「一键检测本机/服务器」按钮（检测 Docker / SSH）？plan 默认不加（扩展是浏览器进程，无法 ssh）。

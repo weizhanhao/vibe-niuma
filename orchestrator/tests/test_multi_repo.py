@@ -33,7 +33,7 @@ def _git(cwd: Path, *args: str) -> str:
 def _init_repo(repo: Path, base_files: dict[str, str]) -> None:
     repo.mkdir(parents=True, exist_ok=True)
     _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "config", "user.email", "test@doskill")
+    _git(repo, "config", "user.email", "test@vibe-niuma")
     _git(repo, "config", "user.name", "test")
     for name, content in base_files.items():
         (repo / name).write_text(content)

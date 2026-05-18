@@ -12,7 +12,7 @@ StackAdapter.build / PreviewAdapter.serve 把子进程每行输出实时通过 E
 publish_log，扩展端 StatusPanel 实时显示。Pipeline 自己也在关键节点发粗粒度 marker。
 
 Phase D：到达 preview-ready 时把 spec/plan/result.md 沉淀到
-<repo>/.doskill/history/cr-<id>/，供后续 LLM 会话回看「doskill 做过什么」。
+<repo>/.vibe-niuma/history/cr-<id>/，供后续 LLM 会话回看「vibe-niuma 做过什么」。
 写入失败不阻塞 pipeline。
 """
 import asyncio

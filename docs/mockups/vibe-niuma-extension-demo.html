@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<title>doskill — 业务员交互演示</title>
+<title>vibe-niuma — 业务员交互演示</title>
 <style>
   :root {
     --ink: oklch(20% 0.02 250);
@@ -644,8 +644,8 @@
     <section class="browser" aria-label="正在浏览的目标产品（demo）">
       <div class="browser-chrome">
         <div class="traffic"><span></span><span></span><span></span></div>
-        <div class="url-bar"><span class="domain">demo.doskill.internal</span><span>/orders</span></div>
-        <div class="ext-pin">doskill 已就绪</div>
+        <div class="url-bar"><span class="domain">demo.vibe-niuma.internal</span><span>/orders</span></div>
+        <div class="ext-pin">vibe-niuma 已就绪</div>
       </div>
       <div class="browser-viewport" id="viewport">
         <div class="demo">
@@ -694,10 +694,10 @@
       </div>
     </section>
 
-    <aside class="ext" aria-label="doskill 扩展侧栏">
+    <aside class="ext" aria-label="vibe-niuma 扩展侧栏">
       <header class="ext-head">
         <span class="ext-logo">d</span>
-        <div class="ext-title">doskill <span class="muted">/ change request</span></div>
+        <div class="ext-title">vibe-niuma <span class="muted">/ change request</span></div>
         <button class="ext-gear" title="设置">⚙</button>
       </header>
       <div class="ext-body" id="ext-body"></div>
@@ -750,7 +750,7 @@
     return {
       box: { x: r.left - vpRect.left, y: r.top - vpRect.top, w: r.width, h: r.height },
       viewport: { w: vpRect.width, h: vpRect.height },
-      url: 'https://demo.doskill.internal/orders',
+      url: 'https://demo.vibe-niuma.internal/orders',
     };
   }
 
@@ -853,7 +853,7 @@
         lastCapture = {
           box: { x: 0, y: 0, w: vpRect.width, h: vpRect.height },
           viewport: { w: vpRect.width, h: vpRect.height },
-          url: 'https://demo.doskill.internal/orders',
+          url: 'https://demo.vibe-niuma.internal/orders',
         };
         setStage('clarify');
       });
@@ -969,7 +969,7 @@
           <div class="preview-strip">订单状态 · 高对比版</div>
           <div class="preview-meta">
             <div class="branch-chip"><span class="mono">cr/8a3f0c</span></div>
-            <div class="preview-url">预览地址 · <span class="mono">https://demo.doskill.internal:5142</span></div>
+            <div class="preview-url">预览地址 · <span class="mono">https://demo.vibe-niuma.internal:5142</span></div>
           </div>
         </div>
         <div class="btn-row">
@@ -1085,7 +1085,7 @@
         h: parseFloat(box.style.height),
       },
       viewport: { w: vpRect.width, h: vpRect.height },
-      url: 'https://demo.doskill.internal/orders',
+      url: 'https://demo.vibe-niuma.internal/orders',
     };
     setStage('clarify');
   });

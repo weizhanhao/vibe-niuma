@@ -1,20 +1,20 @@
 [Unit]
-Description=doskill Orchestrator (FastAPI)
-After=network-online.target docker.service doskill-llm-proxy.service
-Wants=network-online.target doskill-llm-proxy.service
+Description=vibe-niuma Orchestrator (FastAPI)
+After=network-online.target docker.service vibe-niuma-llm-proxy.service
+Wants=network-online.target vibe-niuma-llm-proxy.service
 
 [Service]
 Type=simple
-EnvironmentFile=/opt/doskill/.env
-WorkingDirectory=/opt/doskill/orchestrator
+EnvironmentFile=/opt/vibe-niuma/.env
+WorkingDirectory=/opt/vibe-niuma/orchestrator
 # HOME 必须显式给 —— systemd 不会自动设，opencode CLI 读 ~/.config/opencode/
 # 没 HOME 就 rc=1 + 空 stderr，repo_init / dev runner 都会神秘失败。
 Environment=HOME=/root
 # Plan 6：首次启动时生成 admin.token（扩展通过 X-Admin-Token 头访问 /admin/*）。
 # 已存在就不动 —— deploy.sh rsync 也用 --exclude 'admin.token' 保留它（Task 11）。
 # tr -d 既去换行又去 base64 padding '='，结果是纯 [A-Za-z0-9+/] 的 32 字符 token。
-ExecStartPre=/bin/bash -c 'test -f /opt/doskill/admin.token || { head -c 24 /dev/urandom | base64 | tr -d "\n=" > /opt/doskill/admin.token && chmod 600 /opt/doskill/admin.token; }'
-ExecStart=/opt/doskill/orchestrator/venv/bin/uvicorn \
+ExecStartPre=/bin/bash -c 'test -f /opt/vibe-niuma/admin.token || { head -c 24 /dev/urandom | base64 | tr -d "\n=" > /opt/vibe-niuma/admin.token && chmod 600 /opt/vibe-niuma/admin.token; }'
+ExecStart=/opt/vibe-niuma/orchestrator/venv/bin/uvicorn \
   orchestrator.main:app \
   --host 0.0.0.0 \
   --port ${ORCHESTRATOR_PORT}

@@ -121,7 +121,7 @@ export function SetupWizardPanel({ onComplete }: SetupWizardPanelProps) {
       if (ok) {
         setStep1Tested(true);
       } else {
-        setStep1Error('连接失败：服务器无响应或不是 doskill orchestrator');
+        setStep1Error('连接失败：服务器无响应或不是 vibe-niuma orchestrator');
       }
     } catch (err) {
       setStep1Error(`连接失败：${describeError(err)}`);
@@ -190,7 +190,7 @@ export function SetupWizardPanel({ onComplete }: SetupWizardPanelProps) {
       <WizardStep
         stepNumber={1}
         title="服务器地址"
-        description="填 doskill orchestrator 部署的入口 URL；本地开发用默认值即可。"
+        description="填 vibe-niuma orchestrator 部署的入口 URL；本地开发用默认值即可。"
         canGoNext={step1Tested}
         onNext={() => setStep(2)}
         isFirstStep
@@ -231,7 +231,7 @@ export function SetupWizardPanel({ onComplete }: SetupWizardPanelProps) {
       <WizardStep
         stepNumber={2}
         title="管理员令牌"
-        description="服务器上 cat /opt/doskill/admin.token 输出的那串字符串。"
+        description="服务器上 cat /opt/vibe-niuma/admin.token 输出的那串字符串。"
         canGoNext={step2Verified}
         onNext={() => setStep(3)}
         onPrev={() => setStep(1)}
@@ -349,7 +349,7 @@ export function SetupWizardPanel({ onComplete }: SetupWizardPanelProps) {
       </WizardStep>
     );
   } else {
-    // Step 4：总结 + 「开始使用 doskill」
+    // Step 4：总结 + 「开始使用 vibe-niuma」
     body = (
       <WizardStep
         stepNumber={4}

@@ -12,7 +12,7 @@ import { MSG, type Message } from '../lib/messages';
 let captureOverlay: CaptureOverlay | null = null;
 let annotateOverlay: AnnotateOverlay | null = null;
 
-console.log('[doskill content] loaded on', window.location.href);
+console.log('[vibe-niuma content] loaded on', window.location.href);
 
 // ── runtime error reporter ─────────────────────────────────────────
 // 仅在首次出错后**节流报告**（5s 内 dedupe 相同 message），避免错误风暴打挂 SW。
@@ -55,7 +55,7 @@ window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
 });
 
 chrome.runtime.onMessage.addListener((msg: Message, _sender, _sendResponse) => {
-  console.log('[doskill content] msg received', msg.type);
+  console.log('[vibe-niuma content] msg received', msg.type);
 
   if (msg.type === MSG.START_CAPTURE) {
     if (captureOverlay) captureOverlay.dispose();
@@ -91,7 +91,7 @@ chrome.runtime.onMessage.addListener((msg: Message, _sender, _sendResponse) => {
       chrome.runtime.sendMessage({ type: MSG.ANNOTATE_RESULT, pngB64 });
     }).catch((err) => {
       annotateOverlay = null;
-      console.error('[doskill content] annotate overlay error', err);
+      console.error('[vibe-niuma content] annotate overlay error', err);
       chrome.runtime.sendMessage({ type: MSG.ANNOTATE_CANCEL });
     });
     return;

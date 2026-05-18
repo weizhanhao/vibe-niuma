@@ -46,7 +46,7 @@ class _ClassifierLLM(Protocol):
 
 
 CLASSIFY_PROMPT = """\
-你是 doskill 意图分类器。业务员在 web 改造场景里说了一句新消息，你判断这条消息走哪条路径。
+你是 vibe-niuma 意图分类器。业务员在 web 改造场景里说了一句新消息，你判断这条消息走哪条路径。
 
 三种 mode：
 - **new_cr**：业务员要新做一个改动（新需求 / 新功能 / 全新的页面调整 / 或者**表达不满想换掉**某元素）

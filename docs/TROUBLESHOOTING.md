@@ -25,7 +25,7 @@ DEV_MODEL=deepseek/deepseek-v4-flash
 
 **症状**：`/init CLI 非 0 退出 (rc=1)`，stderr 完全空白。手动 ssh 登录跑 `opencode run "..."` 又完全正常。
 **根因**：systemd 默认不设 `HOME`；opencode 读 `~/.config/opencode/`，找不到就直接退出且不打错。
-**修**：systemd unit 显式 `Environment=HOME=/root`（见 `deploy/systemd/doskill-orchestrator.service`）。
+**修**：systemd unit 显式 `Environment=HOME=/root`（见 `deploy/systemd/vibe-niuma-orchestrator.service`）。
 
 ### 3. 嵌套 heredoc 同名 `EOF` 提前关掉外层
 
@@ -45,14 +45,14 @@ EOF
 
 ### 4. `rsync --delete` 没排 `.git`，每次 deploy 擦光 demo git 历史
 
-**症状**：用户在扩展点「确认合并」后 sidebar 显示「合并成功」，回 `:5199` 刷新页面还是老 UI；ECS `cd /opt/doskill/demo && git log` 只有「demo init」一条 commit，所有 cr/ 分支消失。
-**根因**：本机 `demo/` 没有自己的 `.git/`（它是 doskill 主仓的子目录），ECS 的 `.git/` 是 orchestrator pipeline 自己 init 的。`rsync --delete` 会把目的端有、源端没有的文件全删掉 → ECS 的 `.git/` 被擦 → 接着 deploy 脚本「无 .git 就 git init」重建空 repo → 历史全丢。
+**症状**：用户在扩展点「确认合并」后 sidebar 显示「合并成功」，回 `:5199` 刷新页面还是老 UI；ECS `cd /opt/vibe-niuma/demo && git log` 只有「demo init」一条 commit，所有 cr/ 分支消失。
+**根因**：本机 `demo/` 没有自己的 `.git/`（它是 vibe-niuma 主仓的子目录），ECS 的 `.git/` 是 orchestrator pipeline 自己 init 的。`rsync --delete` 会把目的端有、源端没有的文件全删掉 → ECS 的 `.git/` 被擦 → 接着 deploy 脚本「无 .git 就 git init」重建空 repo → 历史全丢。
 **修**：`rsync` 加 `--exclude '.git' --exclude 'AGENTS.md'`，并把 `--delete` 改成 `--update`。
 
 ### 5. LiteLLM `load_dotenv()` 向上爬，捞到 orchestrator 的 `DATABASE_URL`
 
-**症状**：`doskill-llm-proxy` 启动时 prisma crash，报数据库连接错。
-**根因**：LiteLLM 启动会 `load_dotenv()` 从 CWD 一路向上找 `.env`，会找到 `/opt/doskill/.env` 里给 orchestrator 用的 `DATABASE_URL`，触发 prisma 初始化。
+**症状**：`vibe-niuma-llm-proxy` 启动时 prisma crash，报数据库连接错。
+**根因**：LiteLLM 启动会 `load_dotenv()` 从 CWD 一路向上找 `.env`，会找到 `/opt/vibe-niuma/.env` 里给 orchestrator 用的 `DATABASE_URL`，触发 prisma 初始化。
 **修**：在 LiteLLM 工作目录单独放一份只含 provider key 的 `.env`（deploy.sh 自动生成），并在 systemd unit 用 `ExecStart=/usr/bin/env -u DATABASE_URL ...`。
 
 ---
@@ -132,7 +132,7 @@ EOF
 ### 19. 预览容器只起前端 → 页面没数据
 
 **根因**：`DockerPreviewAdapter` 只 `docker build frontend/`，没起 backend；vite proxy 把 `/api` 转给 `localhost:8000`，预览容器里啥都没有。
-**修**：预览容器 `--network doskill-net` + `-e VITE_API_URL=http://doskill-demo-backend:8000`，vite dev server 把 `/api` 反代到 main demo 后端，复用 `demo` schema 真数据。
+**修**：预览容器 `--network vibe-niuma-net` + `-e VITE_API_URL=http://vibe-niuma-demo-backend:8000`，vite dev server 把 `/api` 反代到 main demo 后端，复用 `demo` schema 真数据。
 
 ### 20. 合并后 main demo 容器还跑老镜像
 

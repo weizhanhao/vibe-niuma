@@ -42,7 +42,7 @@ class _LLM(Protocol):
 
 
 SELF_HEAL_PROMPT = """\
-你是 doskill 自愈诊断器。业务员的一个 CR 跑挂了，你看 fail_log 决定怎么处理。
+你是 vibe-niuma 自愈诊断器。业务员的一个 CR 跑挂了，你看 fail_log 决定怎么处理。
 
 三种行动：
 - **retry**：临时性错误（端口冲突 / 网络抖动 / docker race），原样重试就行
@@ -112,7 +112,7 @@ def _fallback_escalate() -> SelfHealDecision:
         action="escalate",
         escalation_advice=[
             "AI 自愈失败：诊断器自己出错了，需要你看一下",
-            "建议先看 ECS 日志（journalctl -u doskill-orchestrator）",
+            "建议先看 ECS 日志（journalctl -u vibe-niuma-orchestrator）",
         ],
     )
 

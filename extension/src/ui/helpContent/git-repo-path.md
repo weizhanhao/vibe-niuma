@@ -1,6 +1,6 @@
 **Demo 仓库路径** 是 orchestrator 在服务器上拉取业务代码的本地路径。AI 改代码后会在这个目录里 `git checkout -b cr/xxx` + commit。
 
-1. 默认填 `/opt/doskill/demo`（`provision.sh` 会自动把 demo 仓库 `git clone` 到这里）
+1. 默认填 `/opt/vibe-niuma/demo`（`provision.sh` 会自动把 demo 仓库 `git clone` 到这里）
 2. 如果你换了路径或者自己 clone 在别处，填**服务器上**该仓库的绝对路径
 3. 该路径必须满足：
    - 是一个合法的 git 仓库（`git status` 不报错）

@@ -57,7 +57,7 @@ const OK_GET_CONFIG: RouteHandler = () =>
         deepseek_api_key: null,
         dashscope_api_key: null,
         anthropic_api_key: null,
-        demo_repo_path: '/opt/doskill/demo',
+        demo_repo_path: '/opt/vibe-niuma/demo',
         preview_backend_url: 'http://x:8000',
         deepseek_api_key_set: false,
         dashscope_api_key_set: false,
@@ -78,14 +78,14 @@ const OK_PUT_CONFIG: RouteHandler = () =>
         deepseek_api_key: null,
         dashscope_api_key: null,
         anthropic_api_key: null,
-        demo_repo_path: '/opt/doskill/demo',
+        demo_repo_path: '/opt/vibe-niuma/demo',
         preview_backend_url: 'http://x:8000',
         deepseek_api_key_set: true,
         dashscope_api_key_set: true,
         anthropic_api_key_set: false,
       },
       version: 1,
-      restartedServices: ['doskill-orchestrator'],
+      restartedServices: ['vibe-niuma-orchestrator'],
     }),
     { status: 200 },
   );
@@ -302,14 +302,14 @@ describe('SetupWizardPanel · Step 4 (complete)', () => {
     fireEvent.click(screen.getByRole('button', { name: /保存到服务器/ }));
     await waitFor(() => screen.getByRole('heading', { name: '一切就绪' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /开始使用 doskill/ }));
+    fireEvent.click(screen.getByRole('button', { name: /开始使用 vibe-niuma/ }));
 
     await waitFor(() => {
       expect(chrome.storage.local.set).toHaveBeenCalled();
     });
     const setCalls = (chrome.storage.local.set as ReturnType<typeof vi.fn>).mock.calls;
     const lastCall = setCalls[setCalls.length - 1][0] as Record<string, unknown>;
-    const stored = lastCall.doskill_config_v2 as {
+    const stored = lastCall.vibe_niuma_config_v2 as {
       orchestratorUrl: string;
       adminToken: string;
       configVersion: number;
@@ -332,7 +332,7 @@ describe('SetupWizardPanel · Step 4 (complete)', () => {
     fireEvent.click(screen.getByRole('button', { name: /保存到服务器/ }));
     await waitFor(() => screen.getByRole('heading', { name: '一切就绪' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /开始使用 doskill/ }));
+    fireEvent.click(screen.getByRole('button', { name: /开始使用 vibe-niuma/ }));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
   });
 });
@@ -426,7 +426,7 @@ describe('SetupWizardPanel · full flow', () => {
 
     // Step 4
     await waitFor(() => screen.getByRole('heading', { name: '一切就绪' }));
-    fireEvent.click(screen.getByRole('button', { name: /开始使用 doskill/ }));
+    fireEvent.click(screen.getByRole('button', { name: /开始使用 vibe-niuma/ }));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
   });
 });

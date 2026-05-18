@@ -14,7 +14,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/ui/App';
 
-const STORAGE_KEY = 'doskill_config_v2';
+const STORAGE_KEY = 'vibe_niuma_config_v2';
 const ORCH_URL = 'http://example.com:9000';
 const TOKEN = 'a'.repeat(32);
 
@@ -57,8 +57,8 @@ function setupFetchMock(opts: { getReturnsVersion?: number; putReturnsVersion?: 
             deepseek_api_key: null,
             dashscope_api_key: null,
             anthropic_api_key: null,
-            demo_repo_path: '/opt/doskill/demo',
-            preview_backend_url: 'http://doskill-demo-backend:8000',
+            demo_repo_path: '/opt/vibe-niuma/demo',
+            preview_backend_url: 'http://vibe-niuma-demo-backend:8000',
             deepseek_api_key_set: false,
             dashscope_api_key_set: false,
             anthropic_api_key_set: false,
@@ -78,8 +78,8 @@ function setupFetchMock(opts: { getReturnsVersion?: number; putReturnsVersion?: 
             deepseek_api_key: null,
             dashscope_api_key: null,
             anthropic_api_key: null,
-            demo_repo_path: '/opt/doskill/demo',
-            preview_backend_url: 'http://doskill-demo-backend:8000',
+            demo_repo_path: '/opt/vibe-niuma/demo',
+            preview_backend_url: 'http://vibe-niuma-demo-backend:8000',
             deepseek_api_key_set: true,
             dashscope_api_key_set: true,
             anthropic_api_key_set: false,
@@ -100,7 +100,7 @@ function setupFetchMock(opts: { getReturnsVersion?: number; putReturnsVersion?: 
 beforeEach(async () => {
   await chrome.storage.local.clear();
   // Plan 7：bypass DeploymentAssistantPanel，让 Plan 6 SetupWizardPanel 在 unconfigured 时仍能命中
-  await chrome.storage.local.set({ doskill_deployment_completed_at: 1 });
+  await chrome.storage.local.set({ vibe_niuma_deployment_completed_at: 1 });
 });
 
 afterEach(() => {
@@ -204,8 +204,8 @@ describe('Plan 6 全流程：已配置 → 主面板（跳过 wizard）', () => 
           devRunner: 'opencode',
           devModel: 'deepseek/deepseek-v4-flash',
           visionModel: 'qwen-vl-plus',
-          demoRepoPath: '/opt/doskill/demo',
-          previewBackendUrl: 'http://doskill-demo-backend:8000',
+          demoRepoPath: '/opt/vibe-niuma/demo',
+          previewBackendUrl: 'http://vibe-niuma-demo-backend:8000',
         },
       },
     });
@@ -233,8 +233,8 @@ describe('Plan 6 全流程：主面板齿轮 → SettingsPanel → 关闭回主�
           devRunner: 'opencode',
           devModel: 'deepseek/deepseek-v4-flash',
           visionModel: 'qwen-vl-plus',
-          demoRepoPath: '/opt/doskill/demo',
-          previewBackendUrl: 'http://doskill-demo-backend:8000',
+          demoRepoPath: '/opt/vibe-niuma/demo',
+          previewBackendUrl: 'http://vibe-niuma-demo-backend:8000',
         },
       },
     });

@@ -58,7 +58,7 @@ def test_release_port_is_idempotent():
 @pytest.mark.docker
 @pytest.mark.skipif(not _docker_available(), reason="需要 Docker daemon")
 async def test_serve_and_teardown_real_container(demo_repo_copy):
-    # Plan 8 Task 8：demo 默认带 compose 文件，但本地 dev 没有 doskill-net 外部网络。
+    # Plan 8 Task 8：demo 默认带 compose 文件，但本地 dev 没有 vibe-niuma-net 外部网络。
     # 这个 contract 测试只覆盖单 Dockerfile 老路径 —— 干掉 compose 文件落回老路径。
     compose = demo_repo_copy / "docker-compose.preview.yml"
     if compose.exists():
@@ -81,6 +81,6 @@ async def test_serve_and_teardown_real_container(demo_repo_copy):
 @pytest.mark.skipif(not _docker_available(), reason="需要 Docker daemon")
 async def test_teardown_idempotent_on_unknown_handle():
     a = DockerPreviewAdapter()
-    fake = PreviewInstance(preview_id="x", url="http://x", handle="doskill-no-such-container")
+    fake = PreviewInstance(preview_id="x", url="http://x", handle="vibe-niuma-no-such-container")
     # 不抛异常即可
     await a.teardown(fake)

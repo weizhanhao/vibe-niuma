@@ -1,10 +1,10 @@
-# 🐂 vibe-niuma · doskill
+# 🐂 vibe-niuma · vibe-niuma
 
 > **业务员在浏览器里画个框 + 说人话，AI 直接改你产品的代码、起预览给他看、一键合并回 main。**
 >
 > 程序员只维护「可编辑表面」与平台本身，不再逐条处理业务员的小改动。
 >
-> 仓库代号 `vibe-niuma`（业务时代的牛马），产品代号 `doskill`。
+> 仓库代号 `vibe-niuma`（业务时代的牛马），产品代号 `vibe-niuma`。
 
 ```
 [业务员的 Chrome]                            [ECS 上的 vibe-niuma]
@@ -144,7 +144,7 @@ created → clarifying → located → coding → building → preview-ready ─
 - **澄清模型 + 视觉**：`qwen-vl-plus`（DashScope，看截图判业务意图）
 - **dev runner 模型**：`deepseek-v4-pro`（**当前 ECS 实际跑的**，代码能力强）；`deepseek-v4-flash`（出厂 `env.example` 默认，便宜快但偶尔需要 self-heal 重试）
 - **聊天 / refine 文本**：同上 dev_model，走 LiteLLM
-- **切换**：改 `deploy/.env` 的 `DEV_MODEL`（`deepseek/deepseek-v4-pro` 或 `deepseek/deepseek-v4-flash`）→ `systemctl restart doskill-orchestrator`。LiteLLM 路由表（`deploy/llm-proxy/config.yml`）里两个都 wire 上了，无需改 proxy 配置。
+- **切换**：改 `deploy/.env` 的 `DEV_MODEL`（`deepseek/deepseek-v4-pro` 或 `deepseek/deepseek-v4-flash`）→ `systemctl restart vibe-niuma-orchestrator`。LiteLLM 路由表（`deploy/llm-proxy/config.yml`）里两个都 wire 上了，无需改 proxy 配置。
 - **数据库**：MySQL 8（orchestrator 表 + demo 业务表，各自独立 schema）
 - **预览**：每个 CR 一个 docker 容器，端口段 `5100-5199`，TTL 30min 闲置回收
 
@@ -170,7 +170,7 @@ created → clarifying → located → coding → building → preview-ready ─
 
 ```bash
 # 1. clone
-git clone https://github.com/weizhanhao/vibe-niuma.git doskill && cd doskill
+git clone https://github.com/weizhanhao/vibe-niuma.git vibe-niuma && cd vibe-niuma
 
 # 2. 准备 .env
 cp deploy/env.example deploy/.env
@@ -185,7 +185,7 @@ bash deploy/local.sh    # 起 mysql + orchestrator + llm-proxy + main demo
 bash deploy/healthcheck.sh   # 期望「通过 11 · 失败 0」
 
 # 5. 拿 admin token
-cat ~/doskill/admin.token
+cat ~/vibe-niuma/admin.token
 
 # 6. 扩展 Setup Wizard 填 http://localhost:9000 + token
 ```
@@ -203,13 +203,13 @@ curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/e
       [--dashscope-key sk-dashscopeYYYY]    # 可选，视觉模型用
 ```
 
-脚本自动：装 git/docker/python3 → clone 源码到 `/opt/doskill` → 写 `.env` → 起 mysql 容器 → systemd 起 orchestrator + llm-proxy → 起 main demo → 打印 admin token + orchestrator URL。
+脚本自动：装 git/docker/python3 → clone 源码到 `/opt/vibe-niuma` → 写 `.env` → 起 mysql 容器 → systemd 起 orchestrator + llm-proxy → 起 main demo → 打印 admin token + orchestrator URL。
 
 末尾你会看到：
 
 ```
 ════════════════════════════════════════════════════════
-  doskill 部署完成
+  vibe-niuma 部署完成
   Orchestrator URL: http://<公网 IP>:9000
   Admin Token: <一行长字符串>
 ════════════════════════════════════════════════════════
@@ -307,7 +307,7 @@ orchestrator/     FastAPI 单体（386 项 pytest 通过）
     system_config.py       运行时配置（dev_model / api_key / repo path 等）
     states.py              FSM 状态常量
     schemas.py             Pydantic（MAX_ATTACHMENTS_PER_MESSAGE=3）
-    history_writer.py      spec/plan/result 沉淀到 .doskill/history
+    history_writer.py      spec/plan/result 沉淀到 .vibe-niuma/history
     config.py              Settings（preview_port_min=5100 / max=5199）
     adapters/
       interfaces.py        4 个 Protocol
@@ -359,7 +359,7 @@ deploy/           ECS / 本地部署
   healthcheck.sh      11 项验证
   main-demo.sh        起 / 重建 main demo 容器
   rollback.sh         回滚到上一个版本
-  systemd/            doskill-orchestrator + doskill-llm-proxy
+  systemd/            vibe-niuma-orchestrator + vibe-niuma-llm-proxy
   llm-proxy/          LiteLLM 路由配置
 
 docs/
@@ -395,7 +395,7 @@ cd demo/frontend && npm install
 ### 不起 ECS 看 UI
 
 ```bash
-open docs/mockups/doskill-extension-demo.html    # 静态 HTML 体验扩展交互流
+open docs/mockups/vibe-niuma-extension-demo.html    # 静态 HTML 体验扩展交互流
 ```
 
 ### 设计原则
@@ -418,7 +418,7 @@ open docs/mockups/doskill-extension-demo.html    # 静态 HTML 体验扩展交�
 - 🚀 [部署手册](deploy/README.md) —— ECS 部署细节 + 回滚步骤
 - 🛠️ [运维 RUNBOOK](docs/RUNBOOK.md) —— 日志 / 重启 / 改配置生效
 - 🪤 [踩过的坑](docs/TROUBLESHOOTING.md) —— 21 个真实问题 + 根因 + 修法
-- 🎬 [扩展静态 demo](docs/mockups/doskill-extension-demo.html) —— 不起后端看交互流
+- 🎬 [扩展静态 demo](docs/mockups/vibe-niuma-extension-demo.html) —— 不起后端看交互流
 
 ---
 

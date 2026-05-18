@@ -114,12 +114,12 @@ fi
 
 echo "重启 systemd units"
 sudo systemctl daemon-reload || true
-sudo systemctl restart doskill-llm-proxy.service doskill-orchestrator.service
+sudo systemctl restart vibe-niuma-llm-proxy.service vibe-niuma-orchestrator.service
 
 # 等 5s 给服务起来；不健康就 fail（避免误报 success）
 sleep 5
-systemctl is-active --quiet doskill-orchestrator.service || { echo "✗ orchestrator 未起来"; exit 1; }
-systemctl is-active --quiet doskill-llm-proxy.service   || { echo "✗ llm-proxy 未起来"; exit 1; }
+systemctl is-active --quiet vibe-niuma-orchestrator.service || { echo "✗ orchestrator 未起来"; exit 1; }
+systemctl is-active --quiet vibe-niuma-llm-proxy.service   || { echo "✗ llm-proxy 未起来"; exit 1; }
 echo "✓ 服务都 active"
 EOF
 

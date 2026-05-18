@@ -5,11 +5,12 @@
 //   - 有 active project + config 全 → MainShell（head 含 ProjectSwitcher）
 //   - 有 active project 但 config 残缺 → CreateProjectPanel（修补）
 //
-// 兼容老用户：boot 时 migrateLegacyConfig 把 doskill_config_v2 包成「默认项目」+
-// setActive。setActive 内部同步 project.config → doskill_config_v2 让 service-worker
+// 兼容老用户：boot 时 migrateLegacyConfig 把 vibe_niuma_config_v2 包成「默认项目」+
+// setActive。setActive 内部同步 project.config → vibe_niuma_config_v2 让 service-worker
 // 不必改读路径。
 import React, { useEffect, useState } from 'react';
 import { isConfigSufficient, loadConfig, type Config } from '../lib/config';
+import { migrateLegacyChromeStorage } from '../lib/legacy-key-migration';
 import {
   loadActiveProject, loadProjects, migrateLegacyConfig, type Project,
 } from '../lib/projects';
@@ -40,7 +41,7 @@ import { loadTheme, readThemeSync, saveTheme, type Theme } from '../lib/theme';
 
 // loading sentinel：避免在 cfg 还没拉到时短暂渲染 wizard 闪一下。
 type ConfigState = 'loading' | Config | null;
-const CONFIG_STORAGE_KEY = 'doskill_config_v2';
+const CONFIG_STORAGE_KEY = 'vibe_niuma_config_v2';
 
 // FSM → head 状态徽章（就绪/进行中/截图中/已合并/失败）。head 右侧 pill。
 function statusPillFromState(state: ChangeRequestState | null, pendingCapture: boolean): { label: string; tone: string } {
@@ -122,7 +123,10 @@ export function App() {
   const [boot, setBoot] = useState<AppBootState>({ kind: 'loading' });
 
   const reload = async () => {
-    // 启动时一次性迁移老 doskill_config_v2 → Project（幂等）
+    // 启动时一次性迁移：
+    // 1. 旧品牌的 chrome.storage key → vibe_niuma_*（幂等，跑完删旧 key）
+    // 2. 单 config blob → Project 数组（v2 schema 迁移，幂等）
+    await migrateLegacyChromeStorage();
     await migrateLegacyConfig();
     const projects = await loadProjects();
     if (projects.length === 0) {
@@ -147,9 +151,9 @@ export function App() {
       if (area !== 'local') return;
       // 任一相关 key 变化都重 load
       if (
-        'doskill_projects' in changes ||
-        'doskill_active_project_id' in changes ||
-        'doskill_config_v2' in changes
+        'vibe_niuma_projects' in changes ||
+        'vibe_niuma_active_project_id' in changes ||
+        'vibe_niuma_config_v2' in changes
       ) {
         void reload();
       }
@@ -290,7 +294,7 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
       setConvCache((prev) => ({ ...prev, [conv.id]: conv }));
       await openTab(conv.id);
     } catch (err) {
-      console.warn('[doskill ui] createConversation failed', err);
+      console.warn('[vibe-niuma ui] createConversation failed', err);
     }
   };
 

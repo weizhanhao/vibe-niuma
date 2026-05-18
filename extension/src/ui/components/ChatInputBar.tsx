@@ -71,7 +71,7 @@ export function ChatInputBar({
     if (disabled) return;
     if (!conversationId) {
       // 没 conv：理论上 MainShell 会 disable 输入框；这里兜底
-      console.warn('[doskill] submit without conversation_id');
+      console.warn('[vibe-niuma] submit without conversation_id');
       return;
     }
     const sent = text;
@@ -91,14 +91,14 @@ export function ChatInputBar({
         cr_id?: string | null; mode?: IntentMode;
       } | undefined;
       if (reply && reply.ok === false) {
-        console.warn('[doskill] SUBMIT_MESSAGE failed', reply.error);
+        console.warn('[vibe-niuma] SUBMIT_MESSAGE failed', reply.error);
         setText(sent);
         onAttachmentsChange(sentAtt);
       } else {
         onSubmitted?.({ cr_id: reply?.cr_id ?? null, mode: reply?.mode });
       }
     } catch (err) {
-      console.warn('[doskill] SUBMIT_MESSAGE exception', err);
+      console.warn('[vibe-niuma] SUBMIT_MESSAGE exception', err);
       setText(sent);
       onAttachmentsChange(sentAtt);
     }

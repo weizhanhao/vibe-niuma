@@ -1,6 +1,6 @@
 """Plan 6 Task 2 —— admin token 文件读写 + FastAPI 鉴权依赖。
 
-token 文件：默认 `/opt/doskill/admin.token`，环境变量 `DOSKILL_ADMIN_TOKEN_PATH`
+token 文件：默认 `/opt/vibe-niuma/admin.token`，环境变量 `VIBE_NIUMA_ADMIN_TOKEN_PATH`
 可覆盖（测试和本地开发用）。文件不存在则自动生成 `secrets.token_urlsafe(32)` 并
 chmod 600；存在则原样读出。
 
@@ -21,10 +21,10 @@ from fastapi import Header, HTTPException, status
 
 logger = logging.getLogger("orchestrator.auth")
 
-# 默认 /opt/doskill/admin.token；可被 env 覆盖。
+# 默认 /opt/vibe-niuma/admin.token；可被 env 覆盖。
 # 测试也允许直接 monkeypatch 这个常量。
 ADMIN_TOKEN_PATH: str = os.environ.get(
-    "DOSKILL_ADMIN_TOKEN_PATH", "/opt/doskill/admin.token"
+    "VIBE_NIUMA_ADMIN_TOKEN_PATH", "/opt/vibe-niuma/admin.token"
 )
 
 

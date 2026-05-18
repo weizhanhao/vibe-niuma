@@ -1,4 +1,4 @@
-**DeepSeek API key** 用于 dev runner（改代码的 AI）和澄清模型。这是 doskill 主力调用对象，没填就跑不通。
+**DeepSeek API key** 用于 dev runner（改代码的 AI）和澄清模型。这是 vibe-niuma 主力调用对象，没填就跑不通。
 
 1. 到 [platform.deepseek.com](https://platform.deepseek.com) 注册账号（手机号 / Google 登录均可）
 2. 进控制台 → 左边「API Keys」→「创建新密钥」

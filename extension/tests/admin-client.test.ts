@@ -36,8 +36,8 @@ function makeServerConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     deepseek_api_key: null,
     dashscope_api_key: null,
     anthropic_api_key: null,
-    demo_repo_path: '/opt/doskill/demo',
-    preview_backend_url: 'http://doskill-demo-backend:8000',
+    demo_repo_path: '/opt/vibe-niuma/demo',
+    preview_backend_url: 'http://vibe-niuma-demo-backend:8000',
     deepseek_api_key_set: true,
     dashscope_api_key_set: true,
     anthropic_api_key_set: false,
@@ -139,7 +139,7 @@ describe('AdminClient.putConfig', () => {
         JSON.stringify({
           config: makeServerConfig(),
           version: 4,
-          restartedServices: ['doskill-llm-proxy', 'doskill-orchestrator'],
+          restartedServices: ['vibe-niuma-llm-proxy', 'vibe-niuma-orchestrator'],
         }),
         { status: 200 },
       ),
@@ -147,7 +147,7 @@ describe('AdminClient.putConfig', () => {
 
     const resp: PutConfigResponse = await client.putConfig({ dev_model: 'x' }, 3);
     expect(resp.version).toBe(4);
-    expect(resp.restartedServices).toEqual(['doskill-llm-proxy', 'doskill-orchestrator']);
+    expect(resp.restartedServices).toEqual(['vibe-niuma-llm-proxy', 'vibe-niuma-orchestrator']);
   });
 
   it('throws StaleVersionError with currentVersion on 409', async () => {

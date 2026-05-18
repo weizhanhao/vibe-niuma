@@ -10,7 +10,7 @@
 //
 // 调用方：extension/src/ui/panels/DeploymentAssistantPanel.tsx（Plan 7 · Task 7）
 //          形如：buildSystemPrompt(state.phase === 'collecting_info' ? state.path : null)
-import handbook from './prompts/doskill-handbook.md?raw';
+import handbook from './prompts/vibe-niuma-handbook.md?raw';
 import protocol from './prompts/action-protocol.md?raw';
 import pathLocal from './prompts/path-local.md?raw';
 import pathEcs from './prompts/path-ecs.md?raw';
@@ -22,7 +22,7 @@ export type DeploymentPath = 'local' | 'ecs';
 const SECTION_DELIMITER = '\n\n---\n\n';
 
 /**
- * 拼装 doskill 部署助手的 system prompt。
+ * 拼装 vibe-niuma 部署助手的 system prompt。
  *
  * @param path 当前用户选定的部署路径；null 表示还没选（choosing_path 阶段）。
  * @returns 完整 system 消息字符串，可直接喂 DeepSeek chat messages[0].content。

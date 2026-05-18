@@ -11,7 +11,7 @@ describe('CaptureOverlay', () => {
     Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
     const o = new CaptureOverlay();
     const promise = o.start();
-    const root = document.querySelector('[data-doskill-overlay]') as HTMLElement;
+    const root = document.querySelector('[data-vibe-niuma-overlay]') as HTMLElement;
     expect(root).toBeTruthy();
 
     fire(root, 'mousedown', { clientX: 100, clientY: 80 });
@@ -28,6 +28,6 @@ describe('CaptureOverlay', () => {
     const promise = o.start();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(await promise).toBeNull();
-    expect(document.querySelector('[data-doskill-overlay]')).toBeNull();
+    expect(document.querySelector('[data-vibe-niuma-overlay]')).toBeNull();
   });
 });

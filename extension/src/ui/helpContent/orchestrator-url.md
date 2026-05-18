@@ -1,4 +1,4 @@
-**Orchestrator URL** 是部署 doskill 后端的那台机器的入口地址，扩展所有 API 都打到这里。
+**Orchestrator URL** 是部署 vibe-niuma 后端的那台机器的入口地址，扩展所有 API 都打到这里。
 
 1. 本地开发填 `http://localhost:9000`
 2. 部署到云服务器后填 `http://<你的-公网-IP>:9000`

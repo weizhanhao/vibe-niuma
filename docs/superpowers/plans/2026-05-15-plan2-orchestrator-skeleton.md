@@ -22,7 +22,7 @@
 
 ## 前置约定（每个任务都假定已满足）
 
-- 所有路径以仓库根 `/Users/weizhanhao/doskill` 为基准。orchestrator 代码在 `orchestrator/`，与 `demo/` 同级。
+- 所有路径以仓库根 `/Users/weizhanhao/vibe-niuma` 为基准。orchestrator 代码在 `orchestrator/`，与 `demo/` 同级。
 - 后端测试需要一个可连的 MySQL。复用 demo 阶段的 `demo-mysql` 容器（host `localhost:3307`，root 密码 `demopass`）。若该容器不在运行：`docker run -d --name demo-mysql -e MYSQL_ROOT_PASSWORD=demopass -p 3307:3306 mysql:8`，等 ~25s，然后建库（见 Task 7 Step 1）。orchestrator 用 `orchestrator` / `orchestrator_test` 两个 database。
 - 测试连接串走环境变量。Python 环境用 `orchestrator/venv/`（Task 1 创建）。
 - 提交信息用约定式提交（feat/test/chore/docs）。每个任务结束提交，只提交该任务列出的文件，不提交 `venv/`、`__pycache__/`、`*.egg-info/`。
@@ -137,7 +137,7 @@ Create `orchestrator/.env.example`:
 
 ```
 DATABASE_URL=mysql+pymysql://root:demopass@localhost:3307/orchestrator
-DEMO_REPO_PATH=/Users/weizhanhao/doskill/demo
+DEMO_REPO_PATH=/Users/weizhanhao/vibe-niuma/demo
 QUOTA_SIZE=5
 IDLE_TTL_SECONDS=1800
 REAPER_INTERVAL_SECONDS=60
@@ -192,7 +192,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "mysql+pymysql://root:demopass@localhost:3307/orchestrator"
-    demo_repo_path: str = "/Users/weizhanhao/doskill/demo"
+    demo_repo_path: str = "/Users/weizhanhao/vibe-niuma/demo"
     quota_size: int = 5
     idle_ttl_seconds: int = 1800
     reaper_interval_seconds: int = 60
@@ -208,7 +208,7 @@ Expected: PASS — 2 passed
 
 - [ ] **Step 8: 给 .gitignore 补一条**
 
-Modify `/Users/weizhanhao/doskill/.gitignore` — under the `# Python` section, add a line `orchestrator/.env` immediately after the existing `demo/backend/.env` line. The `# Python` section becomes:
+Modify `/Users/weizhanhao/vibe-niuma/.gitignore` — under the `# Python` section, add a line `orchestrator/.env` immediately after the existing `demo/backend/.env` line. The `# Python` section becomes:
 
 ```
 # Python
@@ -226,7 +226,7 @@ orchestrator/.env
 - [ ] **Step 9: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/pyproject.toml orchestrator/.env.example orchestrator/src/orchestrator/__init__.py orchestrator/src/orchestrator/config.py orchestrator/tests/test_config.py .gitignore
 git commit -m "feat: orchestrator 项目骨架与配置"
 ```
@@ -356,7 +356,7 @@ Expected: PASS — 2 passed
 - [ ] **Step 6: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/db.py orchestrator/src/orchestrator/models.py orchestrator/tests/test_models.py
 git commit -m "feat: orchestrator DB 连接与 ChangeRequest 模型"
 ```
@@ -472,7 +472,7 @@ Expected: PASS — 7 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/states.py orchestrator/tests/test_states.py
 git commit -m "feat: orchestrator FSM 状态机"
 ```
@@ -659,7 +659,7 @@ Expected: PASS — 6 passed
 - [ ] **Step 6: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/adapters/__init__.py orchestrator/src/orchestrator/adapters/types.py orchestrator/tests/test_adapter_types.py
 git commit -m "feat: orchestrator adapter 共享类型契约"
 ```
@@ -814,7 +814,7 @@ Expected: PASS — 6 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/adapters/interfaces.py orchestrator/tests/test_interfaces.py
 git commit -m "feat: orchestrator adapter Protocol 接口"
 ```
@@ -1052,7 +1052,7 @@ Expected: PASS — 6 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/adapters/fakes.py orchestrator/tests/test_fakes.py
 git commit -m "feat: orchestrator fake adapter 实现"
 ```
@@ -1348,7 +1348,7 @@ Expected: PASS — repository(9) + config(2) + models(2) + states(7) + adapter_t
 - [ ] **Step 7: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/repository.py orchestrator/tests/conftest.py orchestrator/tests/test_repository.py
 git commit -m "feat: orchestrator ChangeRequest 仓储与测试夹具"
 ```
@@ -1541,7 +1541,7 @@ Expected: PASS — 6 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/git_manager.py orchestrator/tests/test_git_manager.py
 git commit -m "feat: orchestrator Git 管理器"
 ```
@@ -1703,7 +1703,7 @@ Expected: PASS — 5 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/events.py orchestrator/tests/test_events.py
 git commit -m "feat: orchestrator SSE 事件总线"
 ```
@@ -1829,7 +1829,7 @@ Expected: PASS — 4 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/quota.py orchestrator/tests/test_quota.py
 git commit -m "feat: orchestrator 配额信号量"
 ```
@@ -1976,7 +1976,7 @@ Expected: PASS — 3 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/interaction_channel.py orchestrator/tests/test_interaction_channel.py
 git commit -m "feat: orchestrator SSE 交互通道"
 ```
@@ -2339,7 +2339,7 @@ Expected: PASS — 8 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/pipeline.py orchestrator/tests/test_pipeline.py
 git commit -m "feat: orchestrator 流水线编排器"
 ```
@@ -2765,7 +2765,7 @@ Expected: PASS — 8 passed
 - [ ] **Step 6: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/schemas.py orchestrator/src/orchestrator/main.py orchestrator/tests/conftest.py orchestrator/tests/test_api.py
 git commit -m "feat: orchestrator FastAPI app 与 REST 端点"
 ```
@@ -2898,7 +2898,7 @@ Expected: PASS — test_api(8) + test_api_sse(2) = 10 passed
 - [ ] **Step 3: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/tests/test_api_sse.py
 git commit -m "test: orchestrator SSE 端点测试"
 ```
@@ -3069,7 +3069,7 @@ Expected: PASS — 2 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/reaper.py orchestrator/tests/test_reaper.py
 git commit -m "feat: orchestrator 闲置回收器"
 ```
@@ -3190,7 +3190,7 @@ Expected: PASS — test_lifespan(1) + test_api(8) + test_api_sse(2) = 11 passed
 - [ ] **Step 4: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/src/orchestrator/main.py orchestrator/tests/test_lifespan.py
 git commit -m "feat: orchestrator reaper 接线与重启恢复"
 ```
@@ -3352,7 +3352,7 @@ venv/bin/pytest          # 79 passed
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/weizhanhao/doskill
+cd /Users/weizhanhao/vibe-niuma
 git add orchestrator/tests/test_integration.py orchestrator/README.md
 git commit -m "feat: orchestrator 端到端集成测试与 README"
 ```

@@ -115,8 +115,8 @@ else
     # 用 -C 避免 cd/safe.directory 类的玄学
     git config --global --add safe.directory "\$DEMO_REPO_PATH" || true
     git init -q -b main "\$DEMO_REPO_PATH"
-    git -C "\$DEMO_REPO_PATH" config user.email "doskill@local"
-    git -C "\$DEMO_REPO_PATH" config user.name  "doskill"
+    git -C "\$DEMO_REPO_PATH" config user.email "vibe-niuma@local"
+    git -C "\$DEMO_REPO_PATH" config user.name  "vibe-niuma"
     git -C "\$DEMO_REPO_PATH" add -A
     git -C "\$DEMO_REPO_PATH" commit -q -m "demo init" || true
   fi
@@ -138,7 +138,7 @@ cd llm-proxy
 venv/bin/pip install -q -U pip wheel
 venv/bin/pip install -q "litellm[proxy]" prisma
 [ -f config.yml ] || cp config.example.yml config.yml
-# litellm 启动时会 load_dotenv() 从 CWD 向上爬 → 会捞到 /opt/doskill/.env 里
+# litellm 启动时会 load_dotenv() 从 CWD 向上爬 → 会捞到 /opt/vibe-niuma/.env 里
 # 给 orchestrator 用的 DATABASE_URL，触发 prisma DB 初始化 crash。
 # 在 llm-proxy CWD 放一份只含 provider key 的 .env，load_dotenv 找到这个就停。
 cat > .env <<INNER_ENV
@@ -153,30 +153,30 @@ cd ..
 cp -n deploy/mysql/init.sql mysql/init.sql 2>/dev/null || true
 
 # MySQL 容器（plain docker run，省掉 compose 依赖）
-log "MySQL: 拉镜像 + 起容器（doskill-mysql）"
+log "MySQL: 拉镜像 + 起容器（vibe-niuma-mysql）"
 docker pull mysql:8 >/dev/null || true
 # 已存在就跳过创建；否则起一个新的
-if ! docker inspect doskill-mysql >/dev/null 2>&1; then
-  docker volume create doskill-mysql-data >/dev/null
-  docker run -d --name doskill-mysql \
+if ! docker inspect vibe-niuma-mysql >/dev/null 2>&1; then
+  docker volume create vibe-niuma-mysql-data >/dev/null
+  docker run -d --name vibe-niuma-mysql \
     --restart unless-stopped \
     -e MYSQL_ROOT_PASSWORD="\$MYSQL_ROOT_PASSWORD" \
     -p "\$MYSQL_PORT:3306" \
-    -v doskill-mysql-data:/var/lib/mysql \
+    -v vibe-niuma-mysql-data:/var/lib/mysql \
     -v "\$DEPLOY_ROOT/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro" \
     mysql:8 >/dev/null
 else
-  docker start doskill-mysql >/dev/null 2>&1 || true
+  docker start vibe-niuma-mysql >/dev/null 2>&1 || true
 fi
 
 # systemd units
 log "安装 + 重启 systemd units"
-sudo cp deploy/systemd/doskill-llm-proxy.service /etc/systemd/system/
-sudo cp deploy/systemd/doskill-orchestrator.service /etc/systemd/system/
+sudo cp deploy/systemd/vibe-niuma-llm-proxy.service /etc/systemd/system/
+sudo cp deploy/systemd/vibe-niuma-orchestrator.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now doskill-llm-proxy.service
-sudo systemctl enable --now doskill-orchestrator.service
-sudo systemctl restart doskill-llm-proxy.service doskill-orchestrator.service
+sudo systemctl enable --now vibe-niuma-llm-proxy.service
+sudo systemctl enable --now vibe-niuma-orchestrator.service
+sudo systemctl restart vibe-niuma-llm-proxy.service vibe-niuma-orchestrator.service
 
 # main demo 站（业务员框选「样板间」）
 log "起 main 分支常驻 demo 站"

@@ -47,7 +47,7 @@ class GitManager:
         if status.strip():
             self._git(
                 "stash", "push", "--include-untracked",
-                "-m", f"doskill-autoclean-before-{branch}",
+                "-m", f"vibe-niuma-autoclean-before-{branch}",
                 check=False,
             )
         # 仍然 dirty（stash 失败 / 有 submodule 未跟踪）→ 强制 reset + clean
@@ -88,7 +88,7 @@ class GitManager:
         status = self._git("status", "--porcelain").stdout
         stashed = False
         if status.strip():
-            self._git("stash", "push", "-u", "-m", "doskill-merge-prep")
+            self._git("stash", "push", "-u", "-m", "vibe-niuma-merge-prep")
             stashed = True
         try:
             self._git("checkout", branch)

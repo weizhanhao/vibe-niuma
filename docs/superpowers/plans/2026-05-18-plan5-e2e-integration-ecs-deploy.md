@@ -29,8 +29,8 @@ deploy/
   deploy.sh                    # 投递 + 重启：rsync 代码、装依赖、重启 systemd 服务
   env.example                  # 部署所需全部环境变量样板
   systemd/
-    doskill-orchestrator.service   # Orchestrator 常驻
-    doskill-llm-proxy.service      # Anthropic-compatible 代理常驻
+    vibe-niuma-orchestrator.service   # Orchestrator 常驻
+    vibe-niuma-llm-proxy.service      # Anthropic-compatible 代理常驻
   mysql/
     docker-compose.yml         # MySQL 8 容器（Orchestrator 库 + demo 库）
     init.sql                   # 建库 + demo 后端表结构
@@ -76,10 +76,10 @@ README.md                      # 项目根 README（总览）
 
 **Files:**
 - Create: `deploy/llm-proxy/config.example.yml`
-- Create: `deploy/systemd/doskill-llm-proxy.service`
+- Create: `deploy/systemd/vibe-niuma-llm-proxy.service`
 
 - [ ] **Step 1** — 按用户选定的代理（claude-code-router / LiteLLM / one-api）写 `config.example.yml`：把 Anthropic 协议的请求转发到用户指定的国内模型（DeepSeek / 通义千问）。配置里 key 用占位符，真值由 `.env` 注入。
-- [ ] **Step 2** — `doskill-llm-proxy.service`：systemd unit，常驻、开机自启、崩溃重启；监听 `ANTHROPIC_BASE_URL` 对应端口。
+- [ ] **Step 2** — `vibe-niuma-llm-proxy.service`：systemd unit，常驻、开机自启、崩溃重启；监听 `ANTHROPIC_BASE_URL` 对应端口。
 - [ ] **Step 3** — 校验 unit 文件语法（`systemd-analyze verify` 若可用）+ 代理配置语法。
 - [ ] **Step 4: 提交** — `git commit -m "feat: Anthropic-compatible 代理部署单元"`
 
@@ -90,9 +90,9 @@ README.md                      # 项目根 README（总览）
 ## Task 4: Orchestrator 部署单元
 
 **Files:**
-- Create: `deploy/systemd/doskill-orchestrator.service`
+- Create: `deploy/systemd/vibe-niuma-orchestrator.service`
 
-- [ ] **Step 1** — `doskill-orchestrator.service`：systemd unit，`ExecStart` 跑 `venv/bin/uvicorn orchestrator.main:app --host 0.0.0.0 --port ${ORCHESTRATOR_PORT}`，`EnvironmentFile` 指向部署的 `.env`，依赖 MySQL 与 llm-proxy（`After=`/`Wants=`），崩溃重启、开机自启。
+- [ ] **Step 1** — `vibe-niuma-orchestrator.service`：systemd unit，`ExecStart` 跑 `venv/bin/uvicorn orchestrator.main:app --host 0.0.0.0 --port ${ORCHESTRATOR_PORT}`，`EnvironmentFile` 指向部署的 `.env`，依赖 MySQL 与 llm-proxy（`After=`/`Wants=`），崩溃重启、开机自启。
 - [ ] **Step 2** — 校验 unit 语法。
 - [ ] **Step 3: 提交** — `git commit -m "feat: Orchestrator 部署单元（systemd）"`
 
@@ -117,7 +117,7 @@ README.md                      # 项目根 README（总览）
 **Files:**
 - Create: `deploy/deploy.sh`
 
-- [ ] **Step 1** — `deploy.sh`（幂等）：① `rsync` 把 `orchestrator/`、`demo/`、`deploy/` 投到 ECS（排除 `venv/`、`node_modules/`、`__pycache__/`、`.git/`）；② 在 ECS 上：建/更新 Orchestrator venv 并 `pip install -e ".[dev]"`、构建 demo 前端、clone/更新 demo 仓库到 `DEMO_REPO_PATH` 并确保有 `main` 分支；③ 安装/刷新 systemd units、`systemctl daemon-reload`、重启 `doskill-orchestrator` + `doskill-llm-proxy`；④ 起/确认 MySQL compose。
+- [ ] **Step 1** — `deploy.sh`（幂等）：① `rsync` 把 `orchestrator/`、`demo/`、`deploy/` 投到 ECS（排除 `venv/`、`node_modules/`、`__pycache__/`、`.git/`）；② 在 ECS 上：建/更新 Orchestrator venv 并 `pip install -e ".[dev]"`、构建 demo 前端、clone/更新 demo 仓库到 `DEMO_REPO_PATH` 并确保有 `main` 分支；③ 安装/刷新 systemd units、`systemctl daemon-reload`、重启 `vibe-niuma-orchestrator` + `vibe-niuma-llm-proxy`；④ 起/确认 MySQL compose。
 - [ ] **Step 2** — 支持参数：`--code-only`（只投代码重启服务）、`--full`（含 provision）。
 - [ ] **Step 3** — `bash -n` 语法检查。
 - [ ] **Step 4: 提交** — `git commit -m "feat: deploy.sh 投递与重启脚本"`
@@ -143,7 +143,7 @@ README.md                      # 项目根 README（总览）
 - Modify: `orchestrator/tests/test_e2e_smoke.py`（Plan 3 留的骨架）
 
 - [ ] **Step 1** — 完善 Plan 3 的 `test_e2e_smoke.py`：使其能用部署的 `.env`（真实 ECS 配置）跑 —— 对 ECS 上的 demo 仓库，走真实 `BrainstormingSkill`（脚本化回答澄清）+ 真实 dev runner（经代理打真实模型）+ 真实 build + 真实 Docker preview，断言：到 `preview-ready`、git diff 非空、预览 URL（用 `PREVIEW_HOST`）可达；再调 `/merge`，断言 `merged` 且改动进了 demo 仓库 `main`。
-- [ ] **Step 2** — 在 ECS 上 `DOSKILL_E2E=1 venv/bin/pytest tests/test_e2e_smoke.py -v -s` 真跑一次，跑通。若 dev runner 产出不稳定，记录观察、必要时调 prompt（属于 Plan 3 的 adapter，跨计划改动需在 commit 说明）。
+- [ ] **Step 2** — 在 ECS 上 `VIBE_NIUMA_E2E=1 venv/bin/pytest tests/test_e2e_smoke.py -v -s` 真跑一次，跑通。若 dev runner 产出不稳定，记录观察、必要时调 prompt（属于 Plan 3 的 adapter，跨计划改动需在 commit 说明）。
 - [ ] **Step 3: 提交** — `git commit -m "test: 真实 E2E 冒烟在 ECS 上跑通"`
 
 > **给执行者：** 这是设计文档 §9 三大风险假设的真实验证点 —— URL→路由映射、dev runner 凭 brief+截图产出、Docker 预览启动延迟。跑的过程中如发现某个假设不成立，**立即向人汇报**，不要自行大改架构。
@@ -158,7 +158,7 @@ README.md                      # 项目根 README（总览）
 
 - [ ] **Step 1** — 把扩展的 Orchestrator 地址指向 ECS 公网地址，在真实 Chrome 里加载扩展，对着 ECS 上的 demo 站点手动走一遍完整闭环：框选 → 输入需求 → 澄清 → 看状态 → 开预览 → 确认合并。记录每一步的实际表现与延迟。
 - [ ] **Step 2** — 把联调中发现的问题分类：① 扩展 bug → 本任务内最小修复；② Orchestrator/adapter bug → 记录并向人汇报，按严重度决定是否本计划内修。
-- [ ] **Step 3** — 写 `docs/RUNBOOK.md`：怎么看各组件日志（`journalctl -u doskill-orchestrator` 等）、怎么重启、怎么清理残留预览容器、常见故障排查、改配置后怎么生效。更新 `extension/README.md` 的「连 ECS」说明。
+- [ ] **Step 3** — 写 `docs/RUNBOOK.md`：怎么看各组件日志（`journalctl -u vibe-niuma-orchestrator` 等）、怎么重启、怎么清理残留预览容器、常见故障排查、改配置后怎么生效。更新 `extension/README.md` 的「连 ECS」说明。
 - [ ] **Step 4: 提交** — `git commit -m "docs: ECS 联调结果、RUNBOOK 与扩展连线说明"`
 
 ---
@@ -180,7 +180,7 @@ README.md                      # 项目根 README（总览）
 
 - [ ] `deploy/` 下脚本幂等可重入：`provision.sh` + `deploy.sh --full` + `healthcheck.sh` 在 ECS 上跑通。
 - [ ] ECS 上五件套全部常驻可用：demo 仓库、Orchestrator、llm-proxy、MySQL、Docker 预览能力。
-- [ ] 真实 E2E 冒烟（`DOSKILL_E2E=1`）在 ECS 上跑通：一条已知改动从 `created` 到 `merged`，改动真进了 demo `main`。
+- [ ] 真实 E2E 冒烟（`VIBE_NIUMA_E2E=1`）在 ECS 上跑通：一条已知改动从 `created` 到 `merged`，改动真进了 demo `main`。
 - [ ] 浏览器扩展连真实 ECS，手动走通完整闭环（框选 → 澄清 → 预览 → 合并）。
 - [ ] `deploy/README.md` + `docs/RUNBOOK.md` 完整，他人可照着复现部署。
 - [ ] 设计文档 §9 的三大风险假设有真实验证结论（写进 RUNBOOK 或联调记录）。
@@ -196,6 +196,6 @@ README.md                      # 项目根 README（总览）
 4. **端口**：ECS 上可对外开放的端口范围 —— Orchestrator 端口、预览容器端口区间（`PREVIEW_PORT_MIN/MAX`）、llm-proxy 端口、MySQL 端口。
 5. **域名与 HTTPS**：用域名 + HTTPS 证书，还是 IP + 自签（MVP 可接受 IP + 纯 HTTP，安全不考虑）。决定扩展里填的 Orchestrator 地址形态。
 6. **模型与代理**：dev runner 用 claude-code 还是 opencode；`dev_model`（DeepSeek / 通义千问 / 其它）+ key；Anthropic-compatible 代理选 claude-code-router / LiteLLM / one-api；vision 模型 + key。
-7. **代码托管**：demo 仓库是否推到 GitHub/Gitee（影响 `deploy.sh` 是 `git clone` 还是 `rsync` + 本地 `git init`）。doskill 项目本身是否也推远端。
+7. **代码托管**：demo 仓库是否推到 GitHub/Gitee（影响 `deploy.sh` 是 `git clone` 还是 `rsync` + 本地 `git init`）。vibe-niuma 项目本身是否也推远端。
 8. **网络可达性**：ECS 能否访问 npm / pip / DockerHub，还是必须走国内镜像（影响 `provision.sh` 镜像配置）。
 9. **demo 内容确认**：「订单管理 mini 应用」+ 干净内部工具风格 —— 沿用 Plan 1 的实现，是否还要调整。

@@ -42,10 +42,10 @@ class SystemConfig(Base):
     dashscope_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
     anthropic_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
     demo_repo_path: Mapped[str] = mapped_column(
-        String(512), default="/opt/doskill/demo", nullable=False
+        String(512), default="/opt/vibe-niuma/demo", nullable=False
     )
     preview_backend_url: Mapped[str] = mapped_column(
-        String(512), default="http://doskill-demo-backend:8000", nullable=False
+        String(512), default="http://vibe-niuma-demo-backend:8000", nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

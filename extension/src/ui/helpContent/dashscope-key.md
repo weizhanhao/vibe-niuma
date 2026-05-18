@@ -1,4 +1,4 @@
-**DashScope（阿里通义）API key** 用于视觉模型（看截图、定位框选的区域）。doskill 默认走通义千问 VL；没填就只能靠 URL 猜改动位置，准度差很多。
+**DashScope（阿里通义）API key** 用于视觉模型（看截图、定位框选的区域）。vibe-niuma 默认走通义千问 VL；没填就只能靠 URL 猜改动位置，准度差很多。
 
 1. 到 [bailian.console.aliyun.com](https://bailian.console.aliyun.com) 用阿里云账号登录
 2. 左侧「API Key」→「创建我的 API-KEY」

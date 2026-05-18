@@ -1,14 +1,14 @@
 services:
   mysql:
     image: mysql:8
-    container_name: doskill-mysql
+    container_name: vibe-niuma-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-demopass}
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
-      - doskill-mysql-data:/var/lib/mysql
+      - vibe-niuma-mysql-data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-demopass}"]
@@ -17,4 +17,4 @@ services:
       retries: 20
 
 volumes:
-  doskill-mysql-data: {}
+  vibe-niuma-mysql-data: {}

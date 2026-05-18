@@ -77,7 +77,7 @@ demo/
 ```
 
 **前置约定（每个任务都假定已满足）：**
-- 所有命令在 `demo/` 下相应子目录执行，路径以仓库根 `/Users/weizhanhao/doskill` 为基准。
+- 所有命令在 `demo/` 下相应子目录执行，路径以仓库根 `/Users/weizhanhao/vibe-niuma` 为基准。
 - 后端测试需要一个可连的 MySQL。Task 3 起会用 `docker run` 起一个临时 MySQL 容器（`demo-mysql`），Task 15 后改用 `docker compose`。测试连接串走环境变量 `TEST_DATABASE_URL`，conftest 默认 `mysql+pymysql://root:demopass@localhost:3306/demo_test`。
 - 提交信息用约定式提交（feat/test/chore/docs）。
 
@@ -2265,7 +2265,7 @@ git commit -m "chore: demo docker-compose 编排与说明文档"
 
 - [ ] **Step 1: 写 .gitignore**
 
-Create `/Users/weizhanhao/doskill/.gitignore`:
+Create `/Users/weizhanhao/vibe-niuma/.gitignore`:
 
 ```
 # Python
@@ -2285,7 +2285,7 @@ dist/
 
 - [ ] **Step 2: 验证 git 状态干净**
 
-Run: `cd /Users/weizhanhao/doskill && git status --short`
+Run: `cd /Users/weizhanhao/vibe-niuma && git status --short`
 Expected: 仅显示 `.gitignore` 未跟踪，无 `node_modules/`、`__pycache__/` 等噪音
 
 - [ ] **Step 3: 提交**

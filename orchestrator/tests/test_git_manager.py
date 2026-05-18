@@ -71,7 +71,7 @@ def test_create_branch_preserves_stash_for_recovery(temp_repo):
     stash_list = subprocess.run(
         ["git", "stash", "list"], cwd=temp_repo, capture_output=True, text=True,
     ).stdout
-    assert "doskill-autoclean-before-cr/new" in stash_list
+    assert "vibe-niuma-autoclean-before-cr/new" in stash_list
 
 
 def test_commit_all_on_branch(temp_repo):

@@ -135,10 +135,10 @@ describe('request-store multi-mirror container', () => {
       await chrome.storage.local.clear();
       await saveMirrors({ r1: mkMirror('r1') }, 'r1');
       const raw = await chrome.storage.local.get(null);
-      expect(raw.doskill_mirrors_v2).toBeDefined();
-      expect(raw.doskill_active_id_v2).toBe('r1');
+      expect(raw.vibe_niuma_mirrors_v2).toBeDefined();
+      expect(raw.vibe_niuma_active_id_v2).toBe('r1');
       // 旧 key 不应再被写
-      expect(raw['doskill.requestState']).toBeUndefined();
+      expect(raw['vibe-niuma.requestState']).toBeUndefined();
     });
   });
 });

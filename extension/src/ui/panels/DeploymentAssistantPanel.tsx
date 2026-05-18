@@ -1,13 +1,13 @@
 // Plan 7 Task 7: DeploymentAssistantPanel —— 把 ChatPanel + ActionCard + 状态机串起来。
 //
 // 入口：用户首次装好扩展、还没填 orchestratorUrl / adminToken 时（isConfigSufficient===false）
-// App.tsx 路由到这里。完成后 chrome.storage.local 落 doskill_deployment_completed_at，
+// App.tsx 路由到这里。完成后 chrome.storage.local 落 vibe_niuma_deployment_completed_at，
 // App 自动退场到 MainShell。
 //
 // 持久化：
-//   - chrome.storage.local: doskill_deployment_state（FSM）、doskill_deployment_history
+//   - chrome.storage.local: vibe_niuma_deployment_state（FSM）、vibe_niuma_deployment_history
 //     （ChatMessage[]，cap 16 条）、ai_deepseek_key、collected_<field>
-//   - chrome.storage.session: doskill_ssh_key（关浏览器即丢）
+//   - chrome.storage.session: vibe_niuma_ssh_key（关浏览器即丢）
 //
 // 流程：
 //   gathering_deepseek_key → 填 DeepSeek key（纯表单，不走 LLM）
@@ -23,11 +23,11 @@ import { saveConfig } from '../../lib/config';
 import { ActionCard } from '../components/ActionCard';
 import { ChatPanel } from './ChatPanel';
 
-const STATE_KEY = 'doskill_deployment_state';
-const HISTORY_KEY = 'doskill_deployment_history';
+const STATE_KEY = 'vibe_niuma_deployment_state';
+const HISTORY_KEY = 'vibe_niuma_deployment_history';
 const KEY_KEY = 'ai_deepseek_key';
-const COMPLETED_KEY = 'doskill_deployment_completed_at';
-const SSH_SESSION_KEY = 'doskill_ssh_key';
+const COMPLETED_KEY = 'vibe_niuma_deployment_completed_at';
+const SSH_SESSION_KEY = 'vibe_niuma_ssh_key';
 
 interface PersistedShape {
   state: DeploymentState;

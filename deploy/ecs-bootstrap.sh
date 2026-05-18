@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ecs-bootstrap.sh —— 一键在**全新 ECS** 上拉起 doskill。
+# ecs-bootstrap.sh —— 一键在**全新 ECS** 上拉起 vibe-niuma。
 # 业务员从扩展助手拷贝以下命令到 ssh 终端（dashscope key 可选）：
 #
 #   curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- \
@@ -9,19 +9,19 @@
 #
 # 做什么：
 #   1) 装 git / docker / python3（apt 或 yum 自适配）
-#   2) git clone doskill 到 /opt/doskill
+#   2) git clone vibe-niuma 到 /opt/vibe-niuma
 #   3) cp deploy/env.example → deploy/.env，灌入 key + 公网 IP
 #   4) 跑 deploy/deploy.sh —— 本机就是 ECS，inline 步骤（不走 ssh）
 #   5) 末尾打印 admin.token 路径 + orchestrator URL
 #
 # dashscope-key 可选 —— 缺它时视觉模型（看截图理解业务员指什么）会降级失败，
 # brainstorm 仍能用 deepseek 文字模型工作，只是看不懂图。业务员要全功能后续可
-# 在 deploy/.env 补 DASHSCOPE_API_KEY 再 systemctl restart doskill-orchestrator。
+# 在 deploy/.env 补 DASHSCOPE_API_KEY 再 systemctl restart vibe-niuma-orchestrator。
 
 set -euo pipefail
 
-REPO_URL="${DOSKILL_REPO_URL:-https://github.com/weizhanhao/vibe-niuma.git}"
-DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/doskill}"
+REPO_URL="${VIBE_NIUMA_REPO_URL:-https://github.com/weizhanhao/vibe-niuma.git}"
+DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/vibe-niuma}"
 
 DEEPSEEK_KEY=""
 DASHSCOPE_KEY=""
@@ -73,7 +73,7 @@ else
   exit 1
 fi
 
-# ── 2. clone doskill ───────────────────────────────────────────────
+# ── 2. clone vibe-niuma ───────────────────────────────────────────────
 log "git clone $REPO_URL → $DEPLOY_ROOT"
 if [ -d "$DEPLOY_ROOT/.git" ]; then
   git -C "$DEPLOY_ROOT" pull --ff-only || true
@@ -148,25 +148,25 @@ cd ..
 mkdir -p mysql
 cp -n deploy/mysql/init.sql mysql/init.sql 2>/dev/null || true
 docker pull mysql:8 >/dev/null || true
-if ! docker inspect doskill-mysql >/dev/null 2>&1; then
-  docker volume create doskill-mysql-data >/dev/null
-  docker run -d --name doskill-mysql --restart unless-stopped \
+if ! docker inspect vibe-niuma-mysql >/dev/null 2>&1; then
+  docker volume create vibe-niuma-mysql-data >/dev/null
+  docker run -d --name vibe-niuma-mysql --restart unless-stopped \
     -e MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-demopass}" \
     -p "${MYSQL_PORT:-3306}:3306" \
-    -v doskill-mysql-data:/var/lib/mysql \
+    -v vibe-niuma-mysql-data:/var/lib/mysql \
     -v "$DEPLOY_ROOT/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro" \
     mysql:8 >/dev/null
 else
-  docker start doskill-mysql >/dev/null 2>&1 || true
+  docker start vibe-niuma-mysql >/dev/null 2>&1 || true
 fi
 
 # ── systemd ────────────────────────────────────────────────────────
-cp deploy/systemd/doskill-llm-proxy.service /etc/systemd/system/
-cp deploy/systemd/doskill-orchestrator.service /etc/systemd/system/
+cp deploy/systemd/vibe-niuma-llm-proxy.service /etc/systemd/system/
+cp deploy/systemd/vibe-niuma-orchestrator.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now doskill-llm-proxy.service
-systemctl enable --now doskill-orchestrator.service
-systemctl restart doskill-llm-proxy.service doskill-orchestrator.service
+systemctl enable --now vibe-niuma-llm-proxy.service
+systemctl enable --now vibe-niuma-orchestrator.service
+systemctl restart vibe-niuma-llm-proxy.service vibe-niuma-orchestrator.service
 
 # ── main demo ──────────────────────────────────────────────────────
 bash deploy/main-demo.sh || log "main-demo 起失败（不阻塞）"
@@ -176,7 +176,7 @@ TOKEN_PATH="$DEPLOY_ROOT/admin.token"
 sleep 3   # 给 orchestrator systemd ExecStartPre 一点点时间生成 token
 echo
 echo "════════════════════════════════════════════════════════"
-echo "  doskill 部署完成"
+echo "  vibe-niuma 部署完成"
 echo "  Orchestrator URL: http://$PUBLIC_HOST:${ORCHESTRATOR_PORT:-9000}"
 if [ -f "$TOKEN_PATH" ]; then
   echo "  Admin Token: $(cat "$TOKEN_PATH")"

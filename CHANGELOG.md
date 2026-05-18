@@ -1,6 +1,6 @@
 # Changelog
 
-doskill 项目版本记录。语义化版本（major.minor.patch），主要面向业务员看到的能力变化。
+vibe-niuma 项目版本记录。语义化版本（major.minor.patch），主要面向业务员看到的能力变化。
 
 ## [v0.6.0] — 2026-05-17
 
@@ -59,7 +59,7 @@ doskill 项目版本记录。语义化版本（major.minor.patch），主要面�
 
 ### Added
 
-- **多项目模型**（extension）：扩展不再绑死单个项目，业务员可以在 head 下拉里切换 `demofrontend` / `demobackend` / `xxx-saas` 等独立项目，每个项目自带 orchestrator 地址 / token / 模型配置。`doskill_projects[]` + `doskill_active_project_id` 存 chrome.storage。setActiveProject 同步 `doskill_config_v2` 让 service-worker 不必改读路径。
+- **多项目模型**（extension）：扩展不再绑死单个项目，业务员可以在 head 下拉里切换 `demofrontend` / `demobackend` / `xxx-saas` 等独立项目，每个项目自带 orchestrator 地址 / token / 模型配置。`vibe_niuma_projects[]` + `vibe_niuma_active_project_id` 存 chrome.storage。setActiveProject 同步 `vibe_niuma_config_v2` 让 service-worker 不必改读路径。
 - **Conversation 持久对话**（orchestrator）：DB 加 `conversation` 表 + `change_request.conversation_id` 外键。同一 conversation 里 N 个 CR 共享 chat history，业务员说完「订单徽章改红」AI 做完，可以继续说「字号大一点」，AI 看到完整历史接着改。`/conversations` REST CRUD + 自动 bucket 老 CR 到 Legacy conversation。
 - **动态压缩**（orchestrator）：`compaction.estimate_tokens` 用 tiktoken cl100k_base 估对话 token；超 40k 触发 LLM 把老 ai 消息压成中文摘要，user 消息 / 最近 6 轮 / 标 `preserve=True` 的全保留。pipeline 在 dev_runner 启动前自动调用，新 summary 写回 conversation 表，下轮直接命中。
 - **PreviewDock 底部浮卡**（extension）：preview-ready / merged / discarded 时主体不再阻塞，业务员可以继续打字起新 CR；最近一条带 preview_url 的 CR 用底部 dock 展示（branch chip + URL + ↗ 打开 + 丢弃 + 合并）。

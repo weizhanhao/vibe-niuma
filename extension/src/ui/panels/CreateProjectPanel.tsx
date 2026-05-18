@@ -1,7 +1,7 @@
 // Plan 9 Task 8: 新建项目向导。两步：
 //   1. 起名
 //   2. 走 Plan 7 部署助手（DeploymentAssistantPanel）；助手 onComplete 时
-//      读 chrome.storage 里临时 config（助手已写到 doskill_config_v2），
+//      读 chrome.storage 里临时 config（助手已写到 vibe_niuma_config_v2），
 //      pack 成新 Project saveProject + setActive。
 import React, { useState } from 'react';
 import { loadConfig } from '../../lib/config';
@@ -35,8 +35,8 @@ export function CreateProjectPanel({ onDone, onCancel }: Props) {
     if (chrome?.storage?.local?.remove) {
       try {
         await chrome.storage.local.remove([
-          'doskill_deployment_state',
-          'doskill_deployment_history',
+          'vibe_niuma_deployment_state',
+          'vibe_niuma_deployment_history',
         ]);
       } catch {
         /* 清不掉也别拦着用户进 step 2 */

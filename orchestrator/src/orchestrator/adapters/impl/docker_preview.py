@@ -27,7 +27,7 @@ _HEALTH_TIMEOUT = 60
 
 # Plan 8 Task 8: 项目根有 docker-compose.preview.yml 时走 compose 模式
 _COMPOSE_FILE = "docker-compose.preview.yml"
-_COMPOSE_HANDLE_PREFIX = "doskill-preview-"
+_COMPOSE_HANDLE_PREFIX = "vibe-niuma-preview-"
 
 
 class DockerPreviewAdapter:
@@ -86,7 +86,7 @@ class DockerPreviewAdapter:
     ) -> PreviewInstance:
         port = self._allocate_port()
         preview_id = uuid.uuid4().hex[:12]
-        image = f"doskill-preview-{preview_id}"
+        image = f"vibe-niuma-preview-{preview_id}"
         name = image  # 容器名复用镜像名，便于排查
 
         # 1) build image（前端目录）—— stream 输出
@@ -140,13 +140,13 @@ class DockerPreviewAdapter:
         self, repo_path: str, branch: str, *, log: LogSink | None = None
     ) -> PreviewInstance:
         """项目根含 docker-compose.preview.yml → 启动整组 service。
-        handle = compose project name = `doskill-preview-<id>`，teardown 用
-        `docker compose -p <name> down -v`。注入 env DOSKILL_FRONTEND_PORT
-        让 compose 文件的 `${DOSKILL_FRONTEND_PORT}` 替换成分配的 host 端口。"""
+        handle = compose project name = `vibe-niuma-preview-<id>`，teardown 用
+        `docker compose -p <name> down -v`。注入 env VIBE_NIUMA_FRONTEND_PORT
+        让 compose 文件的 `${VIBE_NIUMA_FRONTEND_PORT}` 替换成分配的 host 端口。"""
         port = self._allocate_port()
         preview_id = uuid.uuid4().hex[:12]
         project_name = f"{_COMPOSE_HANDLE_PREFIX}{preview_id}"
-        env = {**os.environ, "DOSKILL_FRONTEND_PORT": str(port)}
+        env = {**os.environ, "VIBE_NIUMA_FRONTEND_PORT": str(port)}
 
         if log is not None:
             await log("▸ docker compose up...")
@@ -259,7 +259,7 @@ class DockerPreviewAdapter:
         - log 非 None 时每行 await log(line)（已截至 200 字符上限由 publish_log 把关）
         - timeout 是整体上限；超了 kill 后回填 124
         - FileNotFoundError → 127（docker 没装的兜底）
-        - env：compose 模式注入 DOSKILL_FRONTEND_PORT；老路径传 None 沿用父环境
+        - env：compose 模式注入 VIBE_NIUMA_FRONTEND_PORT；老路径传 None 沿用父环境
         """
         try:
             proc = await asyncio.create_subprocess_exec(

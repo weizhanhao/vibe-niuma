@@ -6,7 +6,7 @@
 - GET 永远把 *_api_key 脱敏（返回 null + *_api_key_set: bool）。
 - PUT 用 Pydantic AdminConfigUpdateIn 校验 body；StaleVersionError → 409。
 - 副作用：
-    * 任一 *_api_key 字段实际变了 → systemctl restart doskill-llm-proxy
+    * 任一 *_api_key 字段实际变了 → systemctl restart vibe-niuma-llm-proxy
       （subprocess.run, check=False, timeout=10）；
     * 其它字段（dev_runner / dev_model / vision_model / demo_repo_path /
       preview_backend_url）变了 → 仅 `get_settings.cache_clear()`。
@@ -47,8 +47,8 @@ PLAIN_FIELDS = (
     "preview_backend_url",
 )
 
-# LiteLLM systemd 服务名 —— 部署在 ECS 上的 doskill-llm-proxy.service。
-LITELLM_SERVICE = "doskill-llm-proxy"
+# LiteLLM systemd 服务名 —— 部署在 ECS 上的 vibe-niuma-llm-proxy.service。
+LITELLM_SERVICE = "vibe-niuma-llm-proxy"
 
 
 # ──────────────────────── Pydantic schemas ────────────────────────
@@ -103,7 +103,7 @@ def _serialize_config(cfg: SystemConfig) -> dict:
 
 
 def _restart_litellm() -> None:
-    """systemctl restart doskill-llm-proxy —— check=False 不阻塞响应。
+    """systemctl restart vibe-niuma-llm-proxy —— check=False 不阻塞响应。
 
     本地 dev 环境没有 systemctl 会抛 FileNotFoundError；捕获后只记日志。
     """

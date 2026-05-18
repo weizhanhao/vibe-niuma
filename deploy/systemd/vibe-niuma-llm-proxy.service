@@ -1,17 +1,17 @@
 [Unit]
-Description=doskill LiteLLM proxy (Anthropic / OpenAI compatible)
+Description=vibe-niuma LiteLLM proxy (Anthropic / OpenAI compatible)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/opt/doskill/.env
+EnvironmentFile=/opt/vibe-niuma/.env
 Environment=STORE_MODEL_IN_DB=False
-WorkingDirectory=/opt/doskill/llm-proxy
+WorkingDirectory=/opt/vibe-niuma/llm-proxy
 # env -u 显式剔除 DATABASE_URL（orchestrator 用的，被 EnvironmentFile 串进来了，
 # LiteLLM 看到就以为要起 prisma DB）
-ExecStart=/usr/bin/env -u DATABASE_URL /opt/doskill/llm-proxy/venv/bin/litellm \
-  --config /opt/doskill/llm-proxy/config.yml \
+ExecStart=/usr/bin/env -u DATABASE_URL /opt/vibe-niuma/llm-proxy/venv/bin/litellm \
+  --config /opt/vibe-niuma/llm-proxy/config.yml \
   --port ${LLM_PROXY_PORT}
 Restart=on-failure
 RestartSec=5

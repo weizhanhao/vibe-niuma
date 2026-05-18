@@ -231,7 +231,7 @@ def test_small_writes_only_result(tmp_path: Path):
         total_elapsed=9.2,
         dev_runner_files_changed=["src/pages/Orders.tsx"],
     )
-    out_dir = tmp_path / ".doskill" / "history" / "cr-cr-small-1"
+    out_dir = tmp_path / ".vibe-niuma" / "history" / "cr-cr-small-1"
     assert (out_dir / "result.md").exists()
     assert not (out_dir / "spec.md").exists()
     assert not (out_dir / "plan.md").exists()
@@ -267,7 +267,7 @@ def test_large_writes_all_three(tmp_path: Path):
         total_elapsed=46.6,
         dev_runner_files_changed=["a.tsx", "b.tsx", "c.tsx", "d.tsx", "e.tsx"],
     )
-    out_dir = tmp_path / ".doskill" / "history" / "cr-cr-large-1"
+    out_dir = tmp_path / ".vibe-niuma" / "history" / "cr-cr-large-1"
     assert (out_dir / "result.md").exists()
     assert (out_dir / "spec.md").exists()
     assert (out_dir / "plan.md").exists()
@@ -301,7 +301,7 @@ def test_idempotent_rewrite_overwrites_cleanly(tmp_path: Path):
         dev_runner_files_changed=["a.tsx"],
     )
     write_history(**common)
-    out_file = tmp_path / ".doskill" / "history" / "cr-cr-rerun" / "result.md"
+    out_file = tmp_path / ".vibe-niuma" / "history" / "cr-cr-rerun" / "result.md"
     first = out_file.read_text(encoding="utf-8")
 
     common2 = {**common, "preview_url": "http://localhost:5999"}
@@ -333,7 +333,7 @@ def test_demote_large_to_small_removes_stale_spec_plan(tmp_path: Path):
         dev_runner_files_changed=None,
     )
     write_history(**large_args)
-    out_dir = tmp_path / ".doskill" / "history" / "cr-cr-demote"
+    out_dir = tmp_path / ".vibe-niuma" / "history" / "cr-cr-demote"
     assert (out_dir / "spec.md").exists()
     assert (out_dir / "plan.md").exists()
 
@@ -365,7 +365,7 @@ def test_result_includes_clarify_qa_when_present(tmp_path: Path):
         dev_runner_files_changed=None,
     )
     text = (
-        tmp_path / ".doskill" / "history" / "cr-cr-qa" / "result.md"
+        tmp_path / ".vibe-niuma" / "history" / "cr-cr-qa" / "result.md"
     ).read_text(encoding="utf-8")
     assert "按啥搜？" in text
     assert "客户名" in text
@@ -385,7 +385,7 @@ def test_result_handles_missing_preview_url(tmp_path: Path):
         dev_runner_files_changed=None,
     )
     text = (
-        tmp_path / ".doskill" / "history" / "cr-cr-no-preview" / "result.md"
+        tmp_path / ".vibe-niuma" / "history" / "cr-cr-no-preview" / "result.md"
     ).read_text(encoding="utf-8")
     assert "（未生成）" in text or "(未生成)" in text
 
@@ -405,7 +405,7 @@ def test_result_records_selected_mockup_when_present(tmp_path: Path):
         dev_runner_files_changed=None,
     )
     text = (
-        tmp_path / ".doskill" / "history" / "cr-cr-mockup" / "result.md"
+        tmp_path / ".vibe-niuma" / "history" / "cr-cr-mockup" / "result.md"
     ).read_text(encoding="utf-8")
     assert "v1" in text
     assert "方向 A" in text
@@ -472,7 +472,7 @@ async def test_pipeline_writes_history_on_preview_ready(temp_repo, db_session):
     await pipeline.run(cr.id)
     assert repo.get(cr.id).state == State.PREVIEW_READY.value
 
-    out_dir = temp_repo / ".doskill" / "history" / f"cr-{cr.id}"
+    out_dir = temp_repo / ".vibe-niuma" / "history" / f"cr-{cr.id}"
     assert (out_dir / "result.md").exists(), "preview-ready 后应写 result.md"
     text = (out_dir / "result.md").read_text(encoding="utf-8")
     assert "**small**" in text
@@ -551,7 +551,7 @@ def _make_sub_repo(parent: Path, name: str) -> Path:
 
 
 def test_history_root_helper_returns_project_root_for_multi_repo(tmp_path: Path):
-    """_history_root() 在多子仓项目下应返回 project_root/.doskill/history。"""
+    """_history_root() 在多子仓项目下应返回 project_root/.vibe-niuma/history。"""
     # Arrange: 项目根含两个子仓（各自有 .git）
     _make_sub_repo(tmp_path, "frontend")
     _make_sub_repo(tmp_path, "backend")
@@ -560,7 +560,7 @@ def test_history_root_helper_returns_project_root_for_multi_repo(tmp_path: Path)
     result = _history_root(str(tmp_path))
 
     # Assert: 落在项目根（tmp_path），不在任一子仓内
-    assert result == tmp_path / ".doskill" / "history"
+    assert result == tmp_path / ".vibe-niuma" / "history"
 
 
 def test_history_root_helper_unchanged_for_single_repo(tmp_path: Path):
@@ -571,12 +571,12 @@ def test_history_root_helper_unchanged_for_single_repo(tmp_path: Path):
     # Act
     result = _history_root(str(tmp_path))
 
-    # Assert: 同样落在传入路径的 .doskill/history
-    assert result == tmp_path / ".doskill" / "history"
+    # Assert: 同样落在传入路径的 .vibe-niuma/history
+    assert result == tmp_path / ".vibe-niuma" / "history"
 
 
 def test_history_writes_to_project_root_in_multi_repo(tmp_path: Path):
-    """多仓项目下 write_history 必须写到 project_root/.doskill/history/，
+    """多仓项目下 write_history 必须写到 project_root/.vibe-niuma/history/，
     不能写到任何子仓内部。"""
     # Arrange: 建 frontend/ + backend/ 两个子仓
     _make_sub_repo(tmp_path, "frontend")
@@ -597,23 +597,23 @@ def test_history_writes_to_project_root_in_multi_repo(tmp_path: Path):
     )
 
     # Assert 1: 历史目录在项目根
-    project_history_dir = tmp_path / ".doskill" / "history" / "cr-multi-cr-1"
+    project_history_dir = tmp_path / ".vibe-niuma" / "history" / "cr-multi-cr-1"
     assert project_history_dir.exists(), (
         f"多仓项目的历史应写到 {project_history_dir}，但目录不存在"
     )
     assert (project_history_dir / "result.md").exists()
 
-    # Assert 2: 子仓内部不应有 .doskill/
-    assert not (tmp_path / "frontend" / ".doskill").exists(), (
-        "frontend 子仓内部不应出现 .doskill/ 目录"
+    # Assert 2: 子仓内部不应有 .vibe-niuma/
+    assert not (tmp_path / "frontend" / ".vibe-niuma").exists(), (
+        "frontend 子仓内部不应出现 .vibe-niuma/ 目录"
     )
-    assert not (tmp_path / "backend" / ".doskill").exists(), (
-        "backend 子仓内部不应出现 .doskill/ 目录"
+    assert not (tmp_path / "backend" / ".vibe-niuma").exists(), (
+        "backend 子仓内部不应出现 .vibe-niuma/ 目录"
     )
 
 
 def test_history_path_unchanged_in_single_repo(tmp_path: Path):
-    """单仓项目下 write_history 行为与原先完全一致：历史写到 repo/.doskill/history/。"""
+    """单仓项目下 write_history 行为与原先完全一致：历史写到 repo/.vibe-niuma/history/。"""
     # Arrange: 普通单仓，没有含 .git 的子目录
     (tmp_path / "src").mkdir()
 
@@ -632,7 +632,7 @@ def test_history_path_unchanged_in_single_repo(tmp_path: Path):
     )
 
     # Assert: 历史在 tmp_path（repo 根）
-    out_dir = tmp_path / ".doskill" / "history" / "cr-single-cr-1"
+    out_dir = tmp_path / ".vibe-niuma" / "history" / "cr-single-cr-1"
     assert out_dir.exists()
     assert (out_dir / "result.md").exists()
     text = (out_dir / "result.md").read_text(encoding="utf-8")

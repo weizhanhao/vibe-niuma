@@ -1,8 +1,8 @@
 // 主题切换（light 默认 / dark 可选）。
 //
 // 存储策略：
-//   - 主存：`chrome.storage.local['doskill_theme']`（跨 panel session 同步）
-//   - 镜像：`localStorage['doskill_theme']`（同步可读，避免 React 挂载前一闪）
+//   - 主存：`chrome.storage.local['vibe_niuma_theme']`（跨 panel session 同步）
+//   - 镜像：`localStorage['vibe_niuma_theme']`（同步可读，避免 React 挂载前一闪）
 //
 // 调用方：
 //   - `ui-entry.tsx` 启动时同步读 localStorage、立刻给 body 加 class
@@ -10,7 +10,7 @@
 
 export type Theme = 'light' | 'dark';
 
-const STORAGE_KEY = 'doskill_theme';
+const STORAGE_KEY = 'vibe_niuma_theme';
 const DEFAULT_THEME: Theme = 'light';
 
 function isTheme(v: unknown): v is Theme {

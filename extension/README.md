@@ -1,4 +1,4 @@
-# doskill 浏览器扩展
+# vibe-niuma 浏览器扩展
 
 业务员侧的薄客户端：框选页面区域 + 输入需求 → Orchestrator → 看预览 → 确认合并 / 丢弃。
 
@@ -16,7 +16,7 @@ npm run build                # 输出到 dist/
 1. `npm run build` 生成 `dist/`
 2. 打开 `chrome://extensions`，开启「开发者模式」
 3. 点「加载已解压的扩展程序」，选 `extension/dist`
-4. 点 doskill 图标 → 侧栏弹出
+4. 点 vibe-niuma 图标 → 侧栏弹出
 5. 在侧栏齿轮里填 Orchestrator 地址（默认 `http://localhost:9000`）
 
 ## 连真实 ECS

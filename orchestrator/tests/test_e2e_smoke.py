@@ -1,6 +1,6 @@
 """真实 E2E 冒烟（默认 skip）。
 
-设 `DOSKILL_E2E=1` 才跑。它会用真实 Orchestrator 装配（claude/opencode + Docker
+设 `VIBE_NIUMA_E2E=1` 才跑。它会用真实 Orchestrator 装配（claude/opencode + Docker
 + 真实 LLM 经代理）对 demo 跑一条已知简单改动，断言闭环到 `merged`。
 
 环境前提（参见 docs/superpowers/plans 里 Plan 5 的清单）：
@@ -20,8 +20,8 @@ import pytest
 
 
 pytestmark = pytest.mark.skipif(
-    not os.getenv("DOSKILL_E2E"),
-    reason="真实 E2E：需 DOSKILL_E2E=1 + Docker + LLM key",
+    not os.getenv("VIBE_NIUMA_E2E"),
+    reason="真实 E2E：需 VIBE_NIUMA_E2E=1 + Docker + LLM key",
 )
 
 

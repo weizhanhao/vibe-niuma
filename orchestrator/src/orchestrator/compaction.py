@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 COMPACTION_PROMPT = """\
-你是 doskill 对话压缩器。下面是业务员和 AI 的多轮对话。
+你是 vibe-niuma 对话压缩器。下面是业务员和 AI 的多轮对话。
 
 要求：把所有 AI 回复（除了被标记 [PRESERVE] 的）压成一段中文摘要，包含：
 1) 业务员的核心意图演化（按时间顺序串出来）

@@ -7,9 +7,9 @@
 import { z } from 'zod';
 
 // ── Storage key ─────────────────────────────────────────────────────
-// v2 后缀：和老的 `doskill.orchestratorBaseUrl`（仅存单个 URL 字符串）区分开。
+// v2 后缀：和老的 `vibe-niuma.orchestratorBaseUrl`（仅存单个 URL 字符串）区分开。
 // 升级时不读老 key，让用户用 SetupWizard 重新走一遍——比 schema 迁移省事且更显式。
-const STORAGE_KEY = 'doskill_config_v2';
+const STORAGE_KEY = 'vibe_niuma_config_v2';
 
 // ── zod schema ──────────────────────────────────────────────────────
 // 严格按照 Plan 6 task 4 的定义；server 子对象的默认值在保存时由 zod 自己补上。
@@ -24,8 +24,8 @@ export const ConfigSchema = z.object({
     deepseekApiKey: z.string().optional(),
     dashscopeApiKey: z.string().optional(),
     anthropicApiKey: z.string().optional(),
-    demoRepoPath: z.string().default('/opt/doskill/demo'),
-    previewBackendUrl: z.string().default('http://doskill-demo-backend:8000'),
+    demoRepoPath: z.string().default('/opt/vibe-niuma/demo'),
+    previewBackendUrl: z.string().default('http://vibe-niuma-demo-backend:8000'),
   }),
 });
 

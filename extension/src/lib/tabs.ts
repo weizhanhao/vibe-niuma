@@ -10,7 +10,7 @@ import type { TabsState } from './types';
 /** AgentTabBar 最多同时显示 8 个 tab；多了 LRU evict. */
 export const MAX_OPEN_TABS = 8;
 
-const STORAGE_KEY = 'doskill.tabsState.v1';
+const STORAGE_KEY = 'vibe-niuma.tabsState.v1';
 
 const EMPTY_STATE: TabsState = {
   openTabIds: [],

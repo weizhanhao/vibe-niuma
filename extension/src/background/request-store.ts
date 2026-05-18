@@ -7,10 +7,10 @@ import type {
 } from '../lib/types';
 import { MAX_LOGS_PER_MIRROR, MAX_MIRRORS, TERMINAL_STATES } from '../lib/types';
 
-// Phase E：新的 storage key。旧 key `doskill.requestState` 不读不写——
+// Phase E：新的 storage key。旧 key `vibe-niuma.requestState` 不读不写——
 // MVP 单用户、单台 ECS，丢若干历史可接受；升级语义清晰。
-const STORAGE_KEY_V2 = 'doskill_mirrors_v2';
-const ACTIVE_KEY_V2 = 'doskill_active_id_v2';
+const STORAGE_KEY_V2 = 'vibe_niuma_mirrors_v2';
+const ACTIVE_KEY_V2 = 'vibe_niuma_active_id_v2';
 
 const TERMINAL = new Set<string>(TERMINAL_STATES);
 

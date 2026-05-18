@@ -33,13 +33,13 @@ const VALID_CONFIG = {
     devRunner: 'opencode',
     devModel: 'deepseek/deepseek-v4-flash',
     visionModel: 'qwen-vl-plus',
-    demoRepoPath: '/opt/doskill/demo',
-    previewBackendUrl: 'http://doskill-demo-backend:8000',
+    demoRepoPath: '/opt/vibe-niuma/demo',
+    previewBackendUrl: 'http://vibe-niuma-demo-backend:8000',
   },
 };
 
 async function seedConfig() {
-  await chrome.storage.local.set({ doskill_config_v2: VALID_CONFIG });
+  await chrome.storage.local.set({ vibe_niuma_config_v2: VALID_CONFIG });
 }
 
 interface FakeBridge {

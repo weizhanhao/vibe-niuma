@@ -1,4 +1,4 @@
-/* doskill 扩展侧栏 · Linear × Raycast 视觉。
+/* vibe-niuma 扩展侧栏 · Linear × Raycast 视觉。
    2026-05-17 重做：从「工作台 + 工程网格」收敛到「安静的 AI 工作台」。
    - 字体统一 Inter；mono 仅用于真正的代码/数字/id，不再当 UI 骨架
    - 暗色 canvas 走暖中性（neutral），不带蓝；accent mint/sage（chroma ≤0.10）
@@ -1966,7 +1966,7 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   width: 12px; height: 12px;
   border: 2px solid var(--accent); border-right-color: transparent;
   border-radius: 50%;
-  animation: doskill-spin 0.7s linear infinite;
+  animation: vibe-niuma-spin 0.7s linear infinite;
 }
 
 /* InlineCard —— 平铺布局，无边框无 shadow，融进 chat stream */
@@ -2004,9 +2004,9 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   width: 10px; height: 10px;
   border: 2px solid var(--accent); border-right-color: transparent;
   border-radius: 50%;
-  animation: doskill-spin 0.7s linear infinite;
+  animation: vibe-niuma-spin 0.7s linear infinite;
 }
-@keyframes doskill-spin { to { transform: rotate(360deg); } }
+@keyframes vibe-niuma-spin { to { transform: rotate(360deg); } }
 /* state 视觉信号已由 state label/dot 颜色承担，平铺态不再用边框做 highlight */
 .inline-card.is-running,
 .inline-card--failed,

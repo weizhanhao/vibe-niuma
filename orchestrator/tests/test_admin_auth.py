@@ -1,6 +1,6 @@
 """Plan 6 Task 2 —— admin token 文件 + FastAPI 鉴权依赖。
 
-token 文件路径默认 `/opt/doskill/admin.token`，测试通过 monkeypatch 改到 tmp_path。
+token 文件路径默认 `/opt/vibe-niuma/admin.token`，测试通过 monkeypatch 改到 tmp_path。
 verify_admin_token 比对头部 `X-Admin-Token`，错/缺一律 401。
 """
 import os
@@ -15,7 +15,7 @@ from orchestrator import auth
 
 @pytest.fixture
 def token_path(tmp_path, monkeypatch):
-    """指 ADMIN_TOKEN_PATH 到 tmp_path —— 测试不动 /opt/doskill。"""
+    """指 ADMIN_TOKEN_PATH 到 tmp_path —— 测试不动 /opt/vibe-niuma。"""
     path = tmp_path / "admin.token"
     monkeypatch.setattr(auth, "ADMIN_TOKEN_PATH", str(path))
     return path
@@ -101,7 +101,7 @@ def test_token_is_constant_time_compared(monkeypatch, token_path):
 
 
 def test_token_path_env_override(monkeypatch, tmp_path):
-    """DOSKILL_ADMIN_TOKEN_PATH env var 能覆盖默认路径 —— 测试和 dev 都靠这个。
+    """VIBE_NIUMA_ADMIN_TOKEN_PATH env var 能覆盖默认路径 —— 测试和 dev 都靠这个。
 
     这里直接 monkeypatch 模块常量，验证 read_admin_token 真的写到指向的路径。
     模块 import 时读 env 的行为则通过 importlib.reload 间接覆盖。

@@ -26,24 +26,24 @@ label 写「确认 Docker 已装且能跑」。expectsOutput=true，搭配一条
 - 报错 `Cannot connect to the Docker daemon` → 引导用户启动 Docker Desktop 或 `sudo systemctl start docker`。
 - `command not found` → 给一个 `open_url` 让他去 docker.com/get-started 装，**装好回来再继续，不要替他装**。
 
-## ② git clone doskill
+## ② git clone vibe-niuma
 
 发一条 `copy_command`：
 
 ```
-cd ~ && git clone https://github.com/weizhanhao/vibe-niuma.git doskill && cd doskill && ls deploy
+cd ~ && git clone https://github.com/weizhanhao/vibe-niuma.git vibe-niuma && cd vibe-niuma && ls deploy
 ```
 
-label 写「把 doskill 源码拉下来」。expectsOutput=true。看到 `deploy.sh env.example healthcheck.sh ...` 这种文件列表就过。
+label 写「把 vibe-niuma 源码拉下来」。expectsOutput=true。看到 `deploy.sh env.example healthcheck.sh ...` 这种文件列表就过。
 
-> 真实仓库地址在用户那边的项目设置里。**如果还不知道仓库 URL**，先用 `request_output` 问「你拿到的 doskill 仓库地址是什么？（一般是 git@... 或 https://github.com/.../doskill.git）」，拿到再发 clone 命令。
+> 真实仓库地址在用户那边的项目设置里。**如果还不知道仓库 URL**，先用 `request_output` 问「你拿到的 vibe-niuma 仓库地址是什么？（一般是 git@... 或 https://github.com/.../vibe-niuma.git）」，拿到再发 clone 命令。
 
 ## ③ 写 deploy/.env（关键一步）
 
 先用 `copy_command` 让用户复制模板：
 
 ```
-cp ~/doskill/deploy/env.example ~/doskill/deploy/.env
+cp ~/vibe-niuma/deploy/env.example ~/vibe-niuma/deploy/.env
 ```
 
 然后告诉用户：「现在你需要把 DeepSeek key 填进去。我们用一个简单命令直接写进去，不用打开编辑器。」
@@ -51,10 +51,10 @@ cp ~/doskill/deploy/env.example ~/doskill/deploy/.env
 发第二条 `copy_command`（**注意：DeepSeek key 你已经在 phase=gathering_deepseek_key 阶段拿到了，直接拼成完整命令**，不要让用户再粘一遍）：
 
 ```
-sed -i.bak 's|^LLM_API_KEY=.*|LLM_API_KEY=sk-deepseekXXXXXXXX|' ~/doskill/deploy/.env && \
-  sed -i.bak 's|^ECS_HOST=.*|ECS_HOST=127.0.0.1|' ~/doskill/deploy/.env && \
-  sed -i.bak 's|^PREVIEW_HOST=.*|PREVIEW_HOST=localhost|' ~/doskill/deploy/.env && \
-  grep -E '^(LLM_API_KEY|ECS_HOST|PREVIEW_HOST)=' ~/doskill/deploy/.env
+sed -i.bak 's|^LLM_API_KEY=.*|LLM_API_KEY=sk-deepseekXXXXXXXX|' ~/vibe-niuma/deploy/.env && \
+  sed -i.bak 's|^ECS_HOST=.*|ECS_HOST=127.0.0.1|' ~/vibe-niuma/deploy/.env && \
+  sed -i.bak 's|^PREVIEW_HOST=.*|PREVIEW_HOST=localhost|' ~/vibe-niuma/deploy/.env && \
+  grep -E '^(LLM_API_KEY|ECS_HOST|PREVIEW_HOST)=' ~/vibe-niuma/deploy/.env
 ```
 
 label 写「把 DeepSeek key + 本地地址写进 .env」。expectsOutput=true，期望回贴里能看到这三行被改成正确值。
@@ -66,7 +66,7 @@ label 写「把 DeepSeek key + 本地地址写进 .env」。expectsOutput=true�
 发一条 `copy_command`：
 
 ```
-cd ~/doskill && bash deploy/deploy.sh --full 2>&1 | tail -50
+cd ~/vibe-niuma && bash deploy/deploy.sh --full 2>&1 | tail -50
 ```
 
 label 写「跑部署脚本（首次需要 3-5 分钟）」。expectsOutput=true，placeholder 写「贴最后 50 行（脚本会自动只显示尾部）」。
@@ -79,7 +79,7 @@ label 写「跑部署脚本（首次需要 3-5 分钟）」。expectsOutput=true
 发一条 `copy_command`：
 
 ```
-cd ~/doskill && bash deploy/healthcheck.sh
+cd ~/vibe-niuma && bash deploy/healthcheck.sh
 ```
 
 label 写「11 项体检」。expectsOutput=true。期望末尾「通过 11 · 失败 0」。
@@ -91,7 +91,7 @@ label 写「11 项体检」。expectsOutput=true。期望末尾「通过 11 · �
 先发一条 `copy_command`：
 
 ```
-cat ~/doskill/admin.token
+cat ~/vibe-niuma/admin.token
 ```
 
 label 写「拿 admin token」。expectsOutput=true。

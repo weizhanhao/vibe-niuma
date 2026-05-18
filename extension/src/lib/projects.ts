@@ -1,18 +1,18 @@
 // Plan 9 Task 7: 多项目模型 + chrome.storage CRUD + Legacy 迁移。
 //
 // 每个 project = 一台 orchestrator + 一组 git + 一组 key。chrome.storage.local 存：
-//   doskill_projects: Project[]
-//   doskill_active_project_id: string | null
+//   vibe_niuma_projects: Project[]
+//   vibe_niuma_active_project_id: string | null
 //
-// 启动时 migrateLegacyConfig() 把老的 doskill_config_v2（单 config）包成一个
+// 启动时 migrateLegacyConfig() 把老的 vibe_niuma_config_v2（单 config）包成一个
 // 「默认项目」存到 projects 数组，旧 key 保留作 fallback（不删）。
 
 import { z } from 'zod';
 import { ConfigSchema, type Config } from './config';
 
-const PROJECTS_KEY = 'doskill_projects';
-const ACTIVE_KEY = 'doskill_active_project_id';
-const LEGACY_CONFIG_KEY = 'doskill_config_v2';
+const PROJECTS_KEY = 'vibe_niuma_projects';
+const ACTIVE_KEY = 'vibe_niuma_active_project_id';
+const LEGACY_CONFIG_KEY = 'vibe_niuma_config_v2';
 
 export const ProjectSchema = z.object({
   id: z.string().min(1),
@@ -76,7 +76,7 @@ export async function saveProject(project: Project): Promise<void> {
 }
 
 export async function setActiveProject(id: string | null): Promise<void> {
-  // 同步把 active project 的 config 写到 doskill_config_v2 ——
+  // 同步把 active project 的 config 写到 vibe_niuma_config_v2 ——
   // 让 service worker + SettingsPanel 无感复用现有代码，不必改动它们的读路径。
   const items: Record<string, unknown> = { [ACTIVE_KEY]: id };
   if (id) {
@@ -107,7 +107,7 @@ export async function createProject(name: string, config: Config): Promise<Proje
   return project;
 }
 
-// 老 doskill_config_v2 → 默认项目（一次性，幂等）。返回是否触发了迁移。
+// 老 vibe_niuma_config_v2 → 默认项目（一次性，幂等）。返回是否触发了迁移。
 export async function migrateLegacyConfig(): Promise<boolean> {
   const existing = await loadProjects();
   if (existing.length > 0) return false; // 已有项目，不迁移

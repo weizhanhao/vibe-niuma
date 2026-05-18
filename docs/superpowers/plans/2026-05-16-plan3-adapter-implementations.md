@@ -14,7 +14,7 @@
 
 - 工作目录 `orchestrator/`，venv 在 `orchestrator/venv/`，已 `pip install -e ".[dev]"`。
 - Plan 2 已合并、79 测试通过。本计划在新分支 `plan3-adapter-implementations` 上做。
-- demo 仓库在 `<demo_repo_path>`（配置项，本地开发指向 `/Users/weizhanhao/doskill/demo`，ECS 上指向 ECS 的 demo clone）。
+- demo 仓库在 `<demo_repo_path>`（配置项，本地开发指向 `/Users/weizhanhao/vibe-niuma/demo`，ECS 上指向 ECS 的 demo clone）。
 - 本地开发：Docker Desktop 可用；`claude` CLI 已装（`npm i -g @anthropic-ai/claude-code`）；`opencode` CLI 已装。
 - 新增配置项写进 `config.py` 的 `Settings` 并在 `.env.example` 列出（见任务 1）。
 - LLM 相关测试一律 mock，不真打模型；只有任务 13 的「真实 E2E 冒烟」例外，且默认 `skip`，靠环境变量开启。
@@ -129,7 +129,7 @@ orchestrator/.env.example                      # 修改：列出新配置项
   - `test_serve_allocates_port_in_range` — 端口落在 `preview_port_min..preview_port_max`。
   - `test_serve_two_branches_get_distinct_containers` — 起两个分支，得到两个不同 `handle` + 不同端口。
 - [ ] **Step 2: 运行确认失败**。
-- [ ] **Step 3: 实现 `serve`** — 用 demo 自带的 `Dockerfile`。流程：`docker build -t doskill-preview-<id> <repo_path>`；分配一个空闲端口（在配置区间内扫描）；`docker run -d -p <port>:<内部端口> --network <docker_network> ...`；轮询容器 health 直到 healthy 或超时；返回 `PreviewInstance(preview_id, url=f"http://<host>:<port>", handle=<container_id>)`。失败抛异常（Pipeline 会转 `failed(building, container)`）。
+- [ ] **Step 3: 实现 `serve`** — 用 demo 自带的 `Dockerfile`。流程：`docker build -t vibe-niuma-preview-<id> <repo_path>`；分配一个空闲端口（在配置区间内扫描）；`docker run -d -p <port>:<内部端口> --network <docker_network> ...`；轮询容器 health 直到 healthy 或超时；返回 `PreviewInstance(preview_id, url=f"http://<host>:<port>", handle=<container_id>)`。失败抛异常（Pipeline 会转 `failed(building, container)`）。
 - [ ] **Step 4: 运行确认通过**（`-m docker`）。
 - [ ] **Step 5: 提交** — `git commit -m "feat: DockerPreviewAdapter serve"`
 
@@ -266,8 +266,8 @@ orchestrator/.env.example                      # 修改：列出新配置项
 - Create: `orchestrator/tests/test_e2e_smoke.py`
 - Modify: `orchestrator/README.md`
 
-- [ ] **Step 1: 写冒烟测试** — `test_e2e_smoke.py`，标 `@pytest.mark.skipif(not os.getenv("DOSKILL_E2E"), reason="需真实模型+Docker")`。内容：对 demo 仓库副本，跑一个已知简单改动（如「把 /settings 的保存按钮文案改成『立即保存』」），走真实 `BrainstormingSkill`（脚本化回答澄清）+ 真实 DevRunner + 真实 build + 真实 Docker preview，断言：流水线到 `preview-ready`、git diff 非空、预览 URL 可达。
-- [ ] **Step 2: 文档** — `README.md` 加「真实 E2E 冒烟」一节：如何设 `DOSKILL_E2E=1` + 模型 key + Docker 来跑。
+- [ ] **Step 1: 写冒烟测试** — `test_e2e_smoke.py`，标 `@pytest.mark.skipif(not os.getenv("VIBE_NIUMA_E2E"), reason="需真实模型+Docker")`。内容：对 demo 仓库副本，跑一个已知简单改动（如「把 /settings 的保存按钮文案改成『立即保存』」），走真实 `BrainstormingSkill`（脚本化回答澄清）+ 真实 DevRunner + 真实 build + 真实 Docker preview，断言：流水线到 `preview-ready`、git diff 非空、预览 URL 可达。
+- [ ] **Step 2: 文档** — `README.md` 加「真实 E2E 冒烟」一节：如何设 `VIBE_NIUMA_E2E=1` + 模型 key + Docker 来跑。
 - [ ] **Step 3: 提交** — `git commit -m "test: 真实 E2E 冒烟（默认 skip）"`
 
 > 本任务不要求在执行时真跑通（依赖用户提供的模型 key + ECS/Docker 环境）；要求测试代码完整、可被一条命令开启。真正的端到端验证在 Plan 5。
@@ -295,7 +295,7 @@ orchestrator/.env.example                      # 修改：列出新配置项
 - [ ] 两个 DevRunner 的子进程编排逻辑有 mock 测试覆盖；`build_pipeline` 按配置选 runner。
 - [ ] `BrainstormingSkill` 的轻/重路径分流、≤3 问、可跳过有 mock 测试覆盖。
 - [ ] `main.py` 的 `build_pipeline` 是唯一主体改动点；Plan 2 的 79 测试经必要的 fake 注入调整后仍全绿。
-- [ ] 真实 E2E 冒烟测试代码完整，靠 `DOSKILL_E2E=1` 开启。
+- [ ] 真实 E2E 冒烟测试代码完整，靠 `VIBE_NIUMA_E2E=1` 开启。
 - [ ] `git status` 干净。
 
 ---

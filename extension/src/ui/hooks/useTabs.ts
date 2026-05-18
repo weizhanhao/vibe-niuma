@@ -10,7 +10,7 @@ import {
 } from '../../lib/tabs';
 import type { TabsState } from '../../lib/types';
 
-const STORAGE_KEY = 'doskill.tabsState.v1';
+const STORAGE_KEY = 'vibe-niuma.tabsState.v1';
 
 function notifySW(id: string | null): void {
   try {

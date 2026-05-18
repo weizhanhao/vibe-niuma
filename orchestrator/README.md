@@ -44,7 +44,7 @@ venv/bin/pytest                              # 全跑（含 docker / slow），�
 venv/bin/pytest -m "not docker and not slow" # 最小快测（默认 CI）
 venv/bin/pytest -m docker                    # 真起容器（需要 Docker daemon）
 venv/bin/pytest -m slow                      # 慢测：npm build 等
-DOSKILL_E2E=1 venv/bin/pytest -m e2e         # 真实端到端冒烟（需 LLM key）
+VIBE_NIUMA_E2E=1 venv/bin/pytest -m e2e         # 真实端到端冒烟（需 LLM key）
 ```
 
 ## Adapter 装配（Plan 3）
@@ -62,7 +62,7 @@ DOSKILL_E2E=1 venv/bin/pytest -m e2e         # 真实端到端冒烟（需 LLM k
 
 ## 真实 E2E 冒烟
 
-`DOSKILL_E2E=1` 才跑。前提：MySQL 可连、Docker 可用、`claude` 或 `opencode` CLI 已装、
+`VIBE_NIUMA_E2E=1` 才跑。前提：MySQL 可连、Docker 可用、`claude` 或 `opencode` CLI 已装、
 `LLM_API_KEY` + `ANTHROPIC_BASE_URL` 配好（见 `.env.example`），demo 仓库已 clone 到
 `DEMO_REPO_PATH` 且有 `main` 分支。
 

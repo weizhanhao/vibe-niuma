@@ -38,7 +38,7 @@ function installFetchMock(routes: RouteMap) {
 }
 
 const TOKEN = 'admin-token-1234567890abcdef'; // 长度 >= 20
-const STORAGE_KEY = 'doskill_config_v2';
+const STORAGE_KEY = 'vibe_niuma_config_v2';
 
 // 预置 chrome.storage 里的 config
 function seedStorage(opts?: {
@@ -58,8 +58,8 @@ function seedStorage(opts?: {
       devRunner: 'opencode',
       devModel: 'deepseek/deepseek-v4-flash',
       visionModel: 'qwen-vl-plus',
-      demoRepoPath: '/opt/doskill/demo',
-      previewBackendUrl: 'http://doskill-demo-backend:8000',
+      demoRepoPath: '/opt/vibe-niuma/demo',
+      previewBackendUrl: 'http://vibe-niuma-demo-backend:8000',
       ...(o.server ?? {}),
     },
   };
@@ -75,8 +75,8 @@ function buildServerConfig(overrides: Partial<Record<string, unknown>> = {}) {
     deepseek_api_key: null,
     dashscope_api_key: null,
     anthropic_api_key: null,
-    demo_repo_path: '/opt/doskill/demo',
-    preview_backend_url: 'http://doskill-demo-backend:8000',
+    demo_repo_path: '/opt/vibe-niuma/demo',
+    preview_backend_url: 'http://vibe-niuma-demo-backend:8000',
     deepseek_api_key_set: false,
     dashscope_api_key_set: false,
     anthropic_api_key_set: false,
@@ -119,7 +119,7 @@ describe('SettingsPanel · 加载', () => {
       server: {
         devModel: 'qwen-coder-x',
         visionModel: 'qwen-vl-max',
-        demoRepoPath: '/srv/doskill/demo',
+        demoRepoPath: '/srv/vibe-niuma/demo',
       },
     });
     installFetchMock({
@@ -127,7 +127,7 @@ describe('SettingsPanel · 加载', () => {
         buildServerConfig({
           dev_model: 'qwen-coder-x',
           vision_model: 'qwen-vl-max',
-          demo_repo_path: '/srv/doskill/demo',
+          demo_repo_path: '/srv/vibe-niuma/demo',
         }),
         3,
       ),
@@ -151,7 +151,7 @@ describe('SettingsPanel · 加载', () => {
     const vision = screen.getByLabelText('Vision Model') as HTMLInputElement;
     expect(vision.value).toBe('qwen-vl-max');
     const repo = screen.getByLabelText('Demo Repo Path') as HTMLInputElement;
-    expect(repo.value).toBe('/srv/doskill/demo');
+    expect(repo.value).toBe('/srv/vibe-niuma/demo');
   });
 
   it('test_failed_admin_client_load_shows_error_banner', async () => {
@@ -325,7 +325,7 @@ describe('SettingsPanel · 重启提示', () => {
       putConfig: okPutConfig(
         buildServerConfig({ deepseek_api_key_set: true }),
         4,
-        ['doskill-llm-proxy'],
+        ['vibe-niuma-llm-proxy'],
       ),
     });
     render(<SettingsPanel onClose={vi.fn()} />);

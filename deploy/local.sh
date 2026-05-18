@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# local.sh —— 在**本机**起一套 doskill（mysql + llm-proxy + orchestrator），
+# local.sh —— 在**本机**起一套 vibe-niuma（mysql + llm-proxy + orchestrator），
 # 不 ssh、不 rsync。给业务员先在 Mac/Linux/WSL 上跑通用的。
 #
 # 用法：
@@ -50,8 +50,8 @@ fi
 # ── --reset：拆 docker 重来 ─────────────────────────────────────────
 if [ "${1:-}" = "--reset" ]; then
   log "拆 docker container / volume / token（保留 venv）"
-  docker rm -f doskill-mysql 2>/dev/null || true
-  docker volume rm doskill-mysql-data 2>/dev/null || true
+  docker rm -f vibe-niuma-mysql 2>/dev/null || true
+  docker volume rm vibe-niuma-mysql-data 2>/dev/null || true
   rm -f "$REPO_ROOT/admin.token"
 fi
 
@@ -82,21 +82,21 @@ chmod 600 .env
 cd ..
 
 # ── mysql ──────────────────────────────────────────────────────────
-log "MySQL: 拉镜像 + 起容器（doskill-mysql）"
+log "MySQL: 拉镜像 + 起容器（vibe-niuma-mysql）"
 mkdir -p mysql
 cp -n deploy/mysql/init.sql mysql/init.sql 2>/dev/null || true
 docker pull mysql:8 >/dev/null || true
-if ! docker inspect doskill-mysql >/dev/null 2>&1; then
-  docker volume create doskill-mysql-data >/dev/null
-  docker run -d --name doskill-mysql \
+if ! docker inspect vibe-niuma-mysql >/dev/null 2>&1; then
+  docker volume create vibe-niuma-mysql-data >/dev/null
+  docker run -d --name vibe-niuma-mysql \
     --restart unless-stopped \
     -e MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-demopass}" \
     -p "${MYSQL_PORT:-3306}:3306" \
-    -v doskill-mysql-data:/var/lib/mysql \
+    -v vibe-niuma-mysql-data:/var/lib/mysql \
     -v "$REPO_ROOT/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro" \
     mysql:8 >/dev/null
 else
-  docker start doskill-mysql >/dev/null 2>&1 || true
+  docker start vibe-niuma-mysql >/dev/null 2>&1 || true
 fi
 
 # ── demo repo ──────────────────────────────────────────────────────
@@ -104,8 +104,8 @@ DEMO_LOCAL="${DEMO_REPO_PATH:-$REPO_ROOT/demo}"
 if [ ! -d "$DEMO_LOCAL/.git" ]; then
   log "demo 没有 .git：在 $DEMO_LOCAL 内 git init + 初始 commit"
   git -C "$DEMO_LOCAL" init -q -b main
-  git -C "$DEMO_LOCAL" config user.email "doskill@local"
-  git -C "$DEMO_LOCAL" config user.name  "doskill"
+  git -C "$DEMO_LOCAL" config user.email "vibe-niuma@local"
+  git -C "$DEMO_LOCAL" config user.name  "vibe-niuma"
   git -C "$DEMO_LOCAL" add -A
   git -C "$DEMO_LOCAL" commit -q -m "demo init" || true
 fi

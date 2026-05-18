@@ -9,7 +9,7 @@
 3. **动态压缩 + 预览浮卡** —— 对话长了不暴力截断，server 在发给 dev runner 前用 LLM 把老消息压成摘要（参考 Claude Code），UI 完整显示原文。预览 + 合并/丢弃改成**底部 dock 浮卡** —— 业务员看预览的同时输入框可继续聊，触发新一轮 CR，浮卡 url 自动更新。合并按钮一直可用。
 
 **Architecture:**
-- **Project（extension-only）**：`chrome.storage.local` key `doskill_projects: Project[]` + `doskill_active_project_id: string`。Project = `{ id, name, config: Config, createdAt }`。Config 沿用 Plan 6 的字段（orchestratorUrl + adminToken + ... ）。一个 project 对应一台远端 orchestrator。
+- **Project（extension-only）**：`chrome.storage.local` key `vibe_niuma_projects: Project[]` + `vibe_niuma_active_project_id: string`。Project = `{ id, name, config: Config, createdAt }`。Config 沿用 Plan 6 的字段（orchestratorUrl + adminToken + ... ）。一个 project 对应一台远端 orchestrator。
 - **Conversation（orchestrator DB）**：`Conversation(id, title, created_at, updated_at, archived_at, messages JSON)`。`messages` 是 append-only 列表，结构见 §数据契约。`ChangeRequest` 加 `conversation_id` FK + index。
 - **持续对话 chat 模型**：MainShell 改成 `ChatPanel` 主体 + 顶部 `StatusBanner`（当前活跃 CR 的 FSM phase）+ 底部 `PreviewDock`（最近完成的 CR 预览 + 操作按钮）。业务员在 ChatPanel 输入新需求 → 起新 CR 挂到当前 conversation → SSE 流式回 chat 流 → 预览就绪后 PreviewDock 自动更新。
 - **动态压缩**：pipeline 调 dev runner 前估算 tokens；超过软阈值 40k → 拉「保留窗口」之外的消息走 DeepSeek v4-flash 压成摘要，存为一条 `summary` message；超过硬阈值 56k → 当场压不能跳过。保留：最近 6 轮 user-AI pair + 所有 user 消息原文 + 活跃 CR 的完整 chat。
@@ -129,9 +129,9 @@ const ProjectSchema = z.object({
 });
 
 // chrome.storage.local keys:
-//   doskill_projects: Project[]
-//   doskill_active_project_id: string | null
-//   （旧 doskill_config_v2 自动迁移成单个 project，标 name="默认项目"）
+//   vibe_niuma_projects: Project[]
+//   vibe_niuma_active_project_id: string | null
+//   （旧 vibe_niuma_config_v2 自动迁移成单个 project，标 name="默认项目"）
 ```
 
 ---
@@ -206,7 +206,7 @@ const ProjectSchema = z.object({
 
 ```python
 COMPACTION_PROMPT = """\
-你是 doskill 对话压缩器。下面是业务员和 AI 的多轮对话。
+你是 vibe-niuma 对话压缩器。下面是业务员和 AI 的多轮对话。
 
 要求：把所有 AI 回复（除了被标记 [PRESERVE] 的）压成一段中文摘要，包含：
 1) 业务员的核心意图演化（按时间顺序串出来）
@@ -248,7 +248,7 @@ COMPACTION_PROMPT = """\
 
 - [ ] **Step 1: TDD 红** — `tests/projects-storage.test.ts`：
   - `loadProjects / saveProject / setActive / deleteProject` 各 1
-  - 迁移：老 `doskill_config_v2` 单 config → 自动包成一个 project，name="默认项目"，active
+  - 迁移：老 `vibe_niuma_config_v2` 单 config → 自动包成一个 project，name="默认项目"，active
   - 删除最后一个 project → active 设 null，触发回到 ProjectSelectorPanel
 - [ ] **Step 2: 实现** `extension/src/lib/projects.ts`：
   - zod ProjectSchema
@@ -335,7 +335,7 @@ COMPACTION_PROMPT = """\
 - [ ] 在 preview-ready 状态下**继续打字** → 起新一轮 CR 挂同一 conversation；PreviewDock 自动跟着切到新 CR；老 CR 仍可手动切回看
 - [ ] 关浏览器、3 天后再开 → 切回老 conversation → 完整 chat history + 老 CRs 都在；继续聊 AI 仍然有上下文
 - [ ] 对话长到 40k tokens → server 自动压缩并 append `summary` message；UI 显示折叠条；展开看完整老消息
-- [ ] 老用户（v0.4 已部署）升级到 v0.5 → 自动迁移：原 `doskill_config_v2` 包成「默认项目」；原 CR 自动 bucket 到「Legacy」conversation；不丢数据
+- [ ] 老用户（v0.4 已部署）升级到 v0.5 → 自动迁移：原 `vibe_niuma_config_v2` 包成「默认项目」；原 CR 自动 bucket 到「Legacy」conversation；不丢数据
 - [ ] 不依赖跨设备同步（chrome.storage.local 本地）—— 换机器要重新填项目
 - [ ] 测试：orchestrator ≥ 250 passed；extension ≥ 240 passed
 - [ ] v0.5.0 tag + README 更新 + CHANGELOG
