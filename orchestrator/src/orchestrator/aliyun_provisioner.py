@@ -166,8 +166,14 @@ class AliyunProvisioner:
         *,
         running_timeout: float = DEFAULT_RUNNING_TIMEOUT,
         ports: Optional[list[int]] = None,
+        auto_rollback: bool = True,
     ) -> ProvisionResult:
-        """开机 → 等 Running → 分配公网 IP → 配安全组 → 返结果。"""
+        """开机 → 等 Running → 分配公网 IP → 配安全组 → 返结果。
+
+        Plan 11 M2.T15：auto_rollback=True 时，instance 创建后任何阶段失败
+        都会自动 DeleteInstance 清理（业务员不被计费）。失败仍 raise 原异常，
+        但实例已不存在。auto_rollback=False 给调试用，业务员想看现场。
+        """
         client = self._get_client()
         if not spec.password:
             # 用 dataclasses.replace 保留 instance_type / image_id 等其他字段
@@ -191,9 +197,11 @@ class AliyunProvisioner:
             sg_id = client.get_security_group_id(instance_id)
             client.authorize_security_group(sg_id, open_ports)
         except Exception:
-            # 调用方决定要不要 rollback（DeleteInstance）—— provisioner 不自动删
-            # 因为业务员可能想看错误日志后手动续命
             logger.exception("provision 失败，instance_id=%s 已创建但未完工", instance_id)
+            if auto_rollback:
+                logger.warning("provision: auto_rollback=True，清理 instance %s", instance_id)
+                self.rollback(instance_id)
+            # auto_rollback=False 时实例保留 —— 调用方可看现场调试
             raise
 
         return ProvisionResult(

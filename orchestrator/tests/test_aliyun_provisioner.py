@@ -193,13 +193,59 @@ def test_provision_ip_fails_after_running(fake_creds, speedup_polling):
         ip_raises=RuntimeError("EIP 配额满"),
     )
     p = AliyunProvisioner(fake_creds, client_factory=lambda c: fake)
+    # Plan 11 M2.T15：auto_rollback=False 时，IP 失败实例保留（给调试）
     with pytest.raises(RuntimeError, match="EIP 配额满"):
-        p.provision(EcsSpec.with_random_password())
-    # 实例已创建但 IP 失败 → 调用方应该 rollback
+        p.provision(EcsSpec.with_random_password(), auto_rollback=False)
     methods = [c[0] for c in fake.calls]
     assert "create_instance" in methods
     assert "allocate_public_ip" in methods
     assert "authorize_security_group" not in methods
+    # auto_rollback=False 不调 delete
+    assert "delete_instance" not in methods
+
+
+def test_provision_auto_rollback_deletes_on_failure(fake_creds, speedup_polling):
+    """Plan 11 M2.T15：auto_rollback=True（默认）时，失败应自动 delete。"""
+    fake = FakeClient(
+        status_script=["Running"],
+        ip_raises=RuntimeError("EIP 配额满"),
+    )
+    p = AliyunProvisioner(fake_creds, client_factory=lambda c: fake)
+    with pytest.raises(RuntimeError, match="EIP 配额满"):
+        p.provision(EcsSpec.with_random_password())  # auto_rollback 默认 True
+    methods = [c[0] for c in fake.calls]
+    assert "create_instance" in methods
+    assert "allocate_public_ip" in methods
+    # 失败后自动调了 delete_instance
+    assert ("delete_instance", ("i-fake-001",)) in fake.calls
+
+
+def test_provision_auto_rollback_does_not_run_if_create_failed(fake_creds, speedup_polling):
+    """create_instance 自己挂的 → 没 instance_id 可删，不该误调 delete。"""
+    fake = FakeClient(create_raises=RuntimeError("RAM 权限不足"))
+    p = AliyunProvisioner(fake_creds, client_factory=lambda c: fake)
+    with pytest.raises(RuntimeError, match="RAM 权限不足"):
+        p.provision(EcsSpec.with_random_password())  # auto_rollback=True
+    methods = [c[0] for c in fake.calls]
+    assert methods == ["create_instance"]  # 不该有 delete
+
+
+def test_provision_auto_rollback_silent_if_delete_also_fails(fake_creds, speedup_polling):
+    """rollback 自己挂时，原异常仍正常传播（不被 rollback 错误掩盖）。"""
+    @dataclass
+    class FlakyClient(FakeClient):
+        def delete_instance(self, instance_id: str) -> None:
+            self.calls.append(("delete_instance", (instance_id,)))
+            raise RuntimeError("阿里云此刻 API 也挂了")
+
+    fake = FlakyClient(
+        status_script=["Running"],
+        ip_raises=RuntimeError("原始 IP 错误"),
+    )
+    p = AliyunProvisioner(fake_creds, client_factory=lambda c: fake)
+    # 看到的应该是**原始**错误，不是 rollback 的错误
+    with pytest.raises(RuntimeError, match="原始 IP 错误"):
+        p.provision(EcsSpec.with_random_password())
 
 
 def test_rollback_calls_delete_instance(fake_creds):
