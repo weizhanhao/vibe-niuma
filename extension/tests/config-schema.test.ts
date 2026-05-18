@@ -108,6 +108,77 @@ describe('config schema · saveConfig', () => {
   });
 });
 
+// Plan 11 · M1.T1
+describe('config schema · repos field (multi-repo per project)', () => {
+  it('defaults to empty array when legacy config lacks repos field', async () => {
+    // 老 storage（没 repos 字段）
+    fakeStorage()[STORAGE_KEY] = VALID;
+    const got = await loadConfig();
+    expect(got?.repos).toEqual([]);
+  });
+
+  it('preserves repos array with multiple entries', async () => {
+    fakeStorage()[STORAGE_KEY] = {
+      ...VALID,
+      repos: [
+        { url: 'https://github.com/org/frontend.git', mainBranch: 'main', targetBranch: 'vibe-niuma/dev' },
+        { url: 'git@github.com:org/backend.git', mainBranch: 'master', targetBranch: 'sales/dev' },
+      ],
+    };
+    const got = await loadConfig();
+    expect(got?.repos).toHaveLength(2);
+    expect(got?.repos[0].url).toBe('https://github.com/org/frontend.git');
+    expect(got?.repos[1].mainBranch).toBe('master');
+    expect(got?.repos[1].targetBranch).toBe('sales/dev');
+  });
+
+  it('applies branch defaults when only url is given', async () => {
+    fakeStorage()[STORAGE_KEY] = {
+      ...VALID,
+      repos: [{ url: 'https://github.com/org/foo.git' }],
+    };
+    const got = await loadConfig();
+    expect(got?.repos[0].mainBranch).toBe('main');
+    expect(got?.repos[0].targetBranch).toBe('vibe-niuma/dev');
+  });
+
+  it('rejects repo with empty url', async () => {
+    fakeStorage()[STORAGE_KEY] = {
+      ...VALID,
+      repos: [{ url: '', mainBranch: 'main', targetBranch: 'vibe-niuma/dev' }],
+    };
+    expect(await loadConfig()).toBeNull();
+  });
+
+  it('saveConfig replaces repos array when provided', async () => {
+    fakeStorage()[STORAGE_KEY] = {
+      ...VALID,
+      repos: [{ url: 'https://github.com/org/old.git', mainBranch: 'main', targetBranch: 'vibe-niuma/dev' }],
+    };
+    const updated = await saveConfig({
+      repos: [
+        { url: 'https://github.com/org/new1.git', mainBranch: 'main', targetBranch: 'vibe-niuma/dev' },
+        { url: 'https://github.com/org/new2.git', mainBranch: 'main', targetBranch: 'vibe-niuma/dev' },
+      ],
+    });
+    expect(updated.repos).toHaveLength(2);
+    expect(updated.repos[0].url).toBe('https://github.com/org/new1.git');
+    expect(updated.repos[1].url).toBe('https://github.com/org/new2.git');
+  });
+
+  it('saveConfig with patch lacking repos preserves existing repos', async () => {
+    fakeStorage()[STORAGE_KEY] = {
+      ...VALID,
+      repos: [{ url: 'https://github.com/org/kept.git', mainBranch: 'main', targetBranch: 'vibe-niuma/dev' }],
+    };
+    const updated = await saveConfig({
+      orchestratorUrl: 'http://new.example.com:9000',
+    });
+    expect(updated.repos).toHaveLength(1);
+    expect(updated.repos[0].url).toBe('https://github.com/org/kept.git');
+  });
+});
+
 describe('config schema · isConfigured', () => {
   it('returns false when nothing is stored', async () => {
     expect(await isConfigured()).toBe(false);

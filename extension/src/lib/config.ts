@@ -12,11 +12,25 @@ import { z } from 'zod';
 const STORAGE_KEY = 'vibe_niuma_config_v2';
 
 // ── zod schema ──────────────────────────────────────────────────────
+// Plan 11 · M1.T1：加 repos 字段。
+//   - 一个项目可绑 N 个仓（前后端拆开 / 微服务多仓）。
+//   - mainBranch = rebase 起点（默认 'main'）
+//   - targetBranch = 业务员 CR 合并到的分支（默认 'vibe-niuma/dev'，
+//     程序员从这条分支提 PR review 后合到 main，避免业务员直接污染 main）
+//   - 旧项目（pre-Plan 11）storage 里没这个字段 → zod default 兜回 [] 数组。
+//     空数组 = 走老的单一 demoRepoPath 单仓路径（git_manager.py 兼容）。
+const RepoConfigSchema = z.object({
+  url: z.string().min(1),  // git URL：'git@github.com:org/repo.git' 或 'https://github.com/org/repo.git'
+  mainBranch: z.string().min(1).default('main'),
+  targetBranch: z.string().min(1).default('vibe-niuma/dev'),
+});
+
 // 严格按照 Plan 6 task 4 的定义；server 子对象的默认值在保存时由 zod 自己补上。
 export const ConfigSchema = z.object({
   orchestratorUrl: z.string().url(),
   adminToken: z.string().min(20),
   configVersion: z.number().int().default(0),
+  repos: z.array(RepoConfigSchema).default([]),
   server: z.object({
     devRunner: z.enum(['opencode', 'claude-code']).default('opencode'),
     devModel: z.string().default('deepseek/deepseek-v4-flash'),
@@ -31,13 +45,16 @@ export const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ServerConfig = Config['server'];
+export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 
 // ── Deep partial (for saveConfig patch arg) ─────────────────────────
 // 只有两层（顶层 + server），不引入泛型 DeepPartial 库，手写更清晰。
+// repos 是数组：传整段替换（不做 element-level merge —— 数组语义就是「这是当前全集」）。
 export interface ConfigPatch {
   orchestratorUrl?: string;
   adminToken?: string;
   configVersion?: number;
+  repos?: RepoConfig[];
   server?: Partial<ServerConfig>;
 }
 
@@ -88,6 +105,7 @@ export async function saveConfig(patch: ConfigPatch): Promise<Config> {
     ...(patch.orchestratorUrl !== undefined ? { orchestratorUrl: patch.orchestratorUrl } : {}),
     ...(patch.adminToken !== undefined ? { adminToken: patch.adminToken } : {}),
     ...(patch.configVersion !== undefined ? { configVersion: patch.configVersion } : {}),
+    ...(patch.repos !== undefined ? { repos: patch.repos } : {}),
     server: mergedServer,
   };
 
