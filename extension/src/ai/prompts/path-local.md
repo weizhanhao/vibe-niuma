@@ -31,7 +31,7 @@ label 写「确认 Docker 已装且能跑」。expectsOutput=true，搭配一条
 发一条 `copy_command`：
 
 ```
-cd ~ && git clone https://github.com/wzh-doskill/doskill.git && cd doskill && ls deploy
+cd ~ && git clone https://github.com/weizhanhao/doskill.git && cd doskill && ls deploy
 ```
 
 label 写「把 doskill 源码拉下来」。expectsOutput=true。看到 `deploy.sh env.example healthcheck.sh ...` 这种文件列表就过。

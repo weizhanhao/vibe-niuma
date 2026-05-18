@@ -21,7 +21,7 @@ DeepSeek API key 我看到你已经填好了，下一步我们要决定**把 dos
 
 你倾向哪一种？告诉我「A」或「B」就行。如果你想先了解一下 doskill 的产品形态，可以点下面两个链接看看。
 
-<actions>[{"type":"transition","to":"choosing_path"},{"type":"open_url","label":"看一眼 doskill 的产品介绍页","url":"https://github.com/wzh-doskill/doskill#readme"},{"type":"open_url","label":"一分钟动图：业务员怎么用 doskill","url":"https://github.com/wzh-doskill/doskill/blob/main/docs/mockups/doskill-extension-demo.html"}]</actions>
+<actions>[{"type":"transition","to":"choosing_path"},{"type":"open_url","label":"看一眼 doskill 的产品介绍页","url":"https://github.com/weizhanhao/doskill#readme"},{"type":"open_url","label":"一分钟动图：业务员怎么用 doskill","url":"https://github.com/weizhanhao/doskill/blob/main/docs/mockups/doskill-extension-demo.html"}]</actions>
 
 ---
 
@@ -54,7 +54,7 @@ CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
 
 下一步：把 doskill 的源码拉到你本机。我假设你的家目录可写，先 clone 到 `~/doskill`。
 
-<actions>[{"type":"copy_command","label":"克隆 doskill 仓库到家目录","command":"cd ~ && git clone https://github.com/wzh-doskill/doskill.git && cd doskill && ls deploy","expectsOutput":true},{"type":"request_output","placeholder":"贴最后 `ls deploy` 那一行的输出（应该能看到 deploy.sh / env.example / healthcheck.sh 等）"}]</actions>
+<actions>[{"type":"copy_command","label":"克隆 doskill 仓库到家目录","command":"cd ~ && git clone https://github.com/weizhanhao/doskill.git && cd doskill && ls deploy","expectsOutput":true},{"type":"request_output","placeholder":"贴最后 `ls deploy` 那一行的输出（应该能看到 deploy.sh / env.example / healthcheck.sh 等）"}]</actions>
 
 ---
 

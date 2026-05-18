@@ -33,20 +33,22 @@
 
 ## ③ 让用户跑一键 bootstrap
 
-> bootstrap 脚本 `deploy/ecs-bootstrap.sh` 由后续任务（Plan 7 · Task 9）创建并 push 到 GitHub raw。**现阶段未存在**：如果脚本路径打不开，告诉用户「这一步我们还在最后微调脚本，请先用兜底命令」，然后引导他手动跑 `git clone + bash deploy.sh --full`（参考 Path A 的 ②③④，但 ECS_HOST 填真实公网 IP）。
+`deploy/ecs-bootstrap.sh` 是面向业务员的「全新机器一键起 doskill」脚本，从 doskill 的 GitHub public repo curl 下来 + sudo bash 一条命令搞定（装 git/docker/python3 → git clone doskill → 写 .env 灌 deepseek key + 公网 IP → 起 mysql 容器 → systemd 起 orchestrator + llm-proxy → 打印 admin token + URL）。
 
-正常情况下脚本就绪后，发 `copy_command`（命令里要把用户的真实 ECS_USER@ECS_HOST 拼进去，**禁止留 `<your-ip>`**）：
+发 `copy_command`（把业务员真实 ECS_USER@ECS_HOST + DeepSeek key 拼进去，**禁止留 `<your-ip>` / `<sk-xxx>`**）：
 
 ```
-ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'curl -fsSL https://raw.githubusercontent.com/wzh-doskill/doskill/main/deploy/ecs-bootstrap.sh | bash -s -- --deepseek-key sk-deepseekXXXXXXXX'
+ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'curl -fsSL https://raw.githubusercontent.com/weizhanhao/doskill/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-deepseekXXXXXXXX'
 ```
 
-label 写「在 ECS 上一键装 doskill（约 5-8 分钟）」。expectsOutput=true，placeholder 写「把脚本最后 30 行的输出贴回来（脚本会自动打 ✓ 完成）」。
+label 写「在 ECS 上一键装 doskill（约 5-8 分钟）」。expectsOutput=true，placeholder 写「贴脚本最后 10 行（会看到 doskill 部署完成 + Orchestrator URL + Admin Token）」。
 
 注意：
-- DeepSeek key 你从 `gathering_deepseek_key` 阶段拿到了，作为 `--deepseek-key` 参数原文拼上去。
-- SSH 私钥**不出现在命令里**。你假设用户的本地 `~/.ssh/id_ed25519` 就是他贴过的那个；如果文件名不一样，用户自己会知道改 `-i` 路径。
-- 这一条命令的本质：本地 `ssh` → 远程下载脚本 → 远程执行（装 git/docker/python3 + clone doskill + cp env.example + 写 LLM_API_KEY + 跑 deploy.sh --full）。
+- DeepSeek key 你从 `gathering_deepseek_key` 阶段拿到了，作为 `--deepseek-key` 参数**原文**拼上去。**绝对不要**写成 `<sk-xxx>` 占位。
+- 业务员如果有 DashScope key（截图视觉理解用），可附加 `--dashscope-key sk-YYYY`；**没有就别加**，brainstorm 仍能用 deepseek 文字模型工作（只是看不懂图）。业务员后续在 deploy/.env 手动加也行。
+- SSH 私钥**不出现在命令里**。假设业务员本地 `~/.ssh/id_ed25519` 就是他在 ② 步贴过的那个；如果文件名不一样，业务员自己会知道改 `-i` 路径。
+- 命令本质：本地 ssh → 远程 curl raw.githubusercontent.com 下载 ecs-bootstrap.sh → sudo bash 执行 → 装包 + clone + 启 systemd → 打印 URL + token。
+- ⚠ 远程 curl 要求 doskill 仓库是 public（已确认）。若业务员的 ECS 出墙慢，可建议先 `curl -fsSL <URL> -o bootstrap.sh && sudo bash bootstrap.sh ...` 分两步看下载是否卡住。
 
 ## ④ 等部署 + 看心跳
 

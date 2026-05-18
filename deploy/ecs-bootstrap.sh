@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # ecs-bootstrap.sh —— 一键在**全新 ECS** 上拉起 doskill。
-# 业务员从扩展助手拷贝以下命令到 ssh 终端：
+# 业务员从扩展助手拷贝以下命令到 ssh 终端（dashscope key 可选）：
 #
 #   curl -fsSL https://raw.githubusercontent.com/weizhanhao/doskill/main/deploy/ecs-bootstrap.sh | sudo bash -s -- \
 #     --deepseek-key sk-XXXX \
-#     --dashscope-key sk-YYYY \
+#     [--dashscope-key sk-YYYY] \
 #     [--public-host 1.2.3.4]
 #
 # 做什么：
 #   1) 装 git / docker / python3（apt 或 yum 自适配）
 #   2) git clone doskill 到 /opt/doskill
-#   3) cp deploy/env.example → deploy/.env，灌入两个 key + 公网 IP
+#   3) cp deploy/env.example → deploy/.env，灌入 key + 公网 IP
 #   4) 跑 deploy/deploy.sh —— 本机就是 ECS，inline 步骤（不走 ssh）
 #   5) 末尾打印 admin.token 路径 + orchestrator URL
+#
+# dashscope-key 可选 —— 缺它时视觉模型（看截图理解业务员指什么）会降级失败，
+# brainstorm 仍能用 deepseek 文字模型工作，只是看不懂图。业务员要全功能后续可
+# 在 deploy/.env 补 DASHSCOPE_API_KEY 再 systemctl restart doskill-orchestrator。
 
 set -euo pipefail
 
@@ -32,8 +36,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$DEEPSEEK_KEY" ]  || { echo "缺 --deepseek-key sk-XXXX"; exit 1; }
-[ -n "$DASHSCOPE_KEY" ] || { echo "缺 --dashscope-key sk-YYYY"; exit 1; }
+[ -n "$DEEPSEEK_KEY" ] || { echo "缺 --deepseek-key sk-XXXX"; exit 1; }
+# dashscope-key 可选 —— 没提供时视觉模型不可用，brainstorm 仍工作
 
 log() { printf '\n\033[1;36m[ecs-bootstrap]\033[0m %s\n' "$*"; }
 
@@ -99,7 +103,9 @@ def upsert(key, val):
     line = f"{key}={val}"
     text = pat.sub(line, text) if pat.search(text) else text.rstrip() + "\n" + line + "\n"
 upsert("DEEPSEEK_API_KEY", ds)
-upsert("DASHSCOPE_API_KEY", dsc)
+# 空 dashscope key 不写进 .env —— 业务员后续可手动加
+if dsc:
+    upsert("DASHSCOPE_API_KEY", dsc)
 upsert("PREVIEW_HOST", host)
 p.write_text(text)
 PY
@@ -130,11 +136,11 @@ cd llm-proxy
 venv/bin/pip install -q -U pip wheel
 venv/bin/pip install -q "litellm[proxy]" prisma
 [ -f config.yml ] || cp config.example.yml config.yml
-cat > .env <<INNER_ENV
-DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY
-DASHSCOPE_API_KEY=$DASHSCOPE_API_KEY
-STORE_MODEL_IN_DB=False
-INNER_ENV
+{
+  echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY"
+  [ -n "${DASHSCOPE_API_KEY:-}" ] && echo "DASHSCOPE_API_KEY=$DASHSCOPE_API_KEY"
+  echo "STORE_MODEL_IN_DB=False"
+} > .env
 chmod 600 .env
 cd ..
 
