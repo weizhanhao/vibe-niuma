@@ -152,6 +152,19 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
   };
 
   const onCapture = (field: string, value: string) => {
+    // 兜底：AI 在非 gathering_deepseek_key phase 也可能引导业务员填 deepseek key
+    // （比如业务员之前清掉过 key，或 AI 想 re-validate）。无论当前 phase，认 deepseek
+    // key 字段就走 saveDeepSeekKey + dispatch deepseek_key_set 路径，让按钮真有反应。
+    const looksLikeDeepseekKey =
+      /deepseek/i.test(field) || field === 'apiKey' || field === 'api_key';
+    if (looksLikeDeepseekKey && value.startsWith('sk-')) {
+      setDeepseekKey(value);
+      void saveDeepSeekKey(value);
+      if (state.phase === 'gathering_deepseek_key') {
+        dispatch({ type: 'deepseek_key_set' });
+      }
+      return;
+    }
     void captureFieldToStorage(field, value);
     setCollected((c) => ({ ...c, [field]: value }));
     if (state.phase === 'collecting_info') {
@@ -160,6 +173,25 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
     if (field === 'orchestratorUrl' || field === 'adminToken') {
       void saveConfig({ [field]: value });
     }
+  };
+
+  // BUG FIX：之前 ActionCard 渲染 RequestOutputCard（sk- 输入框 + 「提交」按钮）时
+  // 没传 onRequestOutput → 点提交是 undefined?.()，业务员看着按钮死活没反应。
+  // 现在把业务员输入的命令输出当一条 user message append 进 chat history，让 AI
+  // 接着引导。同时兜底 sk- 开头直接当 deepseek key 处理。
+  const onUserOutput = (output: string) => {
+    const trimmed = output.trim();
+    if (!trimmed) return;
+    if (trimmed.startsWith('sk-') && trimmed.length >= 16) {
+      setDeepseekKey(trimmed);
+      void saveDeepSeekKey(trimmed);
+      if (state.phase === 'gathering_deepseek_key') {
+        dispatch({ type: 'deepseek_key_set' });
+      }
+      onAppend({ role: 'user', content: `[已提交 DeepSeek API Key，前缀 ${trimmed.slice(0, 8)}…]` });
+      return;
+    }
+    onAppend({ role: 'user', content: trimmed });
   };
 
   const onTransition = (to: string) => {
@@ -219,13 +251,8 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
     return (
       <div className="app-body">
         <section>
-          <div className="eyebrow">
-            <span className="ix">STEP 00</span>
-            <span>setup · deepseek key</span>
-            <span className="rule" />
-          </div>
-          <h3 className="title">先填一个 DeepSeek API Key</h3>
-          <p className="help">就这一个。剩下「服务器买哪、命令怎么跑、token 怎么填」由 AI 助手用对话引导你完成。</p>
+          <h3 className="title">填一个 DeepSeek API Key</h3>
+          <p className="help">剩下的步骤会由 AI 助手对话引导你完成。</p>
           <label className="field">
             <span className="label"><span>DeepSeek API Key</span></span>
             <input
@@ -264,12 +291,20 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
   const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant');
   const actions = lastAssistant ? parseActionsFromAssistant(lastAssistant.content).actions : [];
 
+  // 把 phase code 翻成业务员看得懂的中文（不显示英文 enum 名）
+  const phaseLabel: Record<string, string> = {
+    choosing_path: '选择部署方式',
+    collecting_info: '收集部署信息',
+    executing: '执行部署',
+    verifying: '验证连接',
+    done: '完成',
+  };
+  const phaseText = phaseLabel[state.phase] ?? state.phase;
+
   return (
     <div className="app-body">
-      <div className="eyebrow">
-        <span className="ix">PHASE</span>
-        <span>{state.phase}</span>
-        <span className="rule" />
+      <div className="wizard-phase-bar">
+        <span className="wizard-phase-bar__label">{phaseText}</span>
         <button className="btn btn-small btn-ghost" onClick={reset}>重置</button>
       </div>
       <ChatPanel
@@ -285,6 +320,7 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
               key={i}
               action={a}
               onCaptureField={onCapture}
+              onRequestOutput={onUserOutput}
               onValidate={onValidate}
               onTransition={onTransition}
             />
