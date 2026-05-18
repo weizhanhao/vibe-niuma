@@ -2,6 +2,9 @@
 Description=vibe-niuma LiteLLM proxy (Anthropic / OpenAI compatible)
 After=network-online.target
 Wants=network-online.target
+# Plan 11 M3.T20：30 分钟内最多 10 次重启
+StartLimitIntervalSec=1800
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -14,7 +17,7 @@ ExecStart=/usr/bin/env -u DATABASE_URL /opt/vibe-niuma/llm-proxy/venv/bin/litell
   --config /opt/vibe-niuma/llm-proxy/config.yml \
   --port ${LLM_PROXY_PORT}
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 TimeoutStopSec=20
 
 [Install]
