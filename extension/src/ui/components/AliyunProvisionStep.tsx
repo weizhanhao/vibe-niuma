@@ -10,6 +10,8 @@
 //
 // 安全：access key 只活在本组件 state 里，不入 chrome.storage；关页面即丢。
 import { useState } from 'react';
+import aliyunAccessKeyHelp from '../helpContent/aliyun-access-key.md?raw';
+import { HelpBubble } from './HelpBubble';
 
 interface Props {
   /** 接受 access key 的「桥接 orchestrator」URL —— 调用方负责凑齐 */
@@ -119,7 +121,10 @@ export function AliyunProvisionStep({
 
   return (
     <section className="aliyun-step">
-      <h3 className="title">自动开机：阿里云 ECS</h3>
+      <div className="title-with-help">
+        <h3 className="title">自动开机：阿里云 ECS</h3>
+        <HelpBubble content={aliyunAccessKeyHelp} ariaLabel="阿里云 Access Key 帮助" />
+      </div>
       <p className="help">
         把你的 Aliyun Access Key 粘进来，vibe-niuma 给你开一台 4C8G ECS、装好所有东西。
         密钥只活在浏览器，不入服务器 DB、不进 log。开完即丢。
