@@ -171,13 +171,51 @@ systemctl restart vibe-niuma-llm-proxy.service vibe-niuma-orchestrator.service
 # ── main demo ──────────────────────────────────────────────────────
 bash deploy/main-demo.sh || log "main-demo 起失败（不阻塞）"
 
+# ── Plan 11 M4.T29：HTTPS via Caddy + sslip.io ────────────────────
+# 给 ECS 公网 IP 拼一个 sslip.io 域名，Caddy 自动找 Let's Encrypt 证书
+# 业务员粘 https URL 到扩展，Chrome 不再拦跨域
+PUBLIC_DOMAIN="$(echo "$PUBLIC_HOST" | tr '.' '-').sslip.io"
+log "装 Caddy + 配 HTTPS (域名=$PUBLIC_DOMAIN)"
+
+if command -v apt-get >/dev/null; then
+  if ! command -v caddy >/dev/null; then
+    apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
+    curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update -y -qq
+    apt-get install -y -qq caddy
+  fi
+elif command -v dnf >/dev/null; then
+  dnf install -y -q 'dnf-command(copr)' || true
+  dnf copr enable -y @caddy/caddy || true
+  dnf install -y -q caddy
+elif command -v yum >/dev/null; then
+  yum install -y -q yum-plugin-copr || true
+  yum copr enable -y @caddy/caddy || true
+  yum install -y -q caddy
+fi
+
+if command -v caddy >/dev/null; then
+  sed "s|{\$PUBLIC_HOST}|$PUBLIC_DOMAIN|g" deploy/Caddyfile > /etc/caddy/Caddyfile
+  systemctl enable --now caddy
+  systemctl reload caddy || systemctl restart caddy
+  log "Caddy 已起，HTTPS 域名: https://$PUBLIC_DOMAIN"
+else
+  log "Caddy 装失败（不阻塞），业务员可以先用 http://$PUBLIC_HOST:9000 应急"
+fi
+
 # ── 5. 打印 admin.token + URL ──────────────────────────────────────
 TOKEN_PATH="$DEPLOY_ROOT/admin.token"
-sleep 3   # 给 orchestrator systemd ExecStartPre 一点点时间生成 token
+sleep 3
 echo
 echo "════════════════════════════════════════════════════════"
 echo "  vibe-niuma 部署完成"
-echo "  Orchestrator URL: http://$PUBLIC_HOST:${ORCHESTRATOR_PORT:-9000}"
+if command -v caddy >/dev/null; then
+  echo "  Orchestrator URL: https://$PUBLIC_DOMAIN"
+  echo "    （首次请求会等 Let's Encrypt 颁发证书，~30s）"
+else
+  echo "  Orchestrator URL: http://$PUBLIC_HOST:${ORCHESTRATOR_PORT:-9000}"
+fi
 if [ -f "$TOKEN_PATH" ]; then
   echo "  Admin Token: $(cat "$TOKEN_PATH")"
 else

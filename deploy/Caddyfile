@@ -1,0 +1,50 @@
+# Plan 11 M4.T29 —— Caddy 反向代理 + 自动 HTTPS
+#
+# 业务员的扩展走 HTTPS 调 orchestrator —— Chrome 拒绝 http 跨域到 extension://；
+# sslip.io 给 ECS 公网 IP 自动配成域名，Caddy 找 Let's Encrypt 申免费证书。
+#
+# 用法：
+#   1. ecs-bootstrap.sh 装好 Caddy（apt install caddy）
+#   2. cp deploy/Caddyfile /etc/caddy/Caddyfile（替 $PUBLIC_HOST 占位符）
+#   3. systemctl enable --now caddy
+#   4. Caddy 自动从 :443 监听 + 找 ACME 证书 + 反向代理到 :9000
+#
+# 业务员粘 https://1-2-3-4.sslip.io 到扩展即可（不用记 IP）。
+
+# Public host 占位：ecs-bootstrap.sh 用 sed 替成 e.g. 1-2-3-4.sslip.io
+{$PUBLIC_HOST} {
+	# 自动 ACME（用 Let's Encrypt；首次启动会请求 80/443，需要安全组放行）
+
+	# Orchestrator REST + SSE
+	# Caddy 默认 60s timeout 会断 SSE，长流式调到 30 分钟
+	reverse_proxy /change-requests/*/stream localhost:9000 {
+		flush_interval -1
+		transport http {
+			read_timeout 30m
+		}
+	}
+	reverse_proxy /chat-stream/* localhost:9000 {
+		flush_interval -1
+		transport http {
+			read_timeout 30m
+		}
+	}
+
+	# 其它 /admin /projects /repo /messages /health 等
+	reverse_proxy localhost:9000
+
+	# 安全 headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Access-Control-Allow-Origin "*"
+		Access-Control-Allow-Headers "X-Admin-Token, Content-Type"
+		Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+	}
+
+	log {
+		output file /var/log/caddy/vibe-niuma.log
+		format json
+	}
+}
