@@ -320,3 +320,47 @@ def provision_ecs(payload: ProvisionEcsIn) -> dict:
             else "ssh root@<public_ip> 然后跑 ecs-bootstrap.sh"
         ),
     }
+
+
+# ── Plan 11 · M3.T22 业务员报错给程序员端点 ────────────────────
+
+
+class AlertIn(BaseModel):
+    """业务员的扩展点 ReportToDevButton 调过来。
+
+    webhook_url 由扩展持有（chrome.storage.local 存的 wizard 配的），server 端不入 DB。
+    title/body 由扩展凑（最近一条失败 CR id + 截图链接 + 业务员留言）。
+    """
+    webhook_url: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=4000)
+    link_url: str | None = None
+    dingtalk_secret: str | None = None  # 钉钉加签时给
+
+
+@router.post("/alert")
+async def post_alert(payload: AlertIn) -> dict:
+    """业务员一键报错 → orchestrator 转发到业务员配的 webhook（钉钉/飞书/Discord）。
+
+    失败时返 502 + alert error 给 UI 看（业务员能复制 webhook URL 自己粘到群里）。
+    """
+    from orchestrator.alert import AlertError, AlertMessage, detect_client
+
+    try:
+        client = detect_client(
+            payload.webhook_url,
+            dingtalk_secret=payload.dingtalk_secret,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    try:
+        await client.send(AlertMessage(
+            title=payload.title,
+            body=payload.body,
+            link_url=payload.link_url,
+        ))
+    except AlertError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {"ok": True}
