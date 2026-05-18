@@ -38,7 +38,7 @@
 发 `copy_command`（把业务员真实 ECS_USER@ECS_HOST + DeepSeek key 拼进去，**禁止留 `<your-ip>` / `<sk-xxx>`**）：
 
 ```
-ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'curl -fsSL https://raw.githubusercontent.com/weizhanhao/doskill/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-deepseekXXXXXXXX'
+ssh -i ~/.ssh/id_ed25519 root@47.96.1.2 'curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-deepseekXXXXXXXX'
 ```
 
 label 写「在 ECS 上一键装 doskill（约 5-8 分钟）」。expectsOutput=true，placeholder 写「贴脚本最后 10 行（会看到 doskill 部署完成 + Orchestrator URL + Admin Token）」。

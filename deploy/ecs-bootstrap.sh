@@ -2,7 +2,7 @@
 # ecs-bootstrap.sh —— 一键在**全新 ECS** 上拉起 doskill。
 # 业务员从扩展助手拷贝以下命令到 ssh 终端（dashscope key 可选）：
 #
-#   curl -fsSL https://raw.githubusercontent.com/weizhanhao/doskill/main/deploy/ecs-bootstrap.sh | sudo bash -s -- \
+#   curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- \
 #     --deepseek-key sk-XXXX \
 #     [--dashscope-key sk-YYYY] \
 #     [--public-host 1.2.3.4]
@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-REPO_URL="${DOSKILL_REPO_URL:-https://github.com/weizhanhao/doskill.git}"
+REPO_URL="${DOSKILL_REPO_URL:-https://github.com/weizhanhao/vibe-niuma.git}"
 DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/doskill}"
 
 DEEPSEEK_KEY=""

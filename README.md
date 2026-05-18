@@ -55,7 +55,7 @@ AI 原生低代码平台 MVP。业务员在 web 产品页面上**框选一块区
 
 两条部署路径（任选其一，助手会问你）：
 - **Path A 本地 Docker**：`bash deploy/local.sh` —— 在自己的 Mac/Linux/WSL 上起一套，先试一下。
-- **Path B 阿里云 ECS**：ssh 进 ECS 跑 `curl -fsSL https://raw.githubusercontent.com/weizhanhao/doskill/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-XXXX --dashscope-key sk-YYYY` —— 一条命令装齐所有依赖 + 起服务。
+- **Path B 阿里云 ECS**：ssh 进 ECS 跑 `curl -fsSL https://raw.githubusercontent.com/weizhanhao/vibe-niuma/main/deploy/ecs-bootstrap.sh | sudo bash -s -- --deepseek-key sk-XXXX --dashscope-key sk-YYYY` —— 一条命令装齐所有依赖 + 起服务。
 
 下面是**老路径** —— 一次性部署 ECS + 用扩展自助配模型 / API key。Plan 6 之后，日常改模型 / 换 key 都在扩展里点点鼠标完成，不用再 ssh。
 
