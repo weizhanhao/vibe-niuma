@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { loadConfig, saveConfig, type RepoConfig } from '../../lib/config';
 import { loadGitHubAuth, type GitHubAuth } from '../../lib/github-auth';
 import { createProject, setActiveProject } from '../../lib/projects';
+import { AlertWebhookStep } from '../components/AlertWebhookStep';
 import { GitHubAuthStep } from '../components/GitHubAuthStep';
 import { RepoListEditor } from '../components/RepoListEditor';
 import { DeploymentAssistantPanel } from './DeploymentAssistantPanel';
@@ -19,13 +20,15 @@ interface Props {
   onCancel: () => void;
 }
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3 | 4 | 5;
 
 export function CreateProjectPanel({ onDone, onCancel }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState('');
   const [auth, setAuth] = useState<GitHubAuth | undefined>(undefined);
   const [repos, setRepos] = useState<RepoConfig[]>([]);
+  // Plan 11 M4.T27：业务员可选配的告警 webhook URL
+  const [alertWebhookUrl, setAlertWebhookUrl] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'syncing' }
@@ -61,8 +64,18 @@ export function CreateProjectPanel({ onDone, onCancel }: Props) {
     setStep(4);
   };
 
-  // step 4：保存 + 触发 sync-repos + 完成
-  const onSaveAndFinish = async () => {
+  // step 4 RepoList 完成 → step 5 AlertWebhook（可跳过）
+  const onReposComplete = () => setStep(5);
+
+  // step 5 AlertWebhook 完成 → 保存 + sync-repos + 完成
+  const onAlertWebhookComplete = (url: string) => {
+    setAlertWebhookUrl(url);
+    void onSaveAndFinish(url);
+  };
+
+  // step 5：保存 + 触发 sync-repos + 完成
+  // Plan 11 M4.T27：alertUrl 由 onAlertWebhookComplete 直传，避免 setState 异步窗口
+  const onSaveAndFinish = async (alertUrl: string) => {
     // 验空 URL
     const cleaned = repos
       .map((r) => ({
@@ -72,8 +85,8 @@ export function CreateProjectPanel({ onDone, onCancel }: Props) {
       }))
       .filter((r) => r.url.length > 0);
 
-    // 写 config（含 repos —— 空数组 OK，走老单仓行为）
-    await saveConfig({ repos: cleaned });
+    // 写 config（含 repos + alertWebhookUrl）
+    await saveConfig({ repos: cleaned, alertWebhookUrl: alertUrl });
 
     const cfg = await loadConfig();
     if (!cfg) {
@@ -170,38 +183,53 @@ export function CreateProjectPanel({ onDone, onCancel }: Props) {
     );
   }
 
-  // step === 4
+  if (step === 4) {
+    return (
+      <div className="app-body">
+        <section>
+          <h3 className="title">关联 GitHub 仓库</h3>
+          {auth && <p className="hint">✓ 已绑定 @{auth.username}（PAT 在 session 内存里）</p>}
+          <RepoListEditor value={repos} onChange={setRepos} />
+          <div className="btn-row">
+            <button className="btn btn-ghost" onClick={() => setStep(3)}>← 上一步</button>
+            <button
+              className="btn btn-primary"
+              onClick={onReposComplete}
+            >
+              {repos.length === 0 ? '跳过仓库 →' : '下一步 →'}
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  // step === 5：alert webhook（可跳过）+ 实际保存 + sync
   return (
     <div className="app-body">
-      <section>
-        <h3 className="title">关联 GitHub 仓库</h3>
-        {auth && <p className="hint">✓ 已绑定 @{auth.username}（PAT 在 session 内存里）</p>}
-        <RepoListEditor value={repos} onChange={setRepos} />
-
-        {syncStatus.kind === 'syncing' && (
-          <div className="alert alert-info" role="status">⏳ 正在 sync 仓库到 ECS...</div>
-        )}
-        {syncStatus.kind === 'ok' && (
-          <div className="alert alert-ok" role="status">
-            ✓ 已同步 {syncStatus.synced} 个仓
-            {syncStatus.failed > 0 && `（${syncStatus.failed} 个失败，进主界面后可在设置里重试）`}
-          </div>
-        )}
-        {syncStatus.kind === 'error' && (
-          <div className="alert alert-error" role="alert">{syncStatus.message}</div>
-        )}
-
-        <div className="btn-row">
-          <button className="btn btn-ghost" onClick={() => setStep(3)} disabled={syncStatus.kind === 'syncing'}>← 上一步</button>
-          <button
-            className="btn btn-primary"
-            onClick={() => void onSaveAndFinish()}
-            disabled={syncStatus.kind === 'syncing' || syncStatus.kind === 'ok'}
-          >
-            {repos.length === 0 ? '跳过仓库，直接进入项目' : '保存并同步 →'}
-          </button>
+      <AlertWebhookStep
+        initialUrl={alertWebhookUrl}
+        onComplete={onAlertWebhookComplete}
+      />
+      {syncStatus.kind === 'syncing' && (
+        <div className="alert alert-info" role="status">⏳ 正在 sync 仓库到 ECS...</div>
+      )}
+      {syncStatus.kind === 'ok' && (
+        <div className="alert alert-ok" role="status">
+          ✓ 已同步 {syncStatus.synced} 个仓
+          {syncStatus.failed > 0 && `（${syncStatus.failed} 个失败，进主界面后可在设置里重试）`}
         </div>
-      </section>
+      )}
+      {syncStatus.kind === 'error' && (
+        <div className="alert alert-error" role="alert">{syncStatus.message}</div>
+      )}
+      <div className="btn-row">
+        <button
+          className="btn btn-ghost"
+          onClick={() => setStep(4)}
+          disabled={syncStatus.kind === 'syncing'}
+        >← 上一步</button>
+      </div>
     </div>
   );
 }
