@@ -12,6 +12,8 @@ import {
   saveGitHubAuth,
   validateGitHubPAT,
 } from '../../lib/github-auth';
+import githubPatHelp from '../helpContent/github-pat.md?raw';
+import { HelpBubble } from './HelpBubble';
 
 interface Props {
   /** 业务员完成（PAT 已存 session）后回调。可选 `auth` —— 跳过时为 undefined */
@@ -57,7 +59,10 @@ export function GitHubAuthStep({ onComplete, allowSkip = false }: Props) {
 
   return (
     <section className="github-auth-step">
-      <h3 className="title">连接你的 GitHub</h3>
+      <div className="title-with-help">
+        <h3 className="title">连接你的 GitHub</h3>
+        <HelpBubble content={githubPatHelp} ariaLabel="GitHub PAT 帮助" />
+      </div>
       <p className="help">
         业务员合并的代码会推回你公司的 GitHub 仓库（合到 <code>vibe-niuma/dev</code>
         分支，程序员从那里 review 后再合到 main）。需要一个 GitHub Personal Access Token。

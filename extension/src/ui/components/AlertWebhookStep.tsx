@@ -5,6 +5,8 @@
 //
 // 可跳过 —— webhook 不是 vibe-niuma 跑起来的必需品；先用，出问题再回来配。
 import { useState } from 'react';
+import alertWebhookHelp from '../helpContent/alert-webhook.md?raw';
+import { HelpBubble } from './HelpBubble';
 
 interface Props {
   initialUrl?: string;
@@ -39,7 +41,10 @@ export function AlertWebhookStep({ initialUrl = '', onComplete, allowSkip = true
 
   return (
     <section className="alert-webhook-step">
-      <h3 className="title">配告警群（可选）</h3>
+      <div className="title-with-help">
+        <h3 className="title">配告警群（可选）</h3>
+        <HelpBubble content={alertWebhookHelp} ariaLabel="告警 webhook 帮助" />
+      </div>
       <p className="help">
         粘贴一个群机器人 webhook URL。出问题时业务员点「报告给程序员」按钮，
         vibe-niuma 自动把上下文（最近失败 CR、console 错误、业务员留言）发到群里。
