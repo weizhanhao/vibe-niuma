@@ -17,6 +17,7 @@ import {
 import { AgentTabBar, type AgentTab } from './components/AgentTabBar';
 import { ChatInputBar } from './components/ChatInputBar';
 import { ChatStream } from './components/ChatStream';
+import { HealthDashboard } from './components/HealthDashboard';
 import { HistoryDropdown } from './components/HistoryDropdown';
 import { PreviewDock } from './components/PreviewDock';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
@@ -424,6 +425,10 @@ function MainShell({ project, onCreateProject, onSwitch }: MainShellProps) {
         />
         <div className={`app-status ${pill.tone}`}><span className="pulse" />{pill.label}</div>
         <div className="app-head-actions">
+          <HealthDashboard
+            orchestratorUrl={project.config.orchestratorUrl}
+            adminToken={project.config.adminToken}
+          />
           <button
             className="app-gear"
             aria-label={theme === 'light' ? '切换深色' : '切换浅色'}
