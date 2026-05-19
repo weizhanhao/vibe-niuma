@@ -11,9 +11,17 @@
 #
 # 业务员粘 https://1-2-3-4.sslip.io 到扩展即可（不用记 IP）。
 
+# 全局：给 ACME 用的 email（ZeroSSL 必须，LE 也欢迎）。
+# 加 ZeroSSL fallback —— sslip.io 在 Let's Encrypt 上 sliding window 永远满
+# （250k cert / 168h），单一 LE 拿不到证书；ZeroSSL 独立配额池，少撞墙。
+{
+	email vibe-niuma@local
+}
+
 # Public host 占位：ecs-bootstrap.sh 用 sed 替成 e.g. 1-2-3-4.sslip.io
 {$PUBLIC_HOST} {
-	# 自动 ACME（用 Let's Encrypt；首次启动会请求 80/443，需要安全组放行）
+	# 自动 ACME：上面全局 email 让 Caddy 默认 issuer 链跑「LE → ZeroSSL」
+	# 任何一家给证书就成。sslip.io 在 LE 长期撞配额，靠 ZeroSSL 兜底。
 
 	# Orchestrator REST + SSE
 	# Caddy 默认 60s timeout 会断 SSE，长流式调到 30 分钟
