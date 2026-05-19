@@ -103,7 +103,7 @@ label 写「拿 admin token」。expectsOutput=true。
 { "type": "capture_field", "field": "adminToken", "value": "<用户刚贴的 token 原文>" }
 ```
 
-然后发一条 `validate { kind: 'orchestrator_healthz', url: 'http://localhost:9000' }`，前端去打 `/healthz`，成功回来再 `transition { to: 'verifying' }`，最后落 `done`。
+然后发一条 `validate { kind: 'orchestrator_healthz', url: 'http://localhost:9000' }`，前端去打 `/health`（kind 沿用历史名带 z，实际端点是 `/health`），成功回来再 `transition { to: 'verifying' }`，最后落 `done`。
 
 ---
 

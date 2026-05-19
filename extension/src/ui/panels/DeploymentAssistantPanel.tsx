@@ -139,7 +139,9 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
   ): Promise<boolean> => {
     try {
       if (kind === 'orchestrator_healthz') {
-        const r = await fetch(`${url.replace(/\/$/, '')}/healthz`);
+        // 端点实际是 /health（无 z）。kind 字段沿用历史名 orchestrator_healthz，
+        // 只是个 enum 标签 —— 改名要同步 schema/prompts/tests，不值当。
+        const r = await fetch(`${url.replace(/\/$/, '')}/health`);
         return r.ok;
       }
       const r = await fetch(`${url.replace(/\/$/, '')}/admin/config`, {
