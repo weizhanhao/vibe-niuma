@@ -14,6 +14,7 @@ import { AlertWebhookStep } from '../components/AlertWebhookStep';
 import { GitHubAuthStep } from '../components/GitHubAuthStep';
 import { RepoListEditor } from '../components/RepoListEditor';
 import { DeploymentAssistantPanel } from './DeploymentAssistantPanel';
+import { ManualConfigForm } from './ManualConfigForm';
 
 interface Props {
   onDone: () => void;
@@ -25,6 +26,8 @@ type Step = 1 | 2 | 3 | 4 | 5;
 export function CreateProjectPanel({ onDone, onCancel }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState('');
+  // 熟手通道：步骤 1 选择走 ManualConfigForm 一张表填完，跳过 step 2-5 AI 引导。
+  const [manualMode, setManualMode] = useState(false);
   const [auth, setAuth] = useState<GitHubAuth | undefined>(undefined);
   const [repos, setRepos] = useState<RepoConfig[]>([]);
   // Plan 11 M4.T27：业务员可选配的告警 webhook URL
@@ -135,6 +138,18 @@ export function CreateProjectPanel({ onDone, onCancel }: Props) {
     }
   };
 
+  if (manualMode) {
+    return (
+      <div className="app-body">
+        <ManualConfigForm
+          name={name}
+          onDone={onDone}
+          onCancel={() => setManualMode(false)}
+        />
+      </div>
+    );
+  }
+
   if (step === 1) {
     return (
       <div className="app-body">
@@ -155,10 +170,16 @@ export function CreateProjectPanel({ onDone, onCancel }: Props) {
           <div className="btn-row">
             <button className="btn btn-ghost" onClick={onCancel}>取消</button>
             <button
+              className="btn btn-secondary"
+              onClick={() => setManualMode(true)}
+              disabled={!name.trim()}
+              title="跳过 AI 引导，一张表填完所有配置"
+            >直接填表（熟手）</button>
+            <button
               className="btn btn-primary"
               onClick={() => void goToStep2()}
               disabled={!name.trim()}
-            >下一步 →</button>
+            >AI 引导 →</button>
           </div>
         </section>
       </div>

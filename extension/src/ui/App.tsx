@@ -130,17 +130,17 @@ export function App() {
     await migrateLegacyChromeStorage();
     await migrateLegacyConfig();
     const projects = await loadProjects();
-    if (projects.length === 0) {
-      setBoot({ kind: 'no-projects' });
-      return;
-    }
-    const active = await loadActiveProject();
-    if (!active) {
-      setBoot({ kind: 'no-active', first: projects[0] });
-      return;
-    }
-    const cfg = await loadConfig();
-    setBoot({ kind: 'has-active', project: active, config: cfg });
+    const active = projects.length > 0 ? await loadActiveProject() : null;
+    const cfg = active ? await loadConfig() : null;
+    setBoot((prev) => {
+      // 正在新建项目时，chrome.storage 变化（wizard 中途 saveConfig 等）
+      // 不能把 boot 状态打回 has-active，否则 CreateProjectPanel 直接卸载，
+      // 业务员看着像「填到一半跳回首页」。新建完成/取消时父调用方会主动改 boot。
+      if (prev.kind === 'creating') return prev;
+      if (projects.length === 0) return { kind: 'no-projects' };
+      if (!active) return { kind: 'no-active', first: projects[0] };
+      return { kind: 'has-active', project: active, config: cfg };
+    });
   };
 
   useEffect(() => {
