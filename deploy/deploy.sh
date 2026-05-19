@@ -169,6 +169,16 @@ else
   docker start vibe-niuma-mysql >/dev/null 2>&1 || true
 fi
 
+# 旧代号 doskill-* unit 如果还在（Plan 11 之前 bootstrap 的 ECS），先 disable + 删，否则
+# 跟 vibe-niuma-* 抢端口 9000/8787，新 unit 起不来。idempotent：没装过也无副作用。
+log "清理旧 doskill-* unit（如果存在）"
+for u in doskill-orchestrator.service doskill-llm-proxy.service; do
+  if [ -e "/etc/systemd/system/\$u" ] || sudo systemctl list-unit-files "\$u" 2>/dev/null | grep -q "\$u"; then
+    sudo systemctl disable --now "\$u" 2>/dev/null || true
+    sudo rm -f "/etc/systemd/system/\$u"
+  fi
+done
+
 # systemd units
 log "安装 + 重启 systemd units"
 sudo cp deploy/systemd/vibe-niuma-llm-proxy.service /etc/systemd/system/
@@ -181,6 +191,40 @@ sudo systemctl restart vibe-niuma-llm-proxy.service vibe-niuma-orchestrator.serv
 # main demo 站（业务员框选「样板间」）
 log "起 main 分支常驻 demo 站"
 bash deploy/main-demo.sh || log "main-demo 起失败（不阻塞主部署，看 docker logs）"
+
+# Caddy 反向代理 + 自动 HTTPS（Plan 11 M4.T29）
+# 给现有 ECS 上 Plan 11 之前已 bootstrap 的也补上 Caddy。Caddyfile 有就装、就刷。
+# 域名规则：把 PREVIEW_HOST（公网 IP）的点换成杠 + .sslip.io，例 114.55.171.64 → 114-55-171-64.sslip.io
+if [ -f deploy/Caddyfile ] && [ -n "\${PREVIEW_HOST:-}" ] && [ "\$PREVIEW_HOST" != "127.0.0.1" ]; then
+  log "Caddy: 装/刷反向代理（HTTPS via sslip.io）"
+  if ! command -v caddy >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null; then
+      sudo apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl gpg
+      curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+      sudo apt-get update -y -qq
+      sudo apt-get install -y -qq caddy
+    elif command -v dnf >/dev/null; then
+      sudo dnf install -y -q 'dnf-command(copr)' || true
+      sudo dnf copr enable -y @caddy/caddy || true
+      sudo dnf install -y -q caddy
+    elif command -v yum >/dev/null; then
+      sudo yum install -y -q yum-plugin-copr || true
+      sudo yum copr enable -y @caddy/caddy || true
+      sudo yum install -y -q caddy
+    fi
+  fi
+  if command -v caddy >/dev/null 2>&1; then
+    PUBLIC_DOMAIN="\$(echo "\$PREVIEW_HOST" | tr '.' '-').sslip.io"
+    sudo mkdir -p /etc/caddy /var/log/caddy
+    sudo sed "s|{\\\$PUBLIC_HOST}|\$PUBLIC_DOMAIN|g" deploy/Caddyfile | sudo tee /etc/caddy/Caddyfile >/dev/null
+    sudo systemctl enable --now caddy
+    sudo systemctl reload caddy 2>/dev/null || sudo systemctl restart caddy
+    log "Caddy 已起：https://\$PUBLIC_DOMAIN（首次请求等 Let's Encrypt ~30s；安全组要放行 80/443）"
+  else
+    log "Caddy 装失败（不阻塞），业务员可继续用 http://\$PREVIEW_HOST:9000"
+  fi
+fi
 
 # 写 RELEASE_INFO（rollback.sh 用来显示「现在是哪个版本」）
 cat > RELEASE_INFO <<RELEOF
