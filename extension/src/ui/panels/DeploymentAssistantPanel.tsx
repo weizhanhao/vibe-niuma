@@ -21,6 +21,7 @@ import {
 import { buildSystemPrompt } from '../../ai/systemPrompt';
 import { saveConfig } from '../../lib/config';
 import { ActionCard } from '../components/ActionCard';
+import { ManualConfigForm } from './ManualConfigForm';
 import { ChatPanel } from './ChatPanel';
 
 const STATE_KEY = 'vibe_niuma_deployment_state';
@@ -79,6 +80,8 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
   const [deepseekKey, setDeepseekKey] = useState('');
   const [keyError, setKeyError] = useState<string | null>(null);
   const [collected, setCollected] = useState<Partial<CollectedInfo>>({});
+  // 'wizard' = AI 引导（默认），'manual' = 熟手 4 input 直接填表（跳过 AI）
+  const [mode, setMode] = useState<'wizard' | 'manual'>('wizard');
 
   useEffect(() => {
     let mounted = true;
@@ -304,28 +307,48 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
   return (
     <div className="app-body">
       <div className="wizard-phase-bar">
-        <span className="wizard-phase-bar__label">{phaseText}</span>
-        <button className="btn btn-small btn-ghost" onClick={reset}>重置</button>
-      </div>
-      <ChatPanel
-        client={client}
-        systemPrompt={systemPrompt}
-        history={history}
-        onAppend={onAppend}
-        autoSendOnEmpty="我已经填好 DeepSeek API Key，告诉我接下来该做什么。"
-      />
-      {actions.length > 0 && (
-        <div className="actions-list">
-          {actions.map((a, i) => (
-            <ActionCard
-              key={i}
-              action={a}
-              onCaptureField={onCapture}
-              onValidate={onValidate}
-              onTransition={onTransition}
-            />
-          ))}
+        <span className="wizard-phase-bar__label">
+          {mode === 'manual' ? '直接填表（熟手通道）' : phaseText}
+        </span>
+        <div className="wizard-phase-bar__actions">
+          {mode === 'wizard' && (
+            <button
+              className="btn btn-small btn-ghost"
+              onClick={() => setMode('manual')}
+              title="跳过 AI 引导，直接 4 input 填配置"
+            >直接填表</button>
+          )}
+          <button className="btn btn-small btn-ghost" onClick={reset}>重置</button>
         </div>
+      </div>
+      {mode === 'manual' ? (
+        <ManualConfigForm
+          onSave={onComplete}
+          onCancel={() => setMode('wizard')}
+        />
+      ) : (
+        <>
+          <ChatPanel
+            client={client}
+            systemPrompt={systemPrompt}
+            history={history}
+            onAppend={onAppend}
+            autoSendOnEmpty="我已经填好 DeepSeek API Key，告诉我接下来该做什么。"
+          />
+          {actions.length > 0 && (
+            <div className="actions-list">
+              {actions.map((a, i) => (
+                <ActionCard
+                  key={i}
+                  action={a}
+                  onCaptureField={onCapture}
+                  onValidate={onValidate}
+                  onTransition={onTransition}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

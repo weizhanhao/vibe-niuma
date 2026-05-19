@@ -297,6 +297,16 @@ code { font-family: var(--mono); font-size: 0.9em; }
   font-weight: 600;
   color: var(--ink-soft);
 }
+.wizard-phase-bar__actions {
+  display: flex; gap: 6px; align-items: center;
+}
+
+/* 熟手通道：4 input 直接填表（DeploymentAssistantPanel mode=manual） */
+.manual-config-form {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.manual-config-form .field { display: flex; flex-direction: column; gap: 4px; }
+.manual-config-form .btn-row { margin-top: 4px; justify-content: flex-end; }
 .hint .accent { color: var(--accent); }
 .hint code, .hint kbd {
   display: inline-block;
