@@ -36,8 +36,9 @@ export function RepoListEditor({ value, onChange }: Props) {
     <section className="repo-list-editor">
       <div className="title-with-help">
         <p className="help">
-          告诉 vibe-niuma 这个项目要管哪些 GitHub 仓库。业务员合并的代码会自动 push 到
-          每个仓的 <code>vibe-niuma/dev</code> 分支（不动你们 main），程序员从那里 review。
+          告诉 vibe-niuma 这个项目要管哪些代码托管仓库（GitHub / Gitee / 云效都行）。
+          业务员合并的代码会自动 push 到每个仓的 <code>vibe-niuma/dev</code> 分支（不动你们
+          main），程序员从那里 review。
         </p>
         <HelpBubble content={repoListHelp} ariaLabel="关联仓库 帮助" />
       </div>

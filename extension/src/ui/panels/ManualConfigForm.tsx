@@ -11,7 +11,16 @@ import { useEffect, useState } from 'react';
 import { loadConfig, saveConfig, type RepoConfig } from '../../lib/config';
 import { loadGitHubAuth, saveGitHubAuth, type GitHubAuth } from '../../lib/github-auth';
 import { createProject, setActiveProject } from '../../lib/projects';
+import { HelpBubble } from '../components/HelpBubble';
 import { RepoListEditor } from '../components/RepoListEditor';
+
+// 帮助文档 markdown（vite 构建时打包成字符串，HelpBubble 点开显示）
+import orchestratorUrlHelp from '../helpContent/orchestrator-url.md?raw';
+import adminTokenHelp from '../helpContent/admin-token.md?raw';
+import deepseekKeyHelp from '../helpContent/deepseek-key.md?raw';
+import dashscopeKeyHelp from '../helpContent/dashscope-key.md?raw';
+import githubPatHelp from '../helpContent/github-pat.md?raw';
+import alertWebhookHelp from '../helpContent/alert-webhook.md?raw';
 
 // 跟 DeploymentAssistantPanel 同源的 chrome.storage key 名 —— wizard 状态机 / 此表单
 // 共享 deepseek key 落点。
@@ -185,7 +194,10 @@ export function ManualConfigForm({ name, onDone, onCancel }: ManualConfigFormPro
       <fieldset className="manual-config-fieldset">
         <legend>Orchestrator</legend>
         <label className="field">
-          <span className="label">Orchestrator URL</span>
+          <div className="field-label-row">
+            <span className="label">Orchestrator URL</span>
+            <HelpBubble content={orchestratorUrlHelp} ariaLabel="Orchestrator URL 帮助" />
+          </div>
           <input
             type="url"
             placeholder="https://114-55-171-64.sslip.io"
@@ -194,7 +206,10 @@ export function ManualConfigForm({ name, onDone, onCancel }: ManualConfigFormPro
           />
         </label>
         <label className="field">
-          <span className="label">Admin Token</span>
+          <div className="field-label-row">
+            <span className="label">Admin Token</span>
+            <HelpBubble content={adminTokenHelp} ariaLabel="Admin Token 帮助" />
+          </div>
           <input
             type="password"
             placeholder="ECS 上 /opt/vibe-niuma/admin.token 那一串"
@@ -207,7 +222,10 @@ export function ManualConfigForm({ name, onDone, onCancel }: ManualConfigFormPro
       <fieldset className="manual-config-fieldset">
         <legend>LLM Keys</legend>
         <label className="field">
-          <span className="label">DeepSeek API Key</span>
+          <div className="field-label-row">
+            <span className="label">DeepSeek API Key</span>
+            <HelpBubble content={deepseekKeyHelp} ariaLabel="DeepSeek API Key 帮助" />
+          </div>
           <input
             type="password"
             placeholder="sk-..."
@@ -216,7 +234,10 @@ export function ManualConfigForm({ name, onDone, onCancel }: ManualConfigFormPro
           />
         </label>
         <label className="field">
-          <span className="label">DashScope API Key（可选）</span>
+          <div className="field-label-row">
+            <span className="label">DashScope API Key（可选）</span>
+            <HelpBubble content={dashscopeKeyHelp} ariaLabel="DashScope API Key 帮助" />
+          </div>
           <input
             type="password"
             placeholder="sk-...（看截图模型用，不填只走文字）"
@@ -227,12 +248,15 @@ export function ManualConfigForm({ name, onDone, onCancel }: ManualConfigFormPro
       </fieldset>
 
       <fieldset className="manual-config-fieldset">
-        <legend>GitHub（可选）</legend>
+        <legend>代码托管 PAT（可选）</legend>
         <label className="field">
-          <span className="label">Personal Access Token</span>
+          <div className="field-label-row">
+            <span className="label">Personal Access Token</span>
+            <HelpBubble content={githubPatHelp} ariaLabel="代码托管 PAT 帮助（GitHub / Gitee / 云效）" />
+          </div>
           <input
             type="password"
-            placeholder="ghp_...（关浏览器即清，永远不入 DB）"
+            placeholder="GitHub ghp_… / Gitee / 阿里云云效 token 都行（session 内存，永远不入 DB）"
             value={form.githubPat}
             onChange={(e) => setForm({ ...form, githubPat: e.target.value })}
           />
@@ -247,10 +271,13 @@ export function ManualConfigForm({ name, onDone, onCancel }: ManualConfigFormPro
       <fieldset className="manual-config-fieldset">
         <legend>告警 Webhook（可选）</legend>
         <label className="field">
-          <span className="label">钉钉 / 飞书 / Discord webhook URL</span>
+          <div className="field-label-row">
+            <span className="label">钉钉 / 飞书 / Discord webhook URL</span>
+            <HelpBubble content={alertWebhookHelp} ariaLabel="告警 Webhook 帮助" />
+          </div>
           <input
             type="url"
-            placeholder="https://oapi.dingtalk.com/robot/send?access_token=... 或飞书 / Discord"
+            placeholder="https://oapi.dingtalk.com/robot/send?access_token=… 或飞书 / Discord"
             value={form.alertWebhookUrl}
             onChange={(e) => setForm({ ...form, alertWebhookUrl: e.target.value })}
           />

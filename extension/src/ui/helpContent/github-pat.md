@@ -1,8 +1,8 @@
-**GitHub PAT（Personal Access Token）** 让 orchestrator 帮你 push 到 GitHub。
+**代码托管 PAT（Personal Access Token）** 让 orchestrator 帮你 push 到代码托管平台。**支持 GitHub / Gitee / 阿里云云效**，按你用的平台拿一个就行。
 
 > 🔒 PAT 只活在浏览器 session 内存里 —— 关浏览器即清，不入 chrome.storage.local，不入服务器 DB。
 
-## 怎么拿
+## GitHub
 
 ### Fine-grained PAT（推荐，权限可控）
 
@@ -21,13 +21,26 @@
 
 ### Classic PAT（兼容备用）
 
-不能限定 repo，但所有 repo 都自动有权限。简单粗暴：
 - Developer settings → Personal access tokens → **Tokens (classic)**
-- Generate new token (classic)
-- Scopes 只勾 `repo`（含子项 `repo:status` / `public_repo` / `repo_deployment` 之类）
+- Generate new token (classic) → Scopes 勾 `repo`
 - 拿到 `ghp_...` 串
+
+## Gitee
+
+1. 登 https://gitee.com → 右上角头像 → **个人设置**
+2. 左侧：**安全设置** → **私人令牌** → **生成新令牌**
+3. 描述写 `vibe-niuma-bot`，权限勾 `projects` + `pull_requests` + `user_info`
+4. 提交 → 拿到一串 token（**只显示一次**，立刻复制）
+
+## 阿里云云效（Codeup）
+
+1. 登 https://codeup.aliyun.com → 右上角头像 → **个人设置**
+2. 左侧：**个人访问令牌** → **新建令牌**
+3. 名称写 `vibe-niuma-bot`，**权限选 `api`**（代码读写 + PR 用）
+4. **过期时间**：90 天 / 1 年都行
+5. **生成** → 拿到令牌串，立刻复制（关页面就再也看不到）
 
 ## 跳过会怎样
 
-跳过的话，扩展不会触发 sync-repos（不 push 回 GitHub），只在 ECS 本地工作。
+跳过的话，扩展不会触发 sync-repos（不 push 回你的代码仓），只在 ECS 本地工作。
 后续到 Settings 里随时可以补 PAT。

@@ -1,12 +1,14 @@
-**关联 GitHub 仓库** 是告诉 orchestrator：业务员后续每条 CR 改的代码要 push 回哪个仓库。
+**关联代码托管仓库** 是告诉 orchestrator：业务员后续每条 CR 改的代码要 push 回哪些仓库。**支持 GitHub / Gitee / 阿里云云效**，你的仓在哪个平台填哪个 URL。
 
 ## 每行三个字段
 
 ### 1. 仓库 URL
 
-两种格式都行：
-- `https://github.com/your-org/your-repo.git`（**推荐**，PAT 走 HTTPS）
-- `git@github.com:your-org/your-repo.git`（需要 ECS 上配 SSH key，麻烦，少用）
+两种格式都行（HTTPS 推荐，PAT 走 HTTPS 一把通；SSH 要 ECS 上配 key，少用）：
+
+- GitHub：`https://github.com/your-org/your-repo.git`
+- Gitee：`https://gitee.com/your-org/your-repo.git`
+- 云效：`https://codeup.aliyun.com/your-org/your-repo.git`
 
 ### 2. 主分支（mainBranch）
 
@@ -32,7 +34,7 @@ main ←── 上线分支
 
 ## 跳过会怎样
 
-跳过的话，扩展只在 ECS 本地代码工作，不 push 到 GitHub。
+跳过的话，扩展只在 ECS 本地代码工作，不 push 回代码托管平台。
 后续到 Settings 加 repo 再触发 sync-repos 同步过去。
 
 ## 常见报错
