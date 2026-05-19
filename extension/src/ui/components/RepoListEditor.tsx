@@ -52,11 +52,19 @@ export function RepoListEditor({ value, onChange }: Props) {
         const urlInvalid = repo.url.trim().length > 0 && !looksLikeGitUrl(repo.url);
         return (
           <div key={i} className="repo-row">
+            <div className="repo-row-header">
+              <span className="repo-row-num">仓库 #{i + 1}</span>
+              {urlInvalid && <span className="badge-error">URL 格式不对</span>}
+              <button
+                type="button"
+                className="repo-row-remove"
+                onClick={() => removeRow(i)}
+                aria-label={`删除仓库 ${i + 1}`}
+                title="删除这条"
+              >×</button>
+            </div>
             <label className="field">
-              <span className="label">
-                仓库 #{i + 1} URL
-                {urlInvalid && <span className="badge-error">格式不像 GitHub URL</span>}
-              </span>
+              <span className="label">URL</span>
               <input
                 type="text"
                 aria-label={`仓库 ${i + 1} URL`}
@@ -78,7 +86,7 @@ export function RepoListEditor({ value, onChange }: Props) {
                 />
               </label>
               <label className="field field-half">
-                <span className="label">业务员合并目标</span>
+                <span className="label">合并目标</span>
                 <input
                   type="text"
                   aria-label={`仓库 ${i + 1} 目标分支`}
@@ -88,14 +96,6 @@ export function RepoListEditor({ value, onChange }: Props) {
                 />
               </label>
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              onClick={() => removeRow(i)}
-              aria-label={`删除仓库 ${i + 1}`}
-            >
-              × 删除
-            </button>
           </div>
         );
       })}

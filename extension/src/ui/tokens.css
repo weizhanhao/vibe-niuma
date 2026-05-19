@@ -319,6 +319,67 @@ code { font-family: var(--mono); font-size: 0.9em; }
   color: var(--ink-soft);
   padding: 0 6px;
 }
+
+/* 多仓列表：每条仓一张紧凑卡（卡头有「仓库 #N」+ ×删除；URL 独占一行；
+   主分支/合并目标两列均分）。Plan 11 M1.T8 RepoListEditor。 */
+.repo-list-editor {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.repo-list-editor .title-with-help { display: flex; align-items: flex-start; gap: 6px; }
+.repo-list-editor .title-with-help .help { margin: 0; flex: 1; }
+.repo-list-editor .empty-state {
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.repo-list-editor .empty-state p { margin: 0; }
+
+.repo-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.repo-row-header {
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 2px;
+}
+.repo-row-num {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  flex: 1;
+}
+.repo-row-remove {
+  background: transparent;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: color .15s, background .15s;
+}
+.repo-row-remove:hover { color: var(--danger, #c33); background: var(--surface-2, rgba(0,0,0,.04)); }
+
+.repo-row .field { gap: 3px; }
+.repo-row .label { font-size: 11px; color: var(--ink-faint); }
+.repo-row input {
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.repo-branches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.field-half { min-width: 0; } /* 让 grid 子项可缩小，避免长 URL 顶宽 */
 .hint .accent { color: var(--accent); }
 .hint code, .hint kbd {
   display: inline-block;
