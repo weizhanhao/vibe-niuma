@@ -1349,17 +1349,13 @@ body.theme-dark .fail-card .phase { color: var(--danger); }
   color: var(--accent);
   word-break: break-all;
 }
-.action-card-paste-back { display: grid; gap: 6px; margin-top: 4px; }
-.action-card-textarea {
-  width: 100%;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  border-radius: 3px;
-  padding: 6px 8px;
-  font-family: var(--mono);
-  font-size: 11px;
-  resize: vertical;
+/* 指向 ChatPanel 的提示文案（Plan 7 UX 收敛：业务员永远只在 ChatPanel 输入，
+   ActionCard 不再渲染独立 textarea；这里用一行小提示+下箭头引导视线下移）。 */
+.action-card-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 4px;
+  font-style: italic;
 }
 .action-card-capture-banner {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;

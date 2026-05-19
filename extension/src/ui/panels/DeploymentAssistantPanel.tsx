@@ -130,7 +130,24 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
     });
   };
 
-  const onAppend = (m: ChatMessage) => setHistory((h) => [...h, m]);
+  // ChatPanel 是业务员唯一的输入入口（Plan 7 UX 收敛：不再渲染 ActionCard 内 textarea）。
+  // 业务员粘 `sk-xxx` 时自动当 DeepSeek API Key 处理：存 storage + 推进 wizard
+  // 状态；其它内容当普通 user 消息追加进 history 让 AI 接管。
+  const onAppend = (m: ChatMessage) => {
+    if (m.role === 'user') {
+      const trimmed = m.content.trim();
+      if (trimmed.startsWith('sk-') && trimmed.length >= 16) {
+        setDeepseekKey(trimmed);
+        void saveDeepSeekKey(trimmed);
+        if (state.phase === 'gathering_deepseek_key') {
+          dispatch({ type: 'deepseek_key_set' });
+        }
+        setHistory((h) => [...h, { role: 'user', content: `[已提交 DeepSeek API Key，前缀 ${trimmed.slice(0, 8)}…]` }]);
+        return;
+      }
+    }
+    setHistory((h) => [...h, m]);
+  };
 
   const onValidate = async (
     kind: 'orchestrator_healthz' | 'admin_config',
@@ -175,25 +192,6 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
     if (field === 'orchestratorUrl' || field === 'adminToken') {
       void saveConfig({ [field]: value });
     }
-  };
-
-  // BUG FIX：之前 ActionCard 渲染 RequestOutputCard（sk- 输入框 + 「提交」按钮）时
-  // 没传 onRequestOutput → 点提交是 undefined?.()，业务员看着按钮死活没反应。
-  // 现在把业务员输入的命令输出当一条 user message append 进 chat history，让 AI
-  // 接着引导。同时兜底 sk- 开头直接当 deepseek key 处理。
-  const onUserOutput = (output: string) => {
-    const trimmed = output.trim();
-    if (!trimmed) return;
-    if (trimmed.startsWith('sk-') && trimmed.length >= 16) {
-      setDeepseekKey(trimmed);
-      void saveDeepSeekKey(trimmed);
-      if (state.phase === 'gathering_deepseek_key') {
-        dispatch({ type: 'deepseek_key_set' });
-      }
-      onAppend({ role: 'user', content: `[已提交 DeepSeek API Key，前缀 ${trimmed.slice(0, 8)}…]` });
-      return;
-    }
-    onAppend({ role: 'user', content: trimmed });
   };
 
   const onTransition = (to: string) => {
@@ -323,7 +321,6 @@ export function DeploymentAssistantPanel({ onComplete }: { onComplete: () => voi
               key={i}
               action={a}
               onCaptureField={onCapture}
-              onRequestOutput={onUserOutput}
               onValidate={onValidate}
               onTransition={onTransition}
             />

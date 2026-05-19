@@ -76,10 +76,9 @@ export function ActionCard(props: ActionCardProps) {
 }
 
 function CopyCommandCard({
-  action, onCopy, onRequestOutput,
+  action, onCopy,
 }: ActionCardProps & { action: Extract<AiAction, { type: 'copy_command' }> }) {
   const [copied, setCopied] = useState(false);
-  const [output, setOutput] = useState('');
   const [available, setAvailable] = useState(true);
 
   const handleCopy = async () => {
@@ -108,20 +107,8 @@ function CopyCommandCard({
         )}
       </div>
       {action.expectsOutput && copied && (
-        <div className="action-card-paste-back">
-          <textarea
-            className="action-card-textarea"
-            aria-label="粘贴命令输出"
-            placeholder="把命令输出粘到这里"
-            rows={3}
-            value={output}
-            onChange={(e) => setOutput(e.target.value)}
-          />
-          <button
-            className="btn btn-small btn-primary"
-            disabled={!output.trim()}
-            onClick={() => onRequestOutput?.(output)}
-          >提交输出</button>
+        <div className="action-card-hint">
+          ↓ 把命令输出粘到下面聊天框发我
         </div>
       )}
     </article>
@@ -149,24 +136,13 @@ function CaptureFieldCard({
 }
 
 function RequestOutputCard({
-  action, onRequestOutput,
+  action,
 }: ActionCardProps & { action: Extract<AiAction, { type: 'request_output' }> }) {
-  const [output, setOutput] = useState('');
   return (
     <article className="action-card action-request_output">
-      <textarea
-        className="action-card-textarea"
-        aria-label="命令输出"
-        placeholder={action.placeholder}
-        rows={3}
-        value={output}
-        onChange={(e) => setOutput(e.target.value)}
-      />
-      <button
-        className="btn btn-small btn-primary"
-        disabled={!output.trim()}
-        onClick={() => onRequestOutput?.(output)}
-      >提交</button>
+      <div className="action-card-hint">
+        ↓ {action.placeholder || '把内容粘到下面聊天框发我'}
+      </div>
     </article>
   );
 }
