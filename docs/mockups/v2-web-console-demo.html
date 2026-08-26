@@ -1,0 +1,1327 @@
+<div class="l"><span class="g dim">1</span><span><span class="ac">pipeline:</span></span></div>
+<div class="l"><span class="g dim">2</span><span>  - <span class="ac">triage</span>:      {skill: <span class="ok">triage</span>}</span></div>
+<div class="l"><span class="g dim">3</span><span>  - <span class="ac">clarify</span>:     {skill: <span class="ok">grilling</span>, gate: auto}</span></div>
+<div class="l"><span class="g dim">4</span><span>  - <span class="ac">decompose</span>:   {skill: <span class="ok">to-tickets</span>, critic: <span class="ok">decompose-critic</span>}</span></div>
+<div class="l"><span class="g dim">5</span><span>  - <span class="ac">implement</span>:   {parallel: tasks, skill: <span class="ok">tdd</span>, workspace: required}</span></div>
+<div class="l"><span class="g dim">6</span><span>  - <span class="ac">verify</span>:      {run: [lint, test, build],</span></div>
+<div class="l"><span class="g dim">7</span><span>                 on_failure: {skill: <span class="ok">diagnosing-bugs</span>, max_attempts: 2}}</span></div>
+<div class="l"><span class="g dim">8</span><span>  - <span class="ac">ai_review</span>:   {adapter: ocr, block_on: [critical],</span></div>
+<div class="l"><span class="g dim">9</span><span>                 plus_skill: <span class="ok">code-review</span>}</span></div>
+<div class="l"><span class="g dim">10</span><span> - <span class="ac">preview</span>:     {expose: true, env: preview}</span></div>
+<div class="l"><span class="g dim">11</span><span> - <span class="ac">review</span>:      {gate: <span class="er">human</span>, approvers: 1}</span></div>
+<div class="l"><span class="g dim">12</span><span> - <span class="ac">merge</span>:       {queue: per-repo,</span></div>
+<div class="l"><span class="g dim">13</span><span>                 conflict: [git, mergiraf, {skill: <span class="ok">resolving-merge-conflicts</span>}]}</span></div>
+<div class="l"><span class="g dim">14</span><span> - <span class="ac">deploy_test</span>: {adapter: deploy, env: test}</span></div>
+<div class="l"><span class="g dim">15</span><span> - <span class="ac">integrate</span>:   {run: [e2e], env: test}</span></div>
+<div class="l"><span class="g dim">16</span><span> - <span class="ac">release</span>:     {gate: <span class="er">human</span>, adapter: deploy, env: prod}</span></div>
+<title>并行开发调度台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#F6F6F9; --surface:#FFFFFF; --surface-2:#FBFBFD; --surface-3:#F1F1F6;
+  --line:#E3E3EC; --line-strong:#CDCDDB;
+  --ink:#17171F; --ink-2:#55556A; --ink-3:#8A8AA0;
+  --accent:#3D2FD6; --accent-ink:#FFFFFF; --accent-soft:#ECE9FD; --accent-line:#C3BBF7;
+  --gate:#9A6510; --gate-soft:#FBF0DA; --gate-line:#E8CE9A;
+  --bad:#B3352B;  --bad-soft:#FBE6E3;  --bad-line:#EFC0B9;
+  --ok:#256B47;   --ok-soft:#E1F1E8;   --ok-line:#B4DCC6;
+  --idle:#8A8AA0; --idle-soft:#EDEDF3;
+  --shadow-1:0 1px 2px rgba(18,18,40,.05);
+  --shadow-2:0 1px 2px rgba(18,18,40,.05),0 10px 28px -14px rgba(18,18,40,.20);
+  --r:10px; --r-sm:6px;
+  --sans:"IBM Plex Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --cond:"IBM Plex Sans Condensed","IBM Plex Sans","PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  --mono:"IBM Plex Mono","SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0F0F16; --surface:#17171F; --surface-2:#1D1D28; --surface-3:#232330;
+    --line:#2A2A38; --line-strong:#3B3B4E;
+    --ink:#ECECF4; --ink-2:#A0A0B6; --ink-3:#70708A;
+    --accent:#8E80FF; --accent-ink:#12121A; --accent-soft:#241F42; --accent-line:#463C96;
+    --gate:#E3A748; --gate-soft:#312611; --gate-line:#5C4718;
+    --bad:#F08072;  --bad-soft:#391A17;  --bad-line:#6B2E26;
+    --ok:#5DC28E;   --ok-soft:#122C1F;   --ok-line:#215239;
+    --idle:#70708A; --idle-soft:#222230;
+    --shadow-1:0 1px 2px rgba(0,0,0,.4);
+    --shadow-2:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0F0F16; --surface:#17171F; --surface-2:#1D1D28; --surface-3:#232330;
+  --line:#2A2A38; --line-strong:#3B3B4E;
+  --ink:#ECECF4; --ink-2:#A0A0B6; --ink-3:#70708A;
+  --accent:#8E80FF; --accent-ink:#12121A; --accent-soft:#241F42; --accent-line:#463C96;
+  --gate:#E3A748; --gate-soft:#312611; --gate-line:#5C4718;
+  --bad:#F08072;  --bad-soft:#391A17;  --bad-line:#6B2E26;
+  --ok:#5DC28E;   --ok-soft:#122C1F;   --ok-line:#215239;
+  --idle:#70708A; --idle-soft:#222230;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);
+  --shadow-2:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--mono);font-size:.86em;letter-spacing:-.01em}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── 布局骨架 ───────────────────────────────── */
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.rail{
+  background:var(--surface);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;gap:2px;padding:14px 10px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:9px;padding:4px 8px 14px}
+.brand-mark{width:24px;height:24px;flex:none}
+.brand-name{font-family:var(--cond);font-weight:700;font-size:15px;letter-spacing:.02em}
+.brand-sub{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+
+.space-pick{
+  width:100%;display:flex;align-items:center;gap:9px;padding:9px 10px;margin-bottom:12px;
+  background:var(--surface-3);border:1px solid var(--line);border-radius:var(--r);text-align:left;
+}
+.space-pick:hover{border-color:var(--line-strong)}
+.space-dot{width:22px;height:22px;border-radius:6px;flex:none;display:grid;place-items:center;
+  font-family:var(--cond);font-weight:700;font-size:11px;color:#fff}
+.space-pick .nm{font-weight:600;font-size:13px;line-height:1.2}
+.space-pick .mt{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.space-pick .car{margin-left:auto;color:var(--ink-3);font-size:11px}
+
+.nav-lab{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);padding:14px 10px 6px}
+.nav-i{display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;border-radius:var(--r-sm);
+  color:var(--ink-2);font-size:13.5px}
+.nav-i:hover{background:var(--surface-3);color:var(--ink)}
+.nav-i[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav-i svg{flex:none;opacity:.85}
+.nav-i .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.nav-i .cnt.hot{color:var(--gate);font-weight:600}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.top{
+  display:flex;align-items:center;gap:12px;padding:0 22px;height:54px;
+  border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:20;
+}
+.crumb{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-3);min-width:0}
+.crumb b{color:var(--ink);font-weight:600}
+.crumb button{color:var(--ink-3)}
+.crumb button:hover{color:var(--accent);text-decoration:underline}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:8px}
+.icon-b{width:30px;height:30px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--ink-2)}
+.icon-b:hover{background:var(--surface-3);color:var(--ink)}
+.who{display:flex;align-items:center;gap:8px;padding-left:8px;border-left:1px solid var(--line)}
+.ava{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  display:grid;place-items:center;font-size:11px;font-weight:600;font-family:var(--cond)}
+.body{padding:22px;flex:1;min-width:0}
+
+/* ── 通用件 ─────────────────────────────────── */
+.h1{font-family:var(--cond);font-size:23px;font-weight:700;letter-spacing:.01em;margin:0;text-wrap:balance}
+.h2{font-family:var(--cond);font-size:16px;font-weight:600;letter-spacing:.02em;margin:0}
+.eyebrow{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+.sub{color:var(--ink-2);font-size:13px;margin:5px 0 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-1)}
+.pad{padding:16px}
+.row{display:flex;align-items:center;gap:10px}
+.sp{margin-left:auto}
+.stack{display:flex;flex-direction:column}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--r-sm);
+  border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:500}
+.btn:hover{background:var(--surface-3)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;
+  font-size:11.5px;font-weight:600;font-family:var(--cond);letter-spacing:.03em;
+  border:1px solid transparent;white-space:nowrap}
+.pill.run{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+.pill.gate{background:var(--gate-soft);color:var(--gate);border-color:var(--gate-line)}
+.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:var(--bad-line)}
+.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+.pill.idle{background:var(--idle-soft);color:var(--ink-2);border-color:var(--line)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.pill.run .dot{animation:bl 1.4s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.tag{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;background:var(--surface-3);
+  border:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+/* ── 空间列表 ───────────────────────────────── */
+.grid-sp{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px;margin-top:18px}
+.sp-card{text-align:left;padding:16px;display:block;width:100%;transition:border-color .15s,transform .15s}
+.sp-card:hover{border-color:var(--accent-line);transform:translateY(-1px);box-shadow:var(--shadow-2)}
+.sp-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sp-name{font-weight:600;font-size:15px}
+.sp-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.sp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.sp-stat{background:var(--surface);padding:9px 10px}
+.sp-stat .v{font-family:var(--cond);font-size:19px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.sp-stat .k{font-size:11px;color:var(--ink-3);margin-top:3px}
+
+/* ── 看板 ──────────────────────────────────── */
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:272px;gap:12px;overflow-x:auto;
+  padding-bottom:12px;margin-top:16px;align-items:start}
+.col{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:10px}
+.col-h{display:flex;align-items:center;gap:7px;padding:2px 4px 10px}
+.col-h .t{font-family:var(--cond);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.col-h .n{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.col-h .bar{width:3px;height:13px;border-radius:2px;background:var(--idle)}
+.rq{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:11px;margin-bottom:8px;transition:border-color .15s,transform .12s}
+.rq:hover{border-color:var(--accent-line);transform:translateX(2px)}
+.rq .ti{font-weight:600;font-size:13.5px;line-height:1.4;margin-bottom:8px;text-wrap:balance}
+.rq .ft{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rq .by{font-size:11.5px;color:var(--ink-3);margin-left:auto;white-space:nowrap}
+.trackmini{display:flex;gap:2px;margin:8px 0 7px}
+.trackmini i{height:3px;border-radius:2px;flex:1;background:var(--idle-soft)}
+.trackmini i.on{background:var(--accent)}
+.trackmini i.done{background:var(--ok)}
+.trackmini i.err{background:var(--bad)}
+
+/* ── 闸门轨 ─────────────────────────────────── */
+.gates{display:flex;align-items:stretch;overflow-x:auto;border:1px solid var(--line);
+  border-radius:var(--r);background:var(--surface);margin:16px 0}
+.gate-s{flex:1;min-width:112px;padding:10px 12px;border-right:1px solid var(--line);position:relative;text-align:left}
+.gate-s:last-child{border-right:none}
+.gate-s .st{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+.gate-s .nm{font-size:13px;font-weight:600;margin-top:3px;white-space:nowrap}
+.gate-s.done .st{color:var(--ok)} .gate-s.now .st{color:var(--accent)}
+.gate-s.wait .st{color:var(--gate)} .gate-s.err .st{color:var(--bad)}
+.gate-s.now{background:var(--accent-soft)}
+.gate-s.wait{background:var(--gate-soft)}
+.gate-s.err{background:var(--bad-soft)}
+.gate-s.idle .nm{color:var(--ink-3)}
+.gate-s[aria-current="true"]{box-shadow:inset 0 -3px 0 var(--accent)}
+.gate-s .human{position:absolute;top:9px;right:10px;font-size:10px;color:var(--gate)}
+
+/* ── 轨道图 ─────────────────────────────────── */
+.tracks{overflow-x:auto;padding:4px 0}
+.tracks svg{display:block;min-width:640px}
+.tk-lane{cursor:pointer}
+.tk-lane:hover .tk-box{stroke:var(--accent)}
+.tk-box{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.tk-t{font-family:var(--sans);font-size:12.5px;font-weight:600;fill:var(--ink)}
+.tk-m{font-family:var(--mono);font-size:10.5px;fill:var(--ink-3)}
+.tk-line{fill:none;stroke-width:2}
+
+/* ── 表 ────────────────────────────────────── */
+.tbl-w{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+th{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+
+/* ── 会话 / 日志 ────────────────────────────── */
+.split{display:grid;grid-template-columns:1fr 400px;gap:14px;align-items:start}
+@media (max-width:1080px){.split{grid-template-columns:1fr}}
+.log{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
+  font-family:var(--mono);font-size:12px;line-height:1.75;padding:12px 14px;max-height:340px;overflow:auto}
+.log .l{display:flex;gap:8px}
+.log .l .g{color:var(--ink-3);flex:none;width:14px}
+.log .ok{color:var(--ok)} .log .er{color:var(--bad)} .log .ac{color:var(--accent)}
+.log .dim{color:var(--ink-3)}
+
+.chat{display:flex;flex-direction:column;gap:10px;max-height:340px;overflow:auto;padding-right:4px}
+.msg{max-width:88%;padding:9px 12px;border-radius:var(--r);font-size:13px;line-height:1.6}
+.msg.ai{background:var(--surface-3);border:1px solid var(--line);align-self:flex-start}
+.msg.me{background:var(--accent);color:var(--accent-ink);align-self:flex-end}
+.msg .who{font-family:var(--cond);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  opacity:.7;margin-bottom:3px;display:block}
+.compose{display:flex;gap:8px;margin-top:12px}
+.compose input{flex:1;padding:9px 12px;border:1px solid var(--line-strong);border-radius:var(--r-sm);
+  background:var(--surface);color:var(--ink);font:inherit;font-size:13px}
+.compose input:focus{outline:none;border-color:var(--accent)}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+
+/* ── diff ─────────────────────────────────── */
+.diff{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.diff-h{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);
+  border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px}
+.diff-b{font-family:var(--mono);font-size:11.5px;line-height:1.7;overflow-x:auto;padding:8px 0}
+.diff-b div{padding:0 12px;white-space:pre}
+.diff-b .a{background:var(--ok-soft);color:var(--ok)}
+.diff-b .d{background:var(--bad-soft);color:var(--bad)}
+.diff-b .c{color:var(--ink-3)}
+
+/* ── 队列 ─────────────────────────────────── */
+.q-item{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:10px;overflow:hidden}
+.q-head{display:flex;align-items:center;gap:11px;padding:12px 14px;width:100%;text-align:left}
+.q-head:hover{background:var(--surface-2)}
+.q-pos{font-family:var(--cond);font-size:13px;font-weight:700;width:22px;color:var(--ink-3);flex:none}
+.q-body{border-top:1px solid var(--line);padding:14px;background:var(--surface-2)}
+.ladder{display:flex;flex-direction:column;gap:0}
+.rung{display:flex;gap:11px;padding:9px 0;border-bottom:1px dashed var(--line)}
+.rung:last-child{border-bottom:none}
+.rung .mk{width:20px;height:20px;border-radius:6px;flex:none;display:grid;place-items:center;font-size:11px}
+.rung .mk.ok{background:var(--ok-soft);color:var(--ok)}
+.rung .mk.run{background:var(--accent-soft);color:var(--accent)}
+.rung .mk.idle{background:var(--idle-soft);color:var(--ink-3)}
+.rung .tt{font-weight:600;font-size:13px}
+.rung .dd{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+
+/* ── banner / 提示 ─────────────────────────── */
+.note{display:flex;gap:10px;padding:11px 13px;border-radius:var(--r);font-size:13px;line-height:1.55}
+.note.gate{background:var(--gate-soft);border:1px solid var(--gate-line);color:var(--gate)}
+.note.bad{background:var(--bad-soft);border:1px solid var(--bad-line);color:var(--bad)}
+.note.ok{background:var(--ok-soft);border:1px solid var(--ok-line);color:var(--ok)}
+.note.acc{background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent)}
+.note b{font-weight:700}
+
+/* ── tabs ─────────────────────────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:18px 0 16px;overflow-x:auto}
+.tab{padding:8px 13px;font-size:13.5px;color:var(--ink-2);border-bottom:2px solid transparent;
+  margin-bottom:-1px;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tab .n{font-family:var(--mono);font-size:11px;opacity:.7;margin-left:4px}
+
+/* ── modal ────────────────────────────────── */
+dialog{border:none;padding:0;background:transparent;max-width:min(560px,92vw);width:100%}
+dialog::backdrop{background:rgba(12,12,25,.5);backdrop-filter:blur(2px)}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-2);overflow:hidden}
+.sheet-h{padding:16px 18px;border-bottom:1px solid var(--line)}
+.sheet-b{padding:18px}
+.sheet-f{padding:13px 18px;border-top:1px solid var(--line);background:var(--surface-2);display:flex;gap:8px}
+.field{margin-bottom:14px}
+.field label{display:block;font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+.field textarea,.field select{width:100%;padding:9px 11px;border:1px solid var(--line-strong);
+  border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:13.5px;resize:vertical}
+.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent)}
+
+.empty{text-align:center;padding:50px 20px;color:var(--ink-3)}
+hr.sep{border:none;border-top:1px solid var(--line);margin:20px 0}
+.sec-h{display:flex;align-items:center;gap:10px;margin:22px 0 11px}
+.sec-h .h2{margin:0}
+</style>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 5h5c4 0 4 7 8 7h5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+        <path d="M3 12h5" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round"/>
+        <path d="M3 19h5c4 0 4-7 8-7h5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" opacity=".55"/>
+        <circle cx="20" cy="12" r="2.4" fill="var(--accent)"/>
+      </svg>
+      <div class="stack">
+        <span class="brand-name">调度台</span>
+        <span class="brand-sub">vibe-niuma v2</span>
+      </div>
+    </div>
+    <div id="rail-body"></div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <nav class="crumb" id="crumb" aria-label="面包屑"></nav>
+      <div class="top-r">
+        <button class="icon-b" data-act="theme" title="切换主题" aria-label="切换主题">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+          </svg>
+        </button>
+        <div class="who">
+          <span class="ava">陈</span>
+          <div class="stack">
+            <span style="font-size:12.5px;font-weight:600;line-height:1.2">陈曦</span>
+            <span style="font-size:11px;color:var(--ink-3)">财务 · 需求方</span>
+          </div>
+        </div>
+      </div>
+    </header>
+    <main class="body" id="view"></main>
+  </div>
+</div>
+
+<dialog id="dlg"><form method="dialog" class="sheet" id="dlg-in"></form></dialog>
+
+<script>
+/* ══ 演示数据 ══════════════════════════════════════════ */
+const SPACES = [
+  {id:'mc', name:'商户中台', code:'MC', color:'#3D2FD6',
+   repos:['merchant-web','merchant-api','merchant-bff'],
+   active:6, runs:'4 / 8', gate:2, branch:'vibe/dev'},
+  {id:'wms', name:'仓配作业', code:'WM', color:'#0F7B8A',
+   repos:['wms-web','wms-core'], active:3, runs:'1 / 6', gate:0, branch:'vibe/dev'},
+  {id:'fin', name:'财务结算', code:'FN', color:'#9A6510',
+   repos:['fin-portal','fin-ledger','fin-job'], active:2, runs:'0 / 4', gate:1, branch:'vibe/dev'},
+];
+
+const COLS = [
+  {k:'draft',    n:'草稿',      c:'var(--idle)'},
+  {k:'clarify',  n:'澄清中',    c:'var(--accent)'},
+  {k:'decompose',n:'拆解中',    c:'var(--accent)'},
+  {k:'build',    n:'并行开发',  c:'var(--accent)'},
+  {k:'review',   n:'待审核',    c:'var(--gate)'},
+  {k:'merge',    n:'合并队列',  c:'var(--accent)'},
+  {k:'live',     n:'已上线',    c:'var(--ok)'},
+];
+
+const STAGES = [
+  {k:'triage',    n:'分诊'},      {k:'clarify',   n:'澄清'},
+  {k:'decompose', n:'拆解'},
+  {k:'build',     n:'并行开发'},  {k:'verify',    n:'验证'},
+  {k:'ai_review', n:'AI 复核'},   {k:'preview',   n:'预览'},
+  {k:'review',    n:'审核', human:true},
+  {k:'merge',     n:'合并'},      {k:'deploy_test', n:'部署测试'},
+  {k:'integrate', n:'集成测试'},  {k:'release',   n:'上线', human:true},
+];
+const SIDX = k => STAGES.findIndex(x => x.k === k);
+
+let REQS = [
+  {id:'R-158', col:'draft', stage:-1, title:'对账单增加月度汇总视图',
+   by:'周雨', dept:'供应链', repos:['merchant-web'], tracks:[]},
+
+  {id:'R-160', col:'clarify', stage:SIDX('clarify'), title:'订单列表要能按门店筛选',
+   by:'李婷', dept:'运营', repos:['merchant-web','merchant-api'], tracks:[],
+   chat:[{r:'me',t:'订单列表要能按门店筛选'},
+         {r:'ai',t:'明白。两个点想跟你确认：① 门店筛选是单选还是可多选？② 需要记住上次选的门店吗（下次进来自动带上）？'}]},
+
+  {id:'R-142', col:'build', stage:SIDX('build'), featured:true,
+   title:'订单导出支持自定义字段 + 异步下载',
+   by:'陈曦', dept:'财务', repos:['merchant-web','merchant-api','merchant-bff'],
+   risk:'mid',
+   tracks:[
+    {id:'T1', n:'导出弹窗加字段选择器', repo:'merchant-web', br:'cr/142-t1', port:5141, st:'ok',
+     touches:['src/pages/Orders/ExportDialog.tsx','src/api/export.ts'], dep:[], ses:'ses_c40b17',
+     add:186, del:22, files:3},
+    {id:'T2', n:'导出任务异步化 + 进度查询', repo:'merchant-api', br:'cr/142-t2', port:5142, st:'run',
+     touches:['app/routers/export.py','app/tasks/export_job.py'], dep:[], ses:'ses_a91c2f',
+     add:146, del:8, files:2},
+    {id:'T3', n:'字段白名单透传 + 下载链接签名', repo:'merchant-bff', br:'cr/142-t3', port:5143, st:'ok',
+     touches:['src/routes/export.ts'], dep:[], ses:'ses_5e2d80',
+     add:64, del:3, files:1},
+   ],
+   contracts:[
+    'POST /export/orders  { fields: string[], filter: OrderFilter } → { jobId }',
+    'GET  /export/jobs/:jobId → { status, progress, url? }',
+   ],
+   critic:{pass:true, round:2,
+     first:'T1 与 T3 都声明触达「字段白名单」定义，存在未声明的隐藏依赖 —— 已提取为接口契约解耦，两侧改为各自基于契约实现。'},
+   collide:{with:'R-158 对账单增加月度汇总视图', file:'app/routers/export.py', level:'中'},
+   chat:[{r:'me',t:'订单导出现在只能导固定几列，财务每个月都要手工再加工。希望能自己勾字段，而且导出大批量的时候不要卡住页面。'},
+         {r:'ai',t:'两个确认点：① 字段勾选需要保存成模板下次复用吗？② 大批量导出改成后台跑完发通知，你能接受等几分钟吗？'},
+         {r:'me',t:'模板先不要，能勾就行。异步可以，跑完给个下载链接就好。'},
+         {r:'ai',t:'收到。最后一个：导出上限定多少行？超过是截断还是报错？'},
+         {r:'me',t:'✓ 够了直接干'}]},
+
+  {id:'R-151', col:'review', stage:SIDX('review'),
+   title:'商品详情页价格改成含税展示', by:'赵敏', dept:'销售',
+   repos:['merchant-web'], tracks:[{id:'T1',n:'价格渲染改含税',repo:'merchant-web',br:'cr/151-t1',port:5151,st:'ok',
+    touches:['src/pages/ProductDetail.tsx'],dep:[],ses:'ses_8f3a41',add:41,del:17,files:2}]},
+
+  {id:'R-147', col:'merge', stage:SIDX('merge'),
+   title:'登录页加企业微信扫码', by:'孙浩', dept:'IT',
+   repos:['merchant-web'], tracks:[]},
+
+  {id:'R-139', col:'merge', stage:SIDX('merge'), conflict:true,
+   title:'商品卡片信息密度调整', by:'赵敏', dept:'销售',
+   repos:['merchant-web'], tracks:[]},
+
+  {id:'R-133', col:'live', stage:SIDX('release'),
+   title:'库存预警阈值可配置', by:'周雨', dept:'供应链',
+   repos:['merchant-web','merchant-api'], tracks:[]},
+];
+
+const QUEUE = [
+  {rq:'R-147', t:'登录页加企业微信扫码', repos:['merchant-web'], st:'run',  note:'rebase 到 vibe/dev …'},
+  {rq:'R-139', t:'商品卡片信息密度调整', repos:['merchant-web'], st:'bad',  note:'3 处冲突 · AI 正在处理最后 1 处'},
+  {rq:'R-142', t:'订单导出支持自定义字段 + 异步下载', repos:['merchant-web','merchant-api','merchant-bff'], st:'idle', note:'排队中 · 前面 2 条'},
+  {rq:'R-158', t:'对账单增加月度汇总视图', repos:['merchant-api'], st:'idle', note:'排队中 · 与 R-142 触达同一文件，已排在其后'},
+];
+
+const LADDER = [
+  {mk:'ok',  t:'git 三方合并',      d:'自动解决 3 处 · 均为不相交的行级改动'},
+  {mk:'ok',  t:'mergiraf 结构化合并', d:'自动解决 2 处 · import 顺序、JSX 属性顺序（tree-sitter 语法树合并，确定性，不调用模型）'},
+  {mk:'run', t:'AI 解冲突',         d:'剩余 1 处 · src/pages/ProductDetail.tsx 价格渲染逻辑与「含税展示」改动重叠。agent 携带原会话 ses_8f3a41 —— 它知道自己当初为什么这么改'},
+  {mk:'idle',t:'重跑验证',          d:'lint · test · build —— 解完必须全绿才 push，这一步不能省'},
+];
+
+// OCR（缺陷轴）四档 severity；skill code-review（规格轴+规范轴）另算
+const AXES = {
+  ocr:   {n:'缺陷轴', by:'ocr · alibaba/open-code-review', d:'NPE / 线程安全 / XSS / 注入等，确定性工程 × Agent 混合，内置降噪过滤'},
+  spec:  {n:'规格轴', by:'skill · code-review', d:'有没有做到需求说的事 —— 拿 contracts 和澄清结论逐条比对'},
+  norm:  {n:'规范轴', by:'skill · code-review', d:'符不符合本仓已记录的编码规范'},
+};
+const FINDINGS = {
+  'R-142':[
+    {ax:'ocr', sev:'high', cat:'correctness', file:'app/tasks/export_job.py', line:38,
+     claim:'分片写入失败时 job 状态停在 running，前端会一直转圈',
+     fail:'第 3 个分片抛异常 → run_export 中断 → store 里 status 永远是 running、progress 停在 0.4，前端轮询永不结束'},
+    {ax:'ocr', sev:'medium', cat:'security', file:'src/routes/export.ts', line:64,
+     claim:'下载链接签名没设过期时间',
+     fail:'签出来的 URL 永久有效，转发给任何人都能一直下载导出的订单数据'},
+    {ax:'spec', sev:'high', cat:'contract', file:'src/api/export.ts', line:27,
+     claim:'前端没实现契约里的 progress 轮询，拿到 jobId 就直接跳转',
+     fail:'契约写的是 GET /export/jobs/:jobId 轮到 status=done 再取 url。现在跳过这步，大批量导出时 url 还没生成就打开 → 404'},
+    {ax:'norm', sev:'low', cat:'convention', file:'app/routers/export.py', line:31,
+     claim:'新增路由没加 @audit 装饰器',
+     fail:'本仓 CONTEXT.md 规定所有导出数据的路由必须留审计记录'},
+  ],
+  'R-151':[
+    {ax:'ocr', sev:'high', cat:'correctness', file:'src/pages/ProductDetail.tsx', line:88,
+     claim:'taxRate 为 undefined 时价格算成 NaN',
+     fail:'老 SKU 没有 taxRate 字段 → price * (1 + undefined) → NaN → 页面显示「¥NaN」'},
+  ],
+};
+
+const ENVS = [
+  {k:'preview', n:'预览', st:'run',  ref:'cr/*', scope:'每条需求一个',
+   life:'临时 · 闲置 30min 回收', now:'3 个在跑 · :5141 :5142 :5143',
+   q:'这条需求本身做对了吗'},
+  {k:'test', n:'测试 / 集成', st:'ok', ref:'vibe/dev @ 9c1e4b2', scope:'每个空间一个',
+   life:'长驻', now:'e2e 42/42 通过 · 12 分钟前',
+   q:'这些需求<b>合在一起</b>还对吗'},
+  {k:'prod', n:'生产', st:'gate', ref:'main @ 7a03f11', scope:'每个空间一个',
+   life:'长驻', now:'距上次发布 2 天 · 4 条待放行',
+   q:'—'},
+];
+
+const REVIEW = {
+  'R-151':{file:'src/pages/ProductDetail.tsx', add:41, del:17,
+    url:'https://r151.preview.mc.internal',
+    checks:['lint —— 0 error, 0 warning','test —— 24 passed in 8.1s','build —— 2.4s'],
+    lines:[
+      ['c','@@ -84,9 +84,12 @@ export function PriceBlock({ sku }: Props) {'],
+      ['d','-  const shown = sku.price'],
+      ['d','-  return &lt;span className="price"&gt;{fmt(shown)}&lt;/span&gt;'],
+      ['a','+  const shown = sku.price * (1 + sku.taxRate)'],
+      ['a','+  return ('],
+      ['a','+    &lt;span className="price" title={taxHint(sku)}&gt;'],
+      ['a','+      {fmt(shown)}&lt;em className="tax-note"&gt;含税&lt;/em&gt;'],
+      ['a','+    &lt;/span&gt;'],
+      ['a','+  )'],
+      ['c',' }'],
+    ]},
+  'R-142':{file:'app/routers/export.py', add:34, del:8,
+    url:'https://r142.preview.mc.internal',
+    checks:['merchant-web  lint · test 18 passed · build 2.1s',
+            'merchant-api  lint · test 6 passed · build 1.4s',
+            'merchant-bff  lint · test 9 passed · build 0.9s',
+            '契约一致性 —— 3 个仓对 POST /export/orders 的签名一致'],
+    lines:[
+      ['c','@@ -22,12 +22,20 @@ router = APIRouter(prefix="/export")'],
+      ['d','-@router.post("/orders")'],
+      ['d','-async def export_orders(body: ExportIn) -&gt; StreamingResponse:'],
+      ['d','-    rows = await orders.query(body.filter)'],
+      ['d','-    return StreamingResponse(to_csv(rows))'],
+      ['a','+@router.post("/orders")'],
+      ['a','+async def export_orders(body: ExportIn) -&gt; ExportAccepted:'],
+      ['a','+    fields = whitelist(body.fields)          # 契约：字段白名单'],
+      ['a','+    job_id = await store.create(fields, body.filter)'],
+      ['a','+    tasks.enqueue(run_export, job_id, fields, body.filter)'],
+      ['a','+    return ExportAccepted(jobId=job_id)'],
+      ['a','+'],
+      ['a','+@router.get("/jobs/{job_id}")'],
+      ['a','+async def export_status(job_id: str) -&gt; ExportStatus:'],
+      ['a','+    return await store.get(job_id)'],
+    ]},
+};
+
+const T2LOG = [
+  ['dim','[10:24:03]','session ses_a91c2f · fork of ses_7d40e1'],
+  ['dim','[10:24:03]','workspace ws_142_t2 · merchant-api @ cr/142-t2'],
+  ['ok', '[10:24:04]','container up · 依赖命中预烘焙镜像 mc:deps:8f3a（跳过 pip install，省 2m41s）'],
+  ['ac', '[10:24:06]','▸ read  app/routers/export.py'],
+  ['ac', '[10:24:09]','▸ read  app/tasks/__init__.py'],
+  ['ac', '[10:24:14]','▸ 契约确认 POST /export/orders → { jobId }'],
+  ['ok', '[10:24:22]','✎ new   app/tasks/export_job.py           +112'],
+  ['ok', '[10:24:31]','✎ edit  app/routers/export.py             +34  −8'],
+  ['ac', '[10:24:38]','▸ pytest tests/test_export.py'],
+  ['ok', '[10:24:52]','✓ 6 passed in 13.4s'],
+  ['ok', '[10:24:53]','✓ commit 4d2f9ab  feat(export): 导出任务异步化 + 进度查询'],
+  ['ac', '[10:24:55]','▸ 预览容器 :5142 起来了'],
+];
+
+/* ══ 状态 ══════════════════════════════════════════════ */
+let S = {screen:'spaces', sp:null, rq:null, tk:null, tab:'build', openQ:1, logN:6};
+let timer = null;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const space = () => SPACES.find(x => x.id === S.sp);
+const req   = () => REQS.find(x => x.id === S.rq);
+const ST = {ok:['ok','已完成'], run:['run','进行中'], bad:['bad','有冲突'], gate:['gate','等你处理'], idle:['idle','排队中']};
+const pill = (k, txt) => `<span class="pill ${ST[k][0]}"><i class="dot"></i>${esc(txt || ST[k][1])}</span>`;
+
+/* ══ 视图：空间列表 ════════════════════════════════════ */
+function vSpaces(){
+  return `
+  <div class="row"><div>
+    <p class="eyebrow">你有权限的空间</p>
+    <h1 class="h1">选一个空间进去</h1>
+    <p class="sub">一个空间 = 一个产品 = 一套仓库 + 一条流水线 + 一个需求池。需求方只管提需求，空间内的所有需求并行跑。</p>
+  </div></div>
+  <div class="grid-sp">
+    ${SPACES.map(s => `
+      <button class="card sp-card" data-act="open-sp" data-id="${s.id}">
+        <div class="sp-head">
+          <span class="space-dot" style="background:${s.color}">${s.code}</span>
+          <span class="sp-name">${esc(s.name)}</span>
+          ${s.gate ? `<span class="sp">${pill('gate', s.gate + ' 项待你审')}</span>` : ''}
+        </div>
+        <div class="sp-meta">
+          ${s.repos.map(r => `<span class="tag">${esc(r)}</span>`).join('')}
+        </div>
+        <div class="sp-stats">
+          <div class="sp-stat"><div class="v">${s.active}</div><div class="k">进行中需求</div></div>
+          <div class="sp-stat"><div class="v num">${s.runs}</div><div class="k">并行工位</div></div>
+          <div class="sp-stat"><div class="v mono" style="font-size:13px;padding-top:3px">${s.branch}</div><div class="k">汇流分支</div></div>
+        </div>
+      </button>`).join('')}
+  </div>`;
+}
+
+/* ══ 视图：需求池看板 ══════════════════════════════════ */
+function vBoard(){
+  const mine = REQS;
+  return `
+  <div class="row">
+    <div>
+      <p class="eyebrow">${esc(space().name)} · 需求池</p>
+      <h1 class="h1">所有人的需求，并行地跑</h1>
+    </div>
+    <button class="btn pri sp" data-act="new-req">＋ 提需求</button>
+  </div>
+  <div class="board">
+    ${COLS.map(c => {
+      const items = mine.filter(r => r.col === c.k);
+      return `<section class="col">
+        <div class="col-h">
+          <i class="bar" style="background:${c.c}"></i>
+          <span class="t">${c.n}</span><span class="n num">${items.length}</span>
+        </div>
+        ${items.length ? items.map(rqCard).join('') : `<div class="empty" style="padding:20px;font-size:12px">空</div>`}
+      </section>`;
+    }).join('')}
+  </div>
+  <p class="sub" style="margin-top:14px">
+    卡片上的横条是这条需求拆出的并行任务 —— <b style="color:var(--ok)">绿</b> 已完成 ·
+    <b style="color:var(--accent)">靛</b> 进行中 · <b style="color:var(--bad)">红</b> 有冲突。点任意一张卡进去看完整流程。
+  </p>`;
+}
+
+function rqCard(r){
+  const tr = r.tracks && r.tracks.length ? r.tracks : null;
+  return `<button class="rq" data-act="open-rq" data-id="${r.id}">
+    <div class="ti">${esc(r.title)}</div>
+    ${tr ? `<div class="trackmini">${tr.map(t => `<i class="${t.st === 'ok' ? 'done' : t.st === 'run' ? 'on' : t.st === 'bad' ? 'err' : ''}"></i>`).join('')}</div>` : ''}
+    <div class="ft">
+      <span class="tag">${r.id}</span>
+      ${r.conflict ? pill('bad') : r.col === 'review' ? pill('gate') : r.col === 'live' ? pill('ok','已上线') : ''}
+      ${tr ? `<span class="tag">${tr.length} 任务</span>` : ''}
+      <span class="by">${esc(r.by)} · ${esc(r.dept)}</span>
+    </div>
+  </button>`;
+}
+
+/* ══ 视图：需求详情 ════════════════════════════════════ */
+function gateRail(r){
+  return `<div class="gates" role="tablist">
+    ${STAGES.map((s, i) => {
+      let cls = 'idle', lab = '待进行';
+      if (i < r.stage) { cls = 'done'; lab = '已完成'; }
+      else if (i === r.stage) {
+        if (r.conflict) { cls = 'err'; lab = '有冲突'; }
+        else if (s.human) { cls = 'wait'; lab = '等你处理'; }
+        else { cls = 'now'; lab = '进行中'; }
+      }
+      return `<div class="gate-s ${cls}">
+        <div class="st">${cls === 'done' ? '✓' : cls === 'now' ? '◐' : cls === 'wait' ? '✋' : cls === 'err' ? '⚠' : '○'} ${lab}</div>
+        <div class="nm">${s.n}</div>
+        ${s.human ? '<span class="human" title="人工闸门">✋</span>' : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+const TABS = [
+  {k:'clarify', n:'澄清'}, {k:'decompose', n:'拆解'}, {k:'build', n:'并行开发'},
+  {k:'ai', n:'AI 复核'}, {k:'review', n:'审核'}, {k:'merge', n:'合并'},
+];
+
+function vReq(){
+  const r = req();
+  return `
+  <div class="row">
+    <div style="min-width:0">
+      <p class="eyebrow">${r.id} · ${esc(r.by)}（${esc(r.dept)}）提出</p>
+      <h1 class="h1">${esc(r.title)}</h1>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap">
+        ${r.repos.map(x => `<span class="tag">${esc(x)}</span>`).join('')}
+      </div>
+    </div>
+  </div>
+  ${gateRail(r)}
+  <div class="tabs" role="tablist">
+    ${TABS.map(t => `<button class="tab" role="tab" aria-selected="${S.tab === t.k}" data-act="tab" data-id="${t.k}">${t.n}${t.k === 'build' && r.tracks.length ? `<span class="n">${r.tracks.length}</span>` : ''}</button>`).join('')}
+  </div>
+  ${({clarify:tClarify, decompose:tDecompose, build:tBuild, ai:tAiReview, review:tReview, merge:tMerge}[S.tab] || tBuild)(r)}`;
+}
+
+/* ── tab · 澄清 ─────────────────────────────── */
+function tClarify(r){
+  const chat = r.chat || [{r:'ai', t:'我看了下这条需求。先问两个问题，答完我就开干。'}];
+  const done = r.stage > 0;
+  return `<div class="split">
+    <div class="card pad">
+      <div class="sec-h" style="margin-top:0"><h2 class="h2">${done ? '澄清记录' : 'AI 正在跟你确认'}</h2>
+        ${done ? pill('ok','已澄清') : pill('run','等你回答')}</div>
+      <div class="chat">${chat.map(m => `<div class="msg ${m.r}"><span class="who">${m.r === 'ai' ? 'AI' : esc(r.by)}</span>${esc(m.t)}</div>`).join('')}</div>
+      ${done ? '' : `
+      <div class="compose">
+        <input placeholder="回答一句…（演示用，点下面的快捷回答也行）" aria-label="回答">
+        <button class="btn pri" data-act="answer">回答</button>
+      </div>
+      <div class="quick">
+        <button class="btn sm" data-act="answer">单选就行，不用记住</button>
+        <button class="btn sm" data-act="answer">可多选，要记住</button>
+        <button class="btn sm ok" data-act="skip-clarify">✓ 够了直接干</button>
+      </div>`}
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="card pad">
+        <p class="eyebrow">这一步在做什么</p>
+        <p class="sub" style="margin-top:6px">AI 看需求原文 + 项目知识，把话问清楚。不限轮数 —— 你随时可以按「够了直接干」打断，它就拿现有信息开工。</p>
+      </div>
+      <div class="note acc"><span>ℹ</span><div>澄清结果会直接喂给下一步的拆解，<b>不需要你再复述一遍</b>。</div></div>
+    </div>
+  </div>`;
+}
+
+/* ── tab · 拆解 ─────────────────────────────── */
+function tDecompose(r){
+  if (r.stage < SIDX('decompose')) return `<div class="empty">澄清完成后，AI 会自动拆解这条需求。</div>`;
+  const c = r.critic, tr = r.tracks;
+  return `
+  ${c ? `<div class="note ${c.pass ? 'ok' : 'gate'}" style="margin-bottom:14px">
+    <span>${c.pass ? '✓' : '⚠'}</span>
+    <div><b>拆解复核通过（第 ${c.round} 轮）</b>
+      <span class="tag mono" style="margin:0 4px">skill · decompose-critic</span>
+      —— 第 1 轮被打回，原因：${esc(c.first)}
+      <br><span style="opacity:.8">复核 5 项：覆盖完整性 · 隐藏依赖 · 跨仓契约 · wide refactor 误判 · 切片粒度。
+      连续 2 轮不过就降级为单任务串行 —— 不卡人工闸门。</span></div>
+  </div>` : ''}
+
+  ${r.collide ? `<div class="note gate" style="margin-bottom:14px"><span>⚠</span>
+    <div><b>跨需求冲突预警 · ${esc(r.collide.level)}风险</b> —— 本需求的
+    <code class="mono">${esc(r.collide.file)}</code> 与进行中的「${esc(r.collide.with)}」触达同一文件。
+    合并队列已把两者排成前后，不并行落地。</div></div>` : ''}
+
+  <div class="sec-h"><h2 class="h2">拆出的并行任务</h2>
+    <span class="tag mono">skill · to-tickets</span>
+    <span class="sub" style="margin:0">垂直切片 + 声明 blocking edges 与 touches</span></div>
+  <div class="tbl-w"><table>
+    <thead><tr><th>任务</th><th>仓</th><th>预计触达 <span style="text-transform:none;letter-spacing:0">(touches)</span></th><th>依赖</th></tr></thead>
+    <tbody>${tr.map(t => `<tr>
+      <td><b>${t.id}</b> · ${esc(t.n)}</td>
+      <td><span class="tag">${esc(t.repo)}</span></td>
+      <td>${t.touches.map(f => `<div class="mono" style="color:var(--ink-2)">${esc(f)}</div>`).join('')}</td>
+      <td>${t.dep.length ? t.dep.join(', ') : '<span style="color:var(--ink-3)">无 —— 可并行</span>'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>
+
+  ${r.contracts ? `
+  <div class="sec-h"><h2 class="h2">接口契约</h2>
+    <span class="sub" style="margin:0">跨仓任务先把契约定死，两边才能真并行</span></div>
+  <div class="card pad" style="display:flex;flex-direction:column;gap:7px">
+    ${r.contracts.map(x => `<code class="mono" style="display:block;padding:8px 10px;background:var(--surface-3);border-radius:6px">${esc(x)}</code>`).join('')}
+  </div>` : ''}
+
+  <div class="note acc" style="margin-top:14px"><span>ℹ</span><div>
+    拆解结果<b>可以改但不必改</b> —— 不改就直接开跑，不卡流程。
+    <button class="btn sm" style="margin-left:8px" data-act="noop">编辑拆解</button>
+  </div></div>
+
+  <div class="note gate" style="margin-top:12px"><span>⚠</span><div>
+    <b>例外：wide refactor 不做垂直切片。</b>重命名一个列、改一个共享类型这种机械改动，
+    blast radius 扇出全仓，一次编辑打断几千个调用点，任何垂直切片都无法单独变绿。
+    这类会被标 <code class="mono">Sequence: expand → migrate → contract</code>，
+    平台据此知道它们 touches 大面积相交是<b>预期的</b>，不按普通冲突规则卡住。
+  </div></div>`;
+}
+
+/* ── tab · 并行开发（轨道图）─────────────────── */
+function tBuild(r){
+  if (!r.tracks.length) return `<div class="empty">这条需求还没有并行任务。</div>`;
+  const tr = r.tracks, H = 26 + tr.length * 68;
+  const col = s => s === 'ok' ? 'var(--ok)' : s === 'run' ? 'var(--accent)' : s === 'bad' ? 'var(--bad)' : 'var(--idle)';
+  const lanes = tr.map((t, i) => {
+    const y = 12 + i * 68, yc = y + 25, my = H / 2;
+    return `<g class="tk-lane" data-act="open-tk" data-id="${t.id}" tabindex="0" role="button" aria-label="${esc(t.id)} ${esc(t.n)}">
+      <rect class="tk-box" x="6" y="${y}" width="360" height="50" rx="8"/>
+      <circle cx="24" cy="${yc}" r="5" fill="${col(t.st)}"/>
+      ${t.st === 'run' ? `<circle cx="24" cy="${yc}" r="5" fill="${col(t.st)}" opacity=".35"><animate attributeName="r" values="5;11;5" dur="1.8s" repeatCount="indefinite"/><animate attributeName="opacity" values=".35;0;.35" dur="1.8s" repeatCount="indefinite"/></circle>` : ''}
+      <text class="tk-t" x="40" y="${y + 21}">${esc(t.id)} · ${esc(t.n)}</text>
+      <text class="tk-m" x="40" y="${y + 38}">${esc(t.repo)} · ${esc(t.br)} · 预览 :${t.port}</text>
+      <path class="tk-line" d="M366 ${yc} C 470 ${yc}, 500 ${my}, 596 ${my}" stroke="${col(t.st)}" stroke-dasharray="${t.st === 'ok' ? '0' : '5 4'}" opacity="${t.st === 'idle' ? '.35' : '1'}"/>
+    </g>`;
+  }).join('');
+  return `
+  <div class="card pad">
+    <div class="sec-h" style="margin-top:0">
+      <h2 class="h2">并行轨道</h2>
+      <span class="sub" style="margin:0">每条轨道 = 一个隔离工位（git worktree + 独立容器 + 独立预览端口），互不污染</span>
+      <span class="sp">${pill('run', tr.filter(t => t.st === 'run').length + ' 条在跑')}</span>
+    </div>
+    <div class="tracks">
+      <svg viewBox="0 0 700 ${H}" height="${H}" role="img" aria-label="并行任务轨道图">
+        ${lanes}
+        <rect x="596" y="10" width="3" height="${H - 20}" rx="1.5" fill="var(--accent)" opacity=".3"/>
+        <circle cx="597.5" cy="${H / 2}" r="7" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>
+        <text class="tk-m" x="614" y="${H / 2 - 2}" style="font-weight:600;fill:var(--ink)">vibe/dev</text>
+        <text class="tk-m" x="614" y="${H / 2 + 13}">汇流分支</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="sec-h"><h2 class="h2">工位状态</h2></div>
+  <div class="tbl-w"><table>
+    <thead><tr><th>任务</th><th>状态</th><th>工位</th><th>改动</th><th>会话</th><th></th></tr></thead>
+    <tbody>${tr.map(t => `<tr>
+      <td><b>${t.id}</b> · ${esc(t.n)}</td>
+      <td>${pill(t.st)}</td>
+      <td class="mono" style="color:var(--ink-2)">ws_${r.id.slice(2)}_${t.id.toLowerCase()}<br>:${t.port}</td>
+      <td class="mono num"><span style="color:var(--ok)">+${t.add}</span> <span style="color:var(--bad)">−${t.del}</span> · ${t.files} 文件</td>
+      <td class="mono" style="color:var(--ink-2)">${esc(t.ses)}</td>
+      <td><button class="btn sm" data-act="open-tk" data-id="${t.id}">进会话 →</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="note acc" style="flex:1"><span>ℹ</span><div>
+      这些任务<b>同时</b>在跑。以前是一个工作树切来切去，同一时刻只能有一个需求动手 —— 现在每条轨道有自己的工位。
+    </div></div>
+    <button class="btn pri" data-act="to-review">全部跑完 → 送审 </button>
+  </div>`;
+}
+
+/* ── tab · AI 复核 ──────────────────────────── */
+const SEV = {critical:['bad','致命'], high:['bad','严重'], medium:['gate','中等'], low:['idle','轻微']};
+function tAiReview(r){
+  if (r.stage < SIDX('ai_review')) return `<div class="empty">验证通过后，两轴复核并行跑：<b>缺陷轴</b>（ocr）+ <b>规格轴/规范轴</b>（code-review skill）。</div>`;
+  const all = FINDINGS[r.id] || [];
+  const byAx = k => all.filter(f => f.ax === k);
+  const worst = all.some(f => f.sev === 'critical');
+  return `
+  <div class="note acc" style="margin-bottom:14px"><span>◆</span><div>
+    <b>两轴复核，互补不重叠。</b>缺陷轴查代码本身有没有 bug；规格轴查有没有做到需求说的事。
+    <br><span style="opacity:.85">两者都跑在<b>独立于写代码那个 session</b> 的进程里 —— 写的人不觉得自己写错了。
+    （相反：合并阶段的解冲突 agent <b>必须</b>带原会话，因为它需要知道意图。）</span>
+  </div></div>
+
+  <div class="row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap">
+    ${pill('ok', `共 ${all.length} 条`)}
+    ${worst ? pill('bad', '有 critical · 已自动打回') : pill('ok', '无 critical · 不阻塞审核')}
+    ${pill('idle', '只报本次 diff 触及的行')}
+    ${pill('idle', 'token 4.2k · 预算 200k')}
+  </div>
+
+  ${Object.entries(AXES).map(([k, ax]) => {
+    const fs = byAx(k);
+    return `<div style="margin-bottom:18px">
+      <div class="sec-h" style="margin-top:0">
+        <h2 class="h2">${ax.n}</h2>
+        <span class="tag mono">${esc(ax.by)}</span>
+        <span class="sp">${fs.length ? pill(fs.some(f=>['critical','high'].includes(f.sev))?'bad':'gate', `${fs.length} 条`) : pill('ok','无发现')}</span>
+      </div>
+      <p class="sub" style="margin:0 0 10px">${ax.d}</p>
+      ${fs.length ? fs.map(f => `<div class="card pad" style="margin-bottom:9px">
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:7px">
+          ${pill(SEV[f.sev][0], SEV[f.sev][1])}
+          <span class="tag">${esc(f.cat)}</span>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-2)">${esc(f.file)}:${f.line}</span>
+        </div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:5px">${esc(f.claim)}</div>
+        <div class="sub" style="margin:0"><b style="color:var(--ink-2)">怎么挂：</b>${esc(f.fail)}</div>
+        <div class="row" style="gap:7px;margin-top:10px">
+          <button class="btn sm" data-act="noop">让 agent 直接修</button>
+          <button class="btn sm" data-act="noop">不改，标为已知</button>
+        </div>
+      </div>`).join('') : `<div class="card pad" style="opacity:.6;font-size:13px">这一轴没有发现。</div>`}
+    </div>`;
+  }).join('')}
+
+  <div class="note gate"><span>⚠</span><div>
+    <b>缺陷轴用召回率换了精确率</b> —— ocr 明确的设计取舍：宁可漏报也不误报，
+    因为审核页一旦被假阳性淹没，人就开始全部忽略，复核直接作废。
+    代价是<b>它不是安全审计工具</b>，别指望抓全所有漏洞。
+  </div></div>`;
+}
+
+/* ── tab · 审核 ─────────────────────────────── */
+function tReview(r){
+  if (r.stage < SIDX('review')) return `<div class="empty">开发完成后进入审核。审核是<b>人工闸门</b> —— 流程会停在这里等人，不占工位。</div>`;
+  const d = REVIEW[r.id] || REVIEW['R-151'];
+  return `
+  <div class="note gate" style="margin-bottom:14px"><span>✋</span>
+    <div><b>等你处理</b> —— 这条需求开发 + 验证都过了，等一位审核人点头才进合并队列。</div></div>
+  <div class="split">
+    <div class="stack" style="gap:14px">
+      <div class="diff">
+        <div class="diff-h"><span>${esc(d.file)}</span>
+          <span class="sp" style="color:var(--ok)">+${d.add}</span><span style="color:var(--bad)">−${d.del}</span></div>
+        <div class="diff-b">${d.lines.map(([k, tx]) => `<div class="${k}">${tx}</div>`).join('')}</div>
+      </div>
+      <div class="card pad">
+        <div class="sec-h" style="margin-top:0"><h2 class="h2">验证结果</h2>${pill('ok','全绿')}</div>
+        <div class="log" style="max-height:none">
+          ${d.checks.map(x => `<div class="l"><span class="g ok">✓</span><span class="ok">${esc(x)}</span></div>`).join('')}
+        </div>
+        ${r.tracks.length > 1 ? `<p class="sub" style="font-size:12px">${r.tracks.length} 条轨道各自验证通过。<b>注意：各自过 ≠ 合起来过</b> —— 合并队列里 rebase 之后还要再跑一遍。</p>` : ''}
+      </div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="card pad">
+        <p class="eyebrow">预览</p>
+        <div style="margin:9px 0;padding:11px;background:var(--surface-3);border-radius:8px">
+          <code class="mono" style="font-size:12px">${esc(d.url)}</code>
+        </div>
+        <button class="btn" style="width:100%;justify-content:center" data-act="noop">↗ 打开预览环境</button>
+      </div>
+      <div class="card pad">
+        <p class="eyebrow">AI 复核</p>
+        <div class="stack" style="gap:7px;margin-top:9px">
+          ${(FINDINGS[r.id] || []).map(f => `<div class="row" style="gap:6px;align-items:flex-start">
+            ${pill(SEV[f.sev][0], SEV[f.sev][1])}
+            <span style="font-size:12.5px;line-height:1.45">${esc(f.claim)}
+              <span class="tag" style="margin-left:4px">${AXES[f.ax].n}</span></span></div>`).join('')
+          || '<span class="sub" style="margin:0">两轴均无发现。</span>'}
+        </div>
+        <button class="btn sm" style="margin-top:10px" data-act="tab" data-id="ai">看完整复核 →</button>
+      </div>
+      <div class="card pad">
+        <p class="eyebrow">你的决定</p>
+        <div class="stack" style="gap:8px;margin-top:10px">
+          <button class="btn ok" style="justify-content:center" data-act="approve">✓ 通过，进合并队列</button>
+          <button class="btn" style="justify-content:center" data-act="noop">✎ 提意见，打回改</button>
+          <button class="btn" style="justify-content:center" data-act="noop">✕ 拒绝，关掉需求</button>
+        </div>
+      </div>
+      <div class="note acc"><span>ℹ</span><div>流程停在这里期间<b>不占并行工位</b> —— 工位已经回收，其他需求能用。</div></div>
+    </div>
+  </div>`;
+}
+
+/* ── tab · 合并 ─────────────────────────────── */
+function tMerge(r){
+  if (r.stage < SIDX('merge')) return `<div class="empty">审核通过后进入合并队列。</div>`;
+  const idx = QUEUE.findIndex(q => q.rq === r.id);
+  return `
+  <div class="note acc" style="margin-bottom:14px"><span>ℹ</span>
+    <div>合并队列是 <b>per-repo 串行</b> 的：并行分支各自验证全过 ≠ 合起来能过，所以每次 rebase 后都要重跑验证。</div></div>
+  ${idx >= 0 ? qItem(QUEUE[idx], idx) : ''}
+  <button class="btn" style="margin-top:6px" data-act="go-queue">看完整合并队列 →</button>`;
+}
+
+/* ══ 视图：单任务会话 ══════════════════════════════════ */
+function vTask(){
+  const r = req(), t = r.tracks.find(x => x.id === S.tk);
+  const lines = T2LOG.slice(0, S.logN);
+  return `
+  <div class="row">
+    <div style="min-width:0">
+      <p class="eyebrow">${r.id} · ${t.id}</p>
+      <h1 class="h1">${esc(t.n)}</h1>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap">
+        <span class="tag">${esc(t.repo)}</span><span class="tag">${esc(t.br)}</span>
+        <span class="tag">工位 ws_${r.id.slice(2)}_${t.id.toLowerCase()}</span>
+        ${pill(t.st)}
+      </div>
+    </div>
+    <button class="btn sp" data-act="open-rq" data-id="${r.id}">← 回轨道图</button>
+  </div>
+
+  <div class="note acc" style="margin:16px 0"><span>◆</span><div>
+    <b>opencode 原生会话</b> · <code class="mono">${esc(t.ses)}</code>
+    ${t.id === 'T2' ? '，由父会话 <code class="mono">ses_7d40e1</code> fork 而来' : ''} ——
+    上下文一直在，续改不用重新喂历史，也不用让它自己 <code class="mono">git diff</code> 猜上一轮改了啥。
+  </div></div>
+
+  <div class="split">
+    <div class="stack" style="gap:14px">
+      <div class="card pad">
+        <div class="sec-h" style="margin-top:0"><h2 class="h2">实时轨迹</h2>
+          ${S.logN < T2LOG.length ? pill('run') : pill('ok')}</div>
+        <div class="log" id="logbox">
+          ${lines.map(([c, ts, tx]) => `<div class="l"><span class="g dim">›</span><span><span class="dim">${ts}</span> <span class="${c}">${esc(tx)}</span></span></div>`).join('')}
+          ${S.logN < T2LOG.length ? '<div class="l"><span class="g ac">▸</span><span class="ac">…</span></div>' : ''}
+        </div>
+      </div>
+      <div class="diff">
+        <div class="diff-h"><span>app/tasks/export_job.py</span><span class="sp" style="color:var(--ok)">+112</span></div>
+        <div class="diff-b">
+<div class="c">@@ -0,0 +1,112 @@</div>
+<div class="a">+async def run_export(job_id: str, fields: list[str], flt: OrderFilter) -&gt; None:</div>
+<div class="a">+    await store.mark(job_id, "running", progress=0)</div>
+<div class="a">+    total = await orders.count(flt)</div>
+<div class="a">+    async for i, chunk in orders.iter_chunks(flt, size=2000):</div>
+<div class="a">+        await writer.append(job_id, project(chunk, fields))</div>
+<div class="a">+        await store.mark(job_id, "running", progress=i / total)</div>
+<div class="a">+    url = await writer.finalize(job_id)</div>
+<div class="a">+    await store.mark(job_id, "done", url=url)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack" style="gap:12px">
+      <div class="card pad">
+        <div class="sec-h" style="margin-top:0"><h2 class="h2">插话</h2></div>
+        <div class="chat">
+          <div class="msg ai"><span class="who">AI</span>已经按契约把导出改成异步任务了，进度查询走 <code class="mono">GET /export/jobs/:jobId</code>。预览在 :5142。</div>
+        </div>
+        <div class="compose">
+          <input placeholder="比如「分片大小改成 5000」…" aria-label="给 agent 说话">
+          <button class="btn pri" data-act="noop">发送</button>
+        </div>
+        <p class="sub" style="font-size:12px">跑到一半也能插话 —— 会话是活的，它接着改，不重来。</p>
+      </div>
+      <div class="card pad">
+        <p class="eyebrow">这个工位</p>
+        <div class="stack" style="gap:7px;margin-top:9px;font-size:12.5px">
+          <div class="row"><span style="color:var(--ink-3)">隔离</span><span class="sp mono">worktree + 容器</span></div>
+          <div class="row"><span style="color:var(--ink-3)">依赖</span><span class="sp mono">预烘焙 mc:deps:8f3a</span></div>
+          <div class="row"><span style="color:var(--ink-3)">端口租约</span><span class="sp mono">:${t.port} · 30min TTL</span></div>
+          <div class="row"><span style="color:var(--ink-3)">回收</span><span class="sp mono">任务终结即释放</span></div>
+        </div>
+      </div>
+      <button class="btn" style="justify-content:center" data-act="noop">↗ 打开预览 :${t.port}</button>
+    </div>
+  </div>`;
+}
+
+/* ══ 视图：合并队列 ════════════════════════════════════ */
+function qItem(q, i){
+  const open = S.openQ === i;
+  return `<div class="q-item">
+    <button class="q-head" data-act="toggle-q" data-id="${i}" aria-expanded="${open}">
+      <span class="q-pos num">${i + 1}</span>
+      <span class="stack" style="min-width:0;flex:1">
+        <span style="font-weight:600;font-size:13.5px">${esc(q.t)}</span>
+        <span style="font-size:12px;color:var(--ink-2)">${esc(q.note)}</span>
+      </span>
+      <span class="row" style="gap:6px">
+        ${q.repos.map(x => `<span class="tag">${esc(x)}</span>`).join('')}
+        ${pill(q.st)}
+        <span style="color:var(--ink-3)">${open ? '▾' : '▸'}</span>
+      </span>
+    </button>
+    ${open ? `<div class="q-body">
+      ${q.st === 'bad' ? `
+        <p class="eyebrow" style="margin-bottom:9px">冲突处理 · 三档递进</p>
+        <div class="ladder">${LADDER.map(l => `<div class="rung">
+          <span class="mk ${l.mk}">${l.mk === 'ok' ? '✓' : l.mk === 'run' ? '◐' : '○'}</span>
+          <span class="stack"><span class="tt">${esc(l.t)}</span><span class="dd">${esc(l.d)}</span></span>
+        </div>`).join('')}</div>
+        <div class="note acc" style="margin-top:12px"><span>ℹ</span><div>
+          先用确定性手段（git → mergiraf 语法树合并）把能自动解的解掉，<b>剩下真正的语义冲突才交给 AI</b> —— 又快又省，而且不会瞎编。
+        </div></div>`
+      : q.st === 'run' ? `
+        <div class="log" style="max-height:none">
+          <div class="l"><span class="g ok">✓</span><span class="ok">fetch origin · vibe/dev @ 9c1e4b2</span></div>
+          <div class="l"><span class="g ok">✓</span><span class="ok">rebase cr/147-t1 onto vibe/dev —— 无冲突</span></div>
+          <div class="l"><span class="g ac">▸</span><span class="ac">重跑验证 lint · test · build …</span></div>
+        </div>`
+      : `<p class="sub" style="margin:0">等前面的条目落地后开始。队列是串行的 —— 每合进去一条，后面的都要重新 rebase + 重跑验证。</p>`}
+    </div>` : ''}
+  </div>`;
+}
+
+function vQueue(){
+  return `
+  <div class="row"><div>
+    <p class="eyebrow">${esc(space().name)} · 汇流</p>
+    <h1 class="h1">合并队列</h1>
+    <p class="sub">审核通过的需求在这里排队落到 <code class="mono">vibe/dev</code>。串行处理，每条都要 rebase 到最新再重跑一遍验证。</p>
+  </div></div>
+  <div style="margin-top:18px">${QUEUE.map(qItem).join('')}</div>
+  <div class="note gate" style="margin-top:14px"><span>⚠</span><div>
+    第 4 条与第 3 条触达同一个文件（<code class="mono">app/routers/export.py</code>）—— 这是拆解阶段声明的
+    <code class="mono">touches</code> 提前发现的，队列据此排序，不让它们撞车。
+  </div></div>`;
+}
+
+/* ══ 视图：环境 ════════════════════════════════════════ */
+function vEnv(){
+  return `
+  <div class="row"><div>
+    <p class="eyebrow">${esc(space().name)} · 交付</p>
+    <h1 class="h1">三层环境</h1>
+    <p class="sub">并行分支<b>各自验证全过 ≠ 合起来能过</b>。N 条需求第一次真正「在一起」运行，就是在测试环境 —— 没有它，集成回归直接发生在生产上。</p>
+  </div></div>
+  <div class="stack" style="gap:12px;margin-top:18px">
+    ${ENVS.map(e => `<div class="card pad">
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <span class="h2">${e.n}</span>${pill(e.st)}
+        <span class="sp mono" style="font-size:12px;color:var(--ink-2)">${esc(e.ref)}</span>
+      </div>
+      <div class="sub" style="margin-top:8px">回答：${e.q}</div>
+      <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap">
+        <span class="tag">${esc(e.scope)}</span><span class="tag">${esc(e.life)}</span><span class="tag">${esc(e.now)}</span>
+      </div>
+    </div>`).join('')}
+  </div>
+  <div class="note acc" style="margin-top:14px"><span>ℹ</span><div>
+    <b>预发（staging）先不做。</b>它的真正价值在「用生产数据 / 流量回放验证」——
+    早期没这个能力时，预发只是第二个测试环境，纯成本。等有灰度 / 流量回放需求再加第四层。
+  </div></div>
+  <div class="sec-h"><h2 class="h2">部署由谁执行</h2></div>
+  <div class="tbl-w"><table>
+    <thead><tr><th>实现</th><th>何时用</th><th>怎么接</th></tr></thead>
+    <tbody>
+      <tr><td><b>SelfHostedDeploy</b> ${pill('ok','当前')}</td><td>自己运维</td><td class="mono" style="color:var(--ink-2)">docker compose up -d</td></tr>
+      <tr><td>YunxiaoFlowDeploy</td><td>客户用阿里云云效</td><td class="mono" style="color:var(--ink-2)">POST /oapi/v1/flow/organizations/<br>pipelines/{id}/runs</td></tr>
+      <tr><td>GitHubActionsDeploy</td><td>客户用 GitHub</td><td class="mono" style="color:var(--ink-2)">workflow_dispatch + check run</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note acc" style="margin-top:12px"><span>ℹ</span><div>
+    <b>vibe-niuma 只管到「安全地合进汇流分支」</b>，之后交给 CD。内环（并行 agent 调度）云效给不了；
+    外环（构建部署）云效很成熟，自己造是浪费。接口留出来，换客户是加一个文件。
+  </div></div>`;
+}
+
+/* ══ 视图：流水线 ══════════════════════════════════════ */
+function vPipe(){
+  return `
+  <div class="row"><div>
+    <p class="eyebrow">${esc(space().name)} · 流水线</p>
+    <h1 class="h1">流程是配出来的，不是写死的</h1>
+    <p class="sub">加一个环节 = 改这段 YAML，不改代码。人工闸门用 <code class="mono">gate: human</code> 标出来。</p>
+  </div></div>
+  <div class="card pad" style="margin-top:18px">
+    <div class="log" style="max-height:none">
+<div class="l"><span class="g dim">1</span><span><span class="ac">pipeline:</span></span></div>
+<div class="l"><span class="g dim">2</span><span>  - <span class="ac">clarify</span>:   {agent: clarifier,  gate: auto}</span></div>
+<div class="l"><span class="g dim">3</span><span>  - <span class="ac">decompose</span>: {agent: planner,    critic: decompose_critic, output: tasks[]}</span></div>
+<div class="l"><span class="g dim">4</span><span>  - <span class="ac">implement</span>: {parallel: tasks,   agent: coder, workspace: required}</span></div>
+<div class="l"><span class="g dim">5</span><span>  - <span class="ac">verify</span>:      {run: [lint, test, build]}</span></div>
+<div class="l"><span class="g dim">6</span><span>  - <span class="ac">ai_review</span>:   {agent: reviewer, session: <span class="ok">fresh</span>, refute: 2, block_on: [critical]}</span></div>
+<div class="l"><span class="g dim">7</span><span>  - <span class="ac">preview</span>:     {expose: true, env: preview}</span></div>
+<div class="l"><span class="g dim">8</span><span>  - <span class="ac">review</span>:      {gate: <span class="er">human</span>, approvers: 1}</span></div>
+<div class="l"><span class="g dim">9</span><span>  - <span class="ac">merge</span>:       {queue: per-repo, conflict: [git, mergiraf, ai]}</span></div>
+<div class="l"><span class="g dim">10</span><span> - <span class="ac">deploy_test</span>: {adapter: deploy, env: test}</span></div>
+<div class="l"><span class="g dim">11</span><span> - <span class="ac">integrate</span>:   {run: [e2e], env: test}</span></div>
+<div class="l"><span class="g dim">12</span><span> - <span class="ac">release</span>:     {gate: <span class="er">human</span>, adapter: deploy, env: prod}</span></div>
+    </div>
+  </div>
+  ${gateRail({stage:SIDX('build'), tracks:[]})}
+  <p class="sub">上面这条闸门轨就是这段 YAML 渲染出来的 —— 每条需求都按它走。</p>
+
+  <div class="sec-h"><h2 class="h2">绿色的都是可换的 Skill</h2>
+    <span class="sub" style="margin:0">换一个环节的实现 = 换一个文件，不动编排代码</span></div>
+  <div class="tbl-w"><table>
+    <thead><tr><th>层</th><th>装在哪</th><th>装什么</th><th>优先级</th></tr></thead>
+    <tbody>
+      <tr><td><b>L1 平台级</b></td><td class="mono" style="color:var(--ink-2)">容器镜像<br>~/.config/opencode/skills/</td>
+          <td>流水线环节用的 skill（platform-skills/dist）。<b>不污染客户仓库</b></td><td>低</td></tr>
+      <tr><td><b>L2 空间级</b></td><td class="mono" style="color:var(--ink-2)">worktree<br>.opencode/skills/</td>
+          <td>每个空间自己的规范，从 Project 配置注入</td><td>中</td></tr>
+      <tr><td><b>L3 仓库自带</b></td><td class="mono" style="color:var(--ink-2)">客户仓库<br>.claude/skills/</td>
+          <td>客户仓库本来就有的，天然被发现</td><td><b>高</b></td></tr>
+    </tbody>
+  </table></div>
+  <div class="note acc" style="margin-top:12px"><span>ℹ</span><div>
+    客户仓库自己的规范<b>覆盖</b>平台默认 —— opencode 的默认发现顺序就是这个优先级，不用调。
+    <br>底座取 <code class="mono">mattpocock/skills</code>（MIT），vendored 后打 patch，不直接依赖上游。
+  </div></div>`;
+}
+
+/* ══ 侧栏 / 面包屑 ═════════════════════════════════════ */
+const ICO = {
+  board:'<path d="M4 5h5v14H4zM10 5h5v9h-5zM16 5h4v6h-4z"/>',
+  queue:'<path d="M4 7h16M4 12h16M4 17h10"/>',
+  pipe: '<path d="M4 12h4M16 12h4"/><circle cx="12" cy="12" r="3"/>',
+  env:  '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/>',
+};
+function rail(){
+  if (S.screen === 'spaces') {
+    return `<div class="nav-lab">空间</div>` + SPACES.map(s =>
+      `<button class="nav-i" data-act="open-sp" data-id="${s.id}">
+        <span class="space-dot" style="width:18px;height:18px;font-size:9px;background:${s.color}">${s.code}</span>${esc(s.name)}
+      </button>`).join('');
+  }
+  const s = space();
+  const nav = [
+    ['board','需求池', REQS.filter(r => !['live','draft'].includes(r.col)).length, false],
+    ['queue','合并队列', QUEUE.length, false],
+    ['env','环境', ENVS.length, false],
+    ['pipe','流水线', '', false],
+  ];
+  const gate = REQS.filter(r => r.col === 'review').length;
+  return `
+  <button class="space-pick" data-act="go-spaces">
+    <span class="space-dot" style="background:${s.color}">${s.code}</span>
+    <span class="stack"><span class="nm">${esc(s.name)}</span><span class="mt">${s.repos.length} 个仓</span></span>
+    <span class="car">⇄</span>
+  </button>
+  <div class="nav-lab">这个空间</div>
+  ${nav.map(([k, n, c]) => `<button class="nav-i" data-act="nav" data-id="${k}"
+      ${S.screen === k || (k === 'board' && ['req','task'].includes(S.screen)) ? 'aria-current="page"' : ''}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ICO[k] || ICO.board}</svg>
+      ${n}${c !== '' ? `<span class="cnt num">${c}</span>` : ''}
+    </button>`).join('')}
+  ${gate ? `<button class="nav-i" data-act="nav" data-id="board">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v10M12 17v.5"/><circle cx="12" cy="12" r="9"/></svg>
+      等你审<span class="cnt num hot">${gate}</span></button>` : ''}
+  <div class="nav-lab">仓</div>
+  ${s.repos.map(r => `<div class="nav-i" style="cursor:default"><span class="mono" style="font-size:11.5px">${esc(r)}</span></div>`).join('')}
+  <div style="margin-top:auto;padding:12px 10px 4px">
+    <button class="btn pri" style="width:100%;justify-content:center" data-act="new-req">＋ 提需求</button>
+  </div>`;
+}
+
+function crumb(){
+  const c = [];
+  c.push(`<button data-act="go-spaces">空间</button>`);
+  if (S.sp) c.push(`<span>/</span>`, S.screen === 'board' ? `<b>${esc(space().name)}</b>` : `<button data-act="nav" data-id="board">${esc(space().name)}</button>`);
+  if (S.screen === 'queue') c.push(`<span>/</span><b>合并队列</b>`);
+  if (S.screen === 'env')   c.push(`<span>/</span><b>环境</b>`);
+  if (S.screen === 'pipe')  c.push(`<span>/</span><b>流水线</b>`);
+  if (S.screen === 'req')   c.push(`<span>/</span><b>${esc(req().id)} ${esc(req().title)}</b>`);
+  if (S.screen === 'task')  c.push(`<span>/</span><button data-act="open-rq" data-id="${S.rq}">${esc(S.rq)}</button><span>/</span><b>${esc(S.tk)}</b>`);
+  return c.join(' ');
+}
+
+/* ══ 渲染 ══════════════════════════════════════════════ */
+function render(){
+  const V = {spaces:vSpaces, board:vBoard, req:vReq, task:vTask, queue:vQueue, env:vEnv, pipe:vPipe};
+  $('#view').innerHTML = (V[S.screen] || vSpaces)();
+  $('#rail-body').innerHTML = rail();
+  $('#crumb').innerHTML = crumb();
+  clearInterval(timer);
+  if (S.screen === 'task' && S.logN < T2LOG.length) {
+    timer = setInterval(() => { S.logN++; if (S.logN >= T2LOG.length) clearInterval(timer); render(); }, 900);
+  }
+}
+
+/* ══ 交互 ══════════════════════════════════════════════ */
+const ACT = {
+  theme(){
+    const cur = document.documentElement.getAttribute('data-theme');
+    const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  },
+  'go-spaces'(){ S.screen = 'spaces'; S.sp = null; },
+  'open-sp'(id){ S.sp = id; S.screen = 'board'; },
+  nav(id){ S.screen = id; },
+  'go-queue'(){ S.screen = 'queue'; },
+  'open-rq'(id){
+    S.rq = id; S.screen = 'req';
+    const r = req();
+    S.tab = {clarify:'clarify', draft:'clarify', decompose:'decompose',
+             review:'review', merge:'merge', live:'merge'}[r.col] || 'build';
+  },
+  tab(id){ S.tab = id; },
+  'open-tk'(id){ S.tk = id; S.screen = 'task'; S.logN = id === 'T2' ? 6 : T2LOG.length; },
+  'toggle-q'(id){ S.openQ = S.openQ === +id ? -1 : +id; },
+  answer(){
+    const r = req();
+    r.chat = r.chat || [];
+    r.chat.push({r:'me', t:'单选就行，不用记住。'});
+    r.chat.push({r:'ai', t:'好。那筛选器放在列表顶部的工具条里，和现有的日期筛选并排。没别的问题了，我开始拆任务。'});
+  },
+  'skip-clarify'(){
+    const r = req();
+    r.chat = r.chat || [];
+    r.chat.push({r:'me', t:'✓ 够了直接干'});
+    r.stage = SIDX('decompose'); r.col = 'decompose'; S.tab = 'decompose';
+    r.tracks = r.tracks.length ? r.tracks : [
+      {id:'T1', n:'列表工具条加门店筛选器', repo:'merchant-web', br:'cr/160-t1', port:5161, st:'idle',
+       touches:['src/pages/Orders/Toolbar.tsx'], dep:[], ses:'ses_new001', add:0, del:0, files:0},
+      {id:'T2', n:'订单查询接口支持 storeId', repo:'merchant-api', br:'cr/160-t2', port:5162, st:'idle',
+       touches:['app/routers/orders.py'], dep:[], ses:'ses_new002', add:0, del:0, files:0},
+    ];
+    r.contracts = ['GET /orders?storeId=<id> → Order[]'];
+    r.critic = {pass:true, round:1, first:'—（本次一轮通过）'};
+    toast('已跳过澄清，AI 开始拆解');
+  },
+  'to-review'(){
+    const r = req();
+    r.tracks.forEach(t => t.st = 'ok');
+    r.stage = SIDX('review'); r.col = 'review'; S.tab = 'ai';
+    toast('轨道全绿 → 验证通过 → AI 复核完成 → 等你审');
+  },
+  approve(){
+    const r = req();
+    r.stage = SIDX('merge'); r.col = 'merge'; S.tab = 'merge';
+    if (!QUEUE.some(q => q.rq === r.id))
+      QUEUE.push({rq:r.id, t:r.title, repos:r.repos, st:'idle', note:'刚进队 · 排在最后'});
+    toast('已通过 → 进入合并队列');
+  },
+  'new-req'(){ openDlg(); },
+  noop(){ toast('演示原型 —— 这个按钮还没接后端'); },
+};
+
+function openDlg(){
+  $('#dlg-in').innerHTML = `
+    <div class="sheet-h"><h2 class="h2">提一条需求</h2>
+      <p class="sub">说人话就行。剩下的澄清、拆解、并行开发、合并，平台自己走。</p></div>
+    <div class="sheet-b">
+      <div class="field"><label>提到哪个空间</label>
+        <select><option>商户中台</option><option>仓配作业</option><option>财务结算</option></select></div>
+      <div class="field"><label>你想要什么</label>
+        <textarea rows="4" placeholder="例：订单列表要能按门店筛选，我们区域经理每天要按自己片区看数。"></textarea></div>
+      <div class="field"><label>附件（可选）</label>
+        <div class="row" style="gap:7px"><span class="tag">＋ 截图</span><span class="tag">＋ 文档</span><span class="tag">＋ 链接</span></div></div>
+      <div class="note acc"><span>ℹ</span><div>不用你写方案、不用选仓库、不用估工时 —— 这些 AI 拆解那步会做。</div></div>
+    </div>
+    <div class="sheet-f">
+      <button class="btn" value="cancel">取消</button>
+      <button class="btn pri sp" value="ok">提交</button>
+    </div>`;
+  $('#dlg').showModal();
+}
+
+$('#dlg').addEventListener('close', e => {
+  if ($('#dlg').returnValue !== 'ok') return;
+  const r = REQS.find(x => x.id === 'R-160');
+  S.rq = 'R-160'; S.screen = 'req'; S.tab = 'clarify';
+  toast('需求已提交 · AI 开始跟你澄清');
+  render();
+});
+
+function toast(msg){
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:99;'
+    + 'background:var(--ink);color:var(--ground);padding:9px 16px;border-radius:999px;font-size:13px;'
+    + 'font-weight:500;box-shadow:var(--shadow-2)';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b || b.closest('#dlg')) return;
+  const fn = ACT[b.dataset.act];
+  if (!fn) return;
+  fn(b.dataset.id);
+  if (b.dataset.act !== 'theme') render();
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const g = e.target.closest('g[data-act]');
+  if (g) { e.preventDefault(); ACT[g.dataset.act](g.dataset.id); render(); }
+});
+
+render();
+</script>

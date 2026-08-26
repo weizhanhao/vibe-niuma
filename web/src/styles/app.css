@@ -1,0 +1,264 @@
+/* 设计语言沿用原型：调度台。IBM Plex（拉丁）+ PingFang（中文），扁平深电靛为唯一强调色，
+   语义色独立：赭金=等你处理 / 砖红=冲突 / 深绿=通过。 */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
+:root {
+  --ground:#F6F6F9; --surface:#FFF; --surface-2:#FBFBFD; --surface-3:#F1F1F6;
+  --line:#E3E3EC; --line-strong:#CDCDDB;
+  --ink:#17171F; --ink-2:#55556A; --ink-3:#8A8AA0;
+  --accent:#3D2FD6; --accent-ink:#FFF; --accent-soft:#ECE9FD; --accent-line:#C3BBF7;
+  --gate:#9A6510; --gate-soft:#FBF0DA; --gate-line:#E8CE9A;
+  --bad:#B3352B;  --bad-soft:#FBE6E3;  --bad-line:#EFC0B9;
+  --ok:#256B47;   --ok-soft:#E1F1E8;   --ok-line:#B4DCC6;
+  --idle:#8A8AA0; --idle-soft:#EDEDF3;
+  --r:10px; --r-sm:6px;
+  --sans:"IBM Plex Sans","PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  --cond:"IBM Plex Sans Condensed",var(--sans);
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme=light]){
+  --ground:#0B0B11; --surface:#14141C; --surface-2:#1D1D28; --surface-3:#232330;
+  --line:#2E2E3D; --line-strong:#3A3A4D;
+  --ink:#ECECF4; --ink-2:#A0A0B6; --ink-3:#9494AE;
+  --accent:#8E80FF; --accent-ink:#12121A; --accent-soft:#241F42; --accent-line:#463C96;
+  --gate:#E3A748; --gate-soft:#312611; --gate-line:#5C4718;
+  --bad:#F08072;  --bad-soft:#391A17;  --bad-line:#6B2E26;
+  --ok:#5DC28E;   --ok-soft:#122C1F;   --ok-line:#215239;
+  --idle:#70708A; --idle-soft:#222230;
+}}
+[data-theme=dark]{
+  --ground:#0B0B11; --surface:#14141C; --surface-2:#1D1D28; --surface-3:#232330;
+  --line:#2E2E3D; --line-strong:#3A3A4D;
+  --ink:#ECECF4; --ink-2:#A0A0B6; --ink-3:#9494AE;
+  --accent:#8E80FF; --accent-ink:#12121A; --accent-soft:#241F42; --accent-line:#463C96;
+  --gate:#E3A748; --gate-soft:#312611; --gate-line:#5C4718;
+  --bad:#F08072;  --bad-soft:#391A17;  --bad-line:#6B2E26;
+  --ok:#5DC28E;   --ok-soft:#122C1F;   --ok-line:#215239;
+  --idle:#70708A; --idle-soft:#222230;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.rail{background:var(--surface);border-right:1px solid var(--line);padding:14px 10px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+.main{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:0 22px;height:54px;
+  border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:20}
+.body{padding:22px;flex:1;min-width:0}
+/* 宽屏上不要拉满：一行太长读不动，气泡也失去形状 */
+.body>*{max-width:1180px}
+/* 看板是横向滚的，列越多看到越多 —— 不限它 */
+.body>.board{max-width:none}
+
+.h1{font-family:var(--cond);font-size:23px;font-weight:700;margin:0;text-wrap:balance}
+.h2{font-family:var(--cond);font-size:16px;font-weight:600;margin:0}
+.eyebrow{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+.sub{color:var(--ink-2);font-size:13px;margin:5px 0 0}
+.mono{font-family:var(--mono);font-size:.86em}
+/* 深色下 1px 边框对比只有 1.26:1、卡片和页面底只差 1.07:1 ——
+   光靠边框在深色里根本分不出层。加投影 + 顶部一道内高光（模拟光从上方来）。 */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh-1),var(--highlight)}
+.pad{padding:16px}
+.row{display:flex;align-items:center;gap:10px}
+.stack{display:flex;flex-direction:column}
+.sp{margin-left:auto}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--r-sm);
+  border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:500}
+.btn:hover{background:var(--surface-3)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+/* **不能写死 #fff。** 深色下 --ok 变亮绿，白字对比只有 2.19:1 ——
+   「✓ 通过，进合并队列」这个全产品最重要的按钮，文字是看不清的。
+   改用固定的深色填充 + 白字，两个主题下都是 6.7:1。 */
+.btn.ok{background:var(--ok-solid);border-color:transparent;color:#fff}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;
+  font-size:11.5px;font-weight:600;font-family:var(--cond);border:1px solid transparent;white-space:nowrap}
+.pill.run{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+.pill.gate{background:var(--gate-soft);color:var(--gate);border-color:var(--gate-line)}
+.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:var(--bad-line)}
+.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+.pill.idle{background:var(--idle-soft);color:var(--ink-2);border-color:var(--line)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.run .dot{animation:bl 1.4s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
+.tag{display:inline-flex;padding:1px 6px;border-radius:4px;background:var(--surface-3);
+  border:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:272px;gap:12px;
+  overflow-x:auto;padding-bottom:12px;margin-top:16px;align-items:start}
+.col{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:10px}
+.col-h{display:flex;align-items:center;gap:7px;padding:2px 4px 10px}
+.col-h .t{font-family:var(--cond);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.rq{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:11px;margin-bottom:8px}
+.rq:hover{border-color:var(--accent-line)}
+.rq .ti{font-weight:600;font-size:13.5px;line-height:1.4;margin-bottom:8px;text-wrap:balance}
+.trackmini{display:flex;gap:2px;margin:8px 0 7px}
+.trackmini i{height:3px;border-radius:2px;flex:1;background:var(--idle-soft)}
+.trackmini i.done{background:var(--ok)} .trackmini i.running{background:var(--accent)}
+.trackmini i.failed{background:var(--bad)}
+
+.gates{display:flex;overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--surface);margin:16px 0}
+.gate-s{flex:1;min-width:104px;padding:10px 12px;border:none;border-right:1px solid var(--line);position:relative;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.gate-s:hover{background:var(--surface-3)}
+.gate-s.picked{box-shadow:inset 0 -3px 0 var(--accent)}
+.gate-s:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.gate-s:last-child{border-right:none}
+.gate-s .st{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3)}
+.gate-s .nm{font-size:13px;font-weight:600;margin-top:3px;white-space:nowrap}
+.gate-s.done .st{color:var(--ok)} .gate-s.now{background:var(--accent-soft)}
+.gate-s.now .st{color:var(--accent)} .gate-s.wait{background:var(--gate-soft)}
+.gate-s.wait .st{color:var(--gate)} .gate-s.idle .nm{color:var(--ink-3)}
+.gate-s .human{position:absolute;top:9px;right:10px;font-size:10px;color:var(--gate)}
+
+.note{display:flex;gap:10px;padding:11px 13px;border-radius:var(--r);font-size:13px;
+  align-items:flex-start}
+.note .btn{flex:none}
+.note.gate{background:var(--gate-soft);border:1px solid var(--gate-line);color:var(--gate)}
+.note.bad{background:var(--bad-soft);border:1px solid var(--bad-line);color:var(--bad)}
+.note.acc{background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent)}
+.note.idle{background:var(--idle-soft);border:1px solid var(--line);color:var(--ink-2)}
+
+.tbl-w{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
+th{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.num{font-variant-numeric:tabular-nums}
+
+.nav-i{display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;
+  border-radius:var(--r-sm);color:var(--ink-2);font-size:13.5px}
+.nav-i:hover{background:var(--surface-3);color:var(--ink)}
+.nav-i[aria-current=page]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav-lab{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);padding:14px 10px 6px}
+.field{margin-bottom:14px}
+.field label{display:block;font-family:var(--cond);font-size:11px;font-weight:600;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+.field input,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--line-strong);
+  border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:13.5px}
+.empty{text-align:center;padding:44px 20px;color:var(--ink-3)}
+.sec-h{display:flex;align-items:center;gap:10px;margin:22px 0 11px}
+
+
+/* --- stage guide card --- */
+.stagecard{margin-top:12px;border-left:3px solid var(--accent)}
+
+/* --- requirement conversation --- */
+.chat{display:flex;flex-direction:column;gap:9px;padding:2px 0 10px}
+.msg{max-width:78%;padding:9px 12px;border-radius:10px;font-size:13.5px;line-height:1.55;
+  border:1px solid var(--line)}
+.msg .who{display:block;font-family:var(--cond);font-size:10.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.msg.ai{align-self:flex-start;background:var(--surface-3)}
+.msg.me{align-self:flex-end;background:var(--accent-soft);border-color:var(--accent-line)}
+.compose{display:flex;gap:8px;margin-top:4px}
+/* 输入区是 textarea 不是 input —— 需求动辄几百字，单行框里写不了。
+   随内容长高，到 40vh 封顶后内部滚动。 */
+.compose textarea{flex:1;padding:9px 11px;border:1px solid var(--line-strong);
+  border-radius:7px;background:var(--surface);color:var(--ink);font:inherit;
+  font-size:13.5px;line-height:1.55;resize:none;min-height:38px;max-height:40vh;
+  overflow-y:auto;field-sizing:content}
+.compose textarea:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+/* field-sizing 还没全支持，JS 兜底见 useAutoGrow */
+.compose{align-items:flex-end}
+.quick{display:flex;align-items:center;gap:9px;margin-top:9px}
+@media (prefers-reduced-motion:no-preference){.msg{animation:msg-in .16s ease-out}}
+@keyframes msg-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+
+/* --- agent thinking stream --- */
+.think{border:1px solid var(--line);border-radius:8px;background:var(--surface-3);
+  margin-bottom:7px;overflow:hidden}
+.think.live{border-color:var(--accent-line)}
+.think-h{display:flex;align-items:center;gap:7px;width:100%;padding:7px 10px;
+  border:none;background:none;color:var(--ink-2);font:inherit;font-size:12.5px;
+  text-align:left;cursor:pointer}
+.think-h:hover{background:var(--surface)}
+.think-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.think-h .caret{color:var(--ink-3);font-size:10px;flex:none}
+.think-now{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.think-n{flex:none;font-family:var(--cond);font-size:11px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.spin{flex:none;width:9px;height:9px;border-radius:50%;
+  border:1.5px solid var(--accent-line);border-top-color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+  .spin{animation:sp .7s linear infinite}
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+.think-list{margin:0;padding:6px 10px 9px;border-top:1px solid var(--line);
+  display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto}
+.ts{display:flex;gap:8px;font-size:12.5px;line-height:1.5}
+.ts .ic{flex:none;width:14px;color:var(--ink-3);text-align:center}
+.ts.tool .ic{color:var(--accent)} .ts.error .ic{color:var(--bad)}
+.ts.step{color:var(--ink-3)} .ts.error .tt{color:var(--bad)}
+.ts .tt{overflow-wrap:anywhere;white-space:pre-wrap}
+.ts .tk{display:inline-block;min-width:30px;margin-right:6px;font-family:var(--cond);
+  font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);vertical-align:1px}
+/* 中文没有真斜体，合成倾斜在深色小字下极难辨认 —— 改用降色 + 虚线轨 */
+.ts.reasoning .tt{color:var(--ink-2);font-style:normal;
+  border-left:1px dashed var(--line-strong);padding-left:8px}
+.ts .td{margin:4px 0 0;padding:6px 8px;background:var(--surface);border-radius:5px;
+  font-family:var(--mono,ui-monospace,monospace);font-size:11px;line-height:1.5;
+  color:var(--ink-2);max-height:180px;overflow:auto;white-space:pre-wrap;
+  overflow-wrap:anywhere}
+
+/* Wide screens: chat should not stretch edge to edge -- long lines
+   become unreadable and the bubbles lose their shape. */
+
+
+/* ── 层次 token（深色的关键：边框在深色下已经失效，见 .card） ── */
+:root{
+  --sh-1:0 1px 2px rgba(11,11,17,.06);
+  --sh-2:0 2px 6px rgba(11,11,17,.08),0 1px 2px rgba(11,11,17,.06);
+  --highlight:none;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  color-scheme:dark;
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 2px 8px rgba(0,0,0,.55),0 1px 2px rgba(0,0,0,.4);
+  --highlight:inset 0 1px 0 rgba(255,255,255,.05);
+}}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 2px 8px rgba(0,0,0,.55),0 1px 2px rgba(0,0,0,.4);
+  --highlight:inset 0 1px 0 rgba(255,255,255,.05);
+}
+:root:not([data-theme=dark]){color-scheme:light}
+
+.rq,.col,.think,.tbl-w{box-shadow:var(--sh-1),var(--highlight)}
+.rq:hover{border-color:var(--line-strong);box-shadow:var(--sh-2),var(--highlight)}
+
+/* ── 只留一层滚动 ──────────────────────────────────────────
+   之前是页面 + .chat(300) + .think-list(340) + .td(180) 四层嵌套，
+   而且内层比外层还高 —— 思考面板在对话框里永远露不全，
+   鼠标停在哪层滚轮就被哪层吃掉。现在思考面板不再自带滚动，
+   由对话区统一滚。 */
+.think-list{max-height:none;overflow:visible}
+.chat{scroll-behavior:smooth;overscroll-behavior:contain}
+
+/* 「跳到最新」——解除吸底后才出现，抄 Slack/Discord 的通行解法 */
+.jump{position:sticky;bottom:8px;left:50%;transform:translateX(-50%);
+  display:block;padding:4px 12px;border-radius:999px;border:1px solid var(--accent-line);
+  background:var(--accent-soft);color:var(--accent);font:inherit;font-size:12px;
+  cursor:pointer;box-shadow:var(--sh-2)}
+
+/* 中文正文行高 1.7（1.55 是给拉丁的），并禁止合成加粗 —— 
+   PingFang 没有连续字重档，700 会被算法描粗，深色下糊成一坨 */
+body{line-height:1.7;font-synthesis-weight:none}
+.h1{font-weight:600}

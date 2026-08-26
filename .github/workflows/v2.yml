@@ -1,0 +1,103 @@
+name: v2 platform
+
+on:
+  push: { branches: [main, "v2/**"] }
+  pull_request:
+
+jobs:
+  platform:
+    runs-on: ubuntu-latest
+    services:
+      # **在真 MySQL 上跑。**
+      # 之前所有测试只跑 sqlite —— SKIP LOCKED、LONGTEXT variant、
+      # utf8mb4 下的索引长度这些 D4 专属实现一次都没被执行过，
+      # 第一次 `docker compose up` 就是第一次验证。
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+          MYSQL_DATABASE: vplatform
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv .venv
+        working-directory: platform
+      - run: uv pip install --python .venv/bin/python -e ".[dev,redis]"
+        working-directory: platform
+
+      # 接缝守卫 —— 核心层不得 import 具体实现。
+      # 靠自觉守不住：v1 的「支持 GitHub/Gitee/云效」就是这么变成空话的。
+      - name: 接缝检查
+        run: .venv/bin/python scripts/check_seams.py
+        working-directory: platform
+
+      - name: 构建 skill dist
+        run: ./build.sh
+        working-directory: platform-skills
+
+      - name: 单元测试（sqlite，快）
+        run: .venv/bin/python -m pytest -q
+        working-directory: platform
+
+      - name: 迁移能在真 MySQL 上跑通
+        env:
+          VP_DATABASE_URL: mysql+pymysql://root:ci@127.0.0.1:3306/vplatform?charset=utf8mb4
+        run: |
+          .venv/bin/python scripts/migrate.py status
+          .venv/bin/python scripts/migrate.py upgrade
+          .venv/bin/python scripts/migrate.py status
+          # 幂等：再跑一次不该有变化
+          .venv/bin/python scripts/migrate.py upgrade
+        working-directory: platform
+
+      - name: 整套测试在真 MySQL 上再跑一遍
+        # 必须双跑。sqlite 上碰不到的东西：SKIP LOCKED（jobs.py 对 sqlite 显式
+        # 关掉了它）、DATETIME 精度（MySQL 无精度列会把 .6 秒进位，
+        # 让刚入队的 job 隐身最多 500ms）、外键约束（sqlite 默认不检查）。
+        # 这三样都是实测才发现的。
+        env:
+          VP_TEST_MYSQL_URL: mysql+pymysql://root:ci@127.0.0.1:3306/vplatform?charset=utf8mb4
+        run: .venv/bin/python -m pytest -q
+        working-directory: platform
+
+      - name: MySQL 专属路径验证（SKIP LOCKED / 索引 / 并发抢占）
+        env:
+          VP_DATABASE_URL: mysql+pymysql://root:ci@127.0.0.1:3306/vplatform?charset=utf8mb4
+          VP_REDIS_URL: redis://127.0.0.1:6379/0
+        run: .venv/bin/python scripts/verify_mysql.py
+        working-directory: platform
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci
+        working-directory: web
+      - run: npx tsc -b
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 镜像能不能构建**必须在 CI 里验**。
+      # 之前 Dockerfile.api 直接 COPY 一个 gitignore 掉的目录，
+      # 新 clone 上构建必然失败，而 CI 从来没跑过 docker build。
+      - run: docker build -f deploy/v2/Dockerfile.api -t vp-api:ci .
+      - run: docker build -f deploy/v2/Dockerfile.web -t vp-web:ci .

@@ -1,0 +1,40 @@
+# workspace 基础镜像 —— 每个隔离工位的容器都从它起（§5）。
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl ca-certificates build-essential python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs && npm i -g pnpm && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:/root/.cargo/bin:${PATH}"
+
+# opencode —— agent 会话（§6）。
+# **不加 `|| true`**：装失败就让构建失败。之前吞掉错误的写法会产出一个
+# 「看起来装了实际没有」的镜像，运行时才发现 agent 不可用。
+RUN curl -fsSL https://opencode.ai/install | bash \
+    && ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode \
+    && opencode --version
+
+# ocr —— 代码复核缺陷轴（§9）。**pin 版本**，项目迭代太快不能用 latest
+ARG OCR_VERSION=1.9.10
+RUN npm i -g "@alibaba-group/open-code-review@${OCR_VERSION}" && ocr --version
+
+# mergiraf —— 冲突第二档，结构化三方合并（§12）。
+# 之前写 `cargo install mergiraf` 但镜像里没装 rust，静默失败，
+# 第二档永远跳过。这里先装 rust 再装，并验证。
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+    && cargo install mergiraf \
+    && mergiraf --version \
+    && rm -rf /root/.rustup/toolchains/*/share/doc
+
+# L1 平台级 skill（§14.3）—— 装进全局，不污染客户仓库
+COPY platform-skills/dist/ /root/.config/opencode/skills/
+
+# 包管理器 store 只读共享（§5.3 坑 1）
+VOLUME ["/pnpm-store", "/uv-cache"]
+ENV PNPM_STORE_DIR=/pnpm-store UV_CACHE_DIR=/uv-cache
+
+WORKDIR /w

@@ -1,0 +1,48 @@
+# ── 阶段 1：构建 skill dist ─────────────────────────────────────
+# platform-skills/dist 在 .gitignore 里，新 clone 上不存在。
+# 之前直接 `COPY platform-skills/dist` → 构建必然失败。这里现场构建。
+FROM debian:bookworm-slim AS skills
+RUN apt-get update && apt-get install -y --no-install-recommends patch \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /s
+COPY platform-skills/ ./
+RUN chmod +x build.sh && ./build.sh
+
+# ── 阶段 2：运行时 ──────────────────────────────────────────────
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git ca-certificates curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# **只装 docker CLI**，不装整个 engine。
+# 之前用 `curl get.docker.com | sh` 会在 slim 镜像里装完整 engine
+# （几百 MB，且脚本会尝试 systemd 操作，容器里行为不确定）。
+RUN install -m 0755 -d /etc/apt/keyrings \
+ && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+ && chmod a+r /etc/apt/keyrings/docker.asc \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+ && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY platform/pyproject.toml platform/README.md /app/
+COPY platform/src /app/src
+COPY platform/migrations /app/migrations
+COPY platform/scripts /app/scripts
+COPY platform/rules /app/rules
+RUN pip install --no-cache-dir -e ".[redis]"
+
+COPY --from=skills /s/dist /opt/vplatform/skills
+ENV VP_PLATFORM_SKILLS_DIR=/opt/vplatform/skills
+
+# **工位路径必须是宿主路径**。容器通过挂载的 docker.sock 起工位容器时，
+# `docker run -v <path>` 由宿主 daemon 解析 —— 传容器内路径会挂到空目录。
+# compose 里用 bind mount 让两边路径一致（见 docker-compose.yml 的说明）。
+ENV VP_WORKSPACES_ROOT=/data/projects
+
+EXPOSE 9000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request,sys; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/health',timeout=4).status==200 else 1)"
+CMD ["uvicorn", "vplatform.api.main:app", "--host", "0.0.0.0", "--port", "9000"]

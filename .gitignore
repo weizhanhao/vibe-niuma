@@ -25,3 +25,6 @@ dist/
 
 # uv 锁文件（orchestrator 用 pip + venv，uv.lock 是无关产物）
 orchestrator/uv.lock
+
+# 演示用的一次性目标仓（各自是独立 git 仓，不作为 submodule 纳入）
+demo-target/*/

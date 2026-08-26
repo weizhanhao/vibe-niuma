@@ -1,0 +1,89 @@
+# v2 自建部署。DeployAdapter 的 SelfHostedDeploy 调的就是这个（§10.2）。
+#
+# **工位路径必须宿主与容器一致。**
+# api/worker 通过挂载的 docker.sock 起工位容器，`docker run -v <path>` 由
+# **宿主 daemon** 解析 —— 传容器内路径会挂到宿主上不存在的目录。
+# 所以这里用 bind mount 而不是 named volume，且两边都是 ${VP_DATA_ROOT}。
+x-data-root: &data-root ${VP_DATA_ROOT:-/opt/vplatform/data}
+
+x-api-env: &api-env
+  VP_DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-demopass}@mysql:3306/vplatform?charset=utf8mb4
+  VP_REDIS_URL: redis://redis:6379/0
+  VP_WORKSPACES_ROOT: ${VP_DATA_ROOT:-/opt/vplatform/data}/projects
+  VP_BOOTSTRAP_TOKEN: ${VP_BOOTSTRAP_TOKEN:?引导口令必填，否则管理接口无法启用}
+  # 密钥只以引用形式进 DB，实际值在这里注入（§4.2）
+  DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:?需要 DashScope key}
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-default-row-format=DYNAMIC
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-demopass}
+      MYSQL_DATABASE: vplatform
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    # 事件总线的实时通道（§13）。agent 日志每秒几十行，纯 DB 轮询扛不住。
+    image: redis:7-alpine
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    # 迁移单独一步，跑完就退。api/worker 等它成功才起 ——
+    # 否则第一次部署会撞上「表不存在」。
+    build: { context: ../.., dockerfile: deploy/v2/Dockerfile.api }
+    command: ["python", "scripts/migrate.py", "upgrade"]
+    environment: *api-env
+    depends_on:
+      mysql: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: { context: ../.., dockerfile: deploy/v2/Dockerfile.api }
+    environment: *api-env
+    depends_on:
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    ports: ["9000:9000"]
+    volumes:
+      - *data-root
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  worker:
+    build: { context: ../.., dockerfile: deploy/v2/Dockerfile.api }
+    command: ["python", "-m", "vplatform.worker_main"]
+    environment: *api-env
+    depends_on:
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    volumes:
+      - *data-root
+      - /var/run/docker.sock:/var/run/docker.sock
+    # `deploy.replicas` 只对 swarm 生效，`docker compose up` 会忽略它。
+    # 要多副本用 `docker compose up --scale worker=3`。
+    restart: unless-stopped
+    stop_grace_period: 120s     # 给优雅关闭留时间，别把在跑的 job 腰斩
+
+  web:
+    build: { context: ../.., dockerfile: deploy/v2/Dockerfile.web }
+    depends_on: [api]
+    ports: ["8080:80"]
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
